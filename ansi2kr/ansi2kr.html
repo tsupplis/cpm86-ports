@@ -1,0 +1,371 @@
+
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">		
+  <title>asu ansi2kr</title>
+</head>
+<body>
+<h2>asu ansi2kr Ver 1.3</h2>
+(C) Masaki Oba 2017<br>
+  <a href="http://www.nabeta.tk">http://www.nabeta.tk/en/</a><br>
+  <a href="mailto:admin@nabeta.tk">admin@nabeta.tk</a><br>
+<br>
+<font size="+1"><b>What is the "asu ansi2kr"</b></font><br>
+  asu ansi2kr is the ANSI C to K&R C converter(translator) for BDS C and MSX-C<br>
+<br>
+<font size="+1"><b>License</b></font><br>
+  2-Clause BSD License<br>
+  Open source.<br>
+  ANSI C source.(Support C++ Builder)<br>
+<br>
+<font size="+1"><b>Support platforms</b></font>
+<ul>
+  <li>Windows</li>
+  <li>CP/M,MSX-DOS</li>
+  <li>MSX-DOS2 (support layered directory)</li>
+</ul>
+<font size="+1"><b>Download</b></font><br>
+<a href="http://www.nabeta.tk/msx/ansi2krwin1.3.zip">Download asu ansi2kr for Windows</a><br>
+<br>
+<a href="http://www.nabeta.tk/msx/ansi2krcpm1.3.zip">Download asu ansi2kr for CP/M,MSX-DOS,MSX-DOS2</a><br>
+<br>
+<font size="+1"><b>Function</b></font><br>
+<ol>
+  <li>Convert "int func(int a,char *b);"  to "int func(a,b)int a;char *b;".</li>
+<br>
+  <li>Convert "　　#define ABC" to "#define ABC"</li>
+<br>
+  <li>Convert "　　//comment" to ""<br>
+  Does not convert "abc //abcd"<br>
+  -c option disable this function.</li>
+<br>
+  <li>Convert Type of C<br>
+  Exsample<br>
+    Convert "const int" to "int"<br>
+    Convert "short int" to "int"<br>
+    Convert "unsigned char" to "char"<br>
+    Convert "unsigned int" to unsigned<br>
+    Convert "short" to "int" (but MSX-C does have "short")</li>
+<br>
+  <li>Cut out cast for BDS C.<br>
+    (-u option disable this function.)</li>
+    Convert "a = (int)b;" to "a = b;"<br>
+<br>
+  <li>add "#pragma noregalo" for MSX-C.<br>
+    (if no use "#pragama noregalo" and CF.COM -t option then may generated program does not work.)</li>
+<br>
+  <li>Same line number. source and output file.<br>
+    (When no add "#pragma noregalo")</li>
+</ol>
+<br>
+<font size="+1"><b>Usage</b></font><br>
+  usage: ansi2kr [-cvupme] inputfile [outputfile]<br>
+       -c no use C++ comment<br>
+       -v delete "void"<br>
+       -u use cast.(no cut cast)<br>
+       -p out "#pragma noregalo". (for MSX-C)<br>
+       -m support MSX-C. same -vup option.<br>
+       -e no output CP/M EOF 0x1a(CP/M File end mark)\n<br>
+<br>
+<font size="+1"><b>Example</b></font><br>
+      convert abc.c and display<br>
+      &gt; ansi2kr abc.c<br>
+<br>
+      convert abc.c output.c for BDS C<br>
+      &gt; ansi2kr abc.c output.c<br>
+<br>
+      convert abc.c output.c for MSX-C<br>
+      &gt; ansi2kr -m abc.c output.c<br>
+              or<br>
+      &gt; ansi2kr -c -v -u abc.c output.c<br>
+              or<br>
+      &gt; ansi2kr abc.c output.c -m<br>
+<br>
+<br>
+<font size="+1"><b>if compile this source by C++ Builder on Windows</b></font><br>
+  (target Windows)<br>
+  &gt; bcc32 ansi2kr.c<br>
+<br>
+<font size="+1"><b>if compile this source by BDS C</b></font><br>
+  "ansi2kr.exe(or .com) ansi2kr.c bdssrc.c(output filename)" +<br>
+  #define CPM +<br>
+  must create blank hedder files. or delete include line.<br>
+<br>
+<font size="+1"><b>Compile by BDS C on CP/M</b></font><br>
+  (target CP/M and MSX-DOS and MSX-DOS2)<br>
+  &gt; ansi2kr ansi2kr.c temp.c<br>
+  &gt; cc temp.c<br>
+  &gt; clink temp<br>
+  &gt; pip ansi2kr.com=temp.com<br>
+<br>
+<font size="+1"><b>Compile by BDS C on MSX-DOS</b></font><br>
+  (target CP/M and MSX-DOS and MSX-DOS2)<br>
+  &gt; ansi2kr ansi2kr.c temp.c<br>
+  &gt; cc temp.c<br>
+  &gt; clink temp<br>
+  &gt; copy temp.com ansi2kr.com<br>
+<br>
+<font size="+1"><b>Compile by BDS C on Windows with CP/M program EXEcutor for Win32</b></font><br>
+  (target CP/M and MSX-DOS and MSX-DOS2)<br>
+  &gt; ansi2kr.exe ansi2kr.c temp.c<br>
+  &gt; cpm cc temp.c<br>
+  &gt; cpm clink temp<br>
+  &gt; copy temp.com ansi2kr.com<br>
+<br>
+<font size="+1"><b>if compile this source by MSX-C Ver 1.2 on MSX-DOS2</b></font><br>
+  Important!!! cf "-t" option and ansi2kr "-m" option.<br>
+  -m or -p option output "#pragma noregalo" to source code.<br>
+  #define MSXC<br>
+<br>
+  &gt; ansi2kr -m ansi2kr.c temp.c<br>
+  &gt; cf -t temp<br>
+  &gt; cg -k temp<br>
+  &gt; m80 =temp/z<br>
+  &gt; l80 ck,temp,clib/s,crun/s,cend, temp/n/e<br>
+  &gt; copy temp.com ansi2kr.com<br>
+<br>
+<font size="+1"><b>if use for MSX-C</b></font><br>
+    Important!!! must use cf.com "-t" option and ansi2kr "-m" option.<br>
+    and don't use "#pragma regalo"<br>
+    if no use cf.com "-t" option or no use "#pragma noregalo" <br>
+    then some case generated programs does'nt work.<br>
+<br>
+  (Japanese)<br>
+<font size="+1"><b>asu ansi2kr とは何か?</b></font><br>
+<br>
+  ANSI Cのソースを古いK&R Cのコンパイラ仕様に近づけたソースに変換するトランスレーター(コンバーター)です。<br>
+  CP/Mで動作するコンパイラのBDS CにANSI C機能を追加するために開発しました。<br>
+　BDS Cと機能がよく似ているMSX-Cにも効果があります。<br>
+  ただ、MSX-Cはコンパイル能力の問題からおすすめしません。<br>
+  移植時に一度だけ使用する目的では作っていません。(そういう使い方もできますが。)<br>
+  BDS Cをコンパイルするバッチファイル、サブミットファイル、makeファイルなどに組み込み、コンパイルするたびに毎回使う目的で作りました。<br>
+  つまり、ANSI C風に書いたソースを正規のソースとして扱い、変換されたK&Rのソースは通常見ることはない使い方を考えています。<br>
+  そのために、元のソースと変換後のソースの行番号は一致し、ずれないようにしています。<br>
+  (MSX-Cの場合は一行ずれる場合があります。)<br>
+  コンパイラが出したエラー行を見て元ソースの修正ができます。<br>
+  変換能力ですが、asu ansi2krは、ANSI Cで書かれていますが、そのソースをasu ansi2krをかますことによりBDS Cでもコンパイルすることができます。<br>
+<br>
+<br>
+<font size="+1"><b>古いことをしようとはしていないかも</b></font><br>
+<br>
+  HTML5のソフトを作るためにやっています。<br>
+  WebMSXというMSXエミュレーターはHTML5でMSXのプログラムを動かせます。<br>
+  BDS CでMSXのプログラムを作ってホームページで動かす。<br>
+  最終的には最新の環境であるHTML5がターゲットなので考えようによっては古いことをしようとはしていないかも。<br>
+  むしろ新しいかも。<br>
+  Javaはホームページ上の言語から消えたし(GWTとかはあるけど)、flashも消えつつあるし、できればC言語でHTML5のソフトを作りたい。<br>
+  ある程度はグラフィックなども対応させて。<br>
+  しかしBDS CはANSI C対応ではない。<br>
+  そこでasu ansi2krを作りました。<br>
+<br>
+<font size="+1"><b>機能</b></font><br>
+  1.ANSI Cの関数の宣言、定義部分をK&R Cに書き換えます。<br>
+    "int func(int a,char *b);" を、"int func(a,b)int a;char *b;"に変換します。<br>
+<br>
+  2.ANSI Cの#define などの#に続く文をK&R Cに書き換えます。<br>
+    #の前の行頭の空白を削除します。<br>
+    K&R では#は行頭である必要があります。<br>
+<br>
+  3.C++のコメントの // にも一部対応します。(-cオプションで禁止可)<br>
+    行頭もしくは行頭の空白に続くC++コメントのみに対応しています。<br>
+    "//abcd" の行を、空行にします。ただし、"abc //abcd" は変換しません。<br>
+<br>
+  4.BDS C、MSX-Cコンパイルできる型に変換します。<br>
+    例えば<br>
+    const int を intに、<br>
+    short int を intに、<br>
+    unsigned charを、charに、<br>
+    unsigned intを、unsignedに、<br>
+    short(単独)をintに。(MSX-Cにはshortはありますが)<br>
+    BDS C、MSX-C向けに手作業でこれらを変換する必要がなくなりソースの互換性が高まります。<br>
+<br>
+  5.BDS Cはキャストがエラーになるので、キャストを取り除きます。<br>
+    (-uオプションで禁止可)<br>
+    "a = (int)b;" を、"a = b;"に変換します。<br>
+<br>
+  6.オプションによりMSX-Cの#pragma noregalo をソースの先頭に挿入できます。<br>
+    先頭行が空行またはコメントの場合は以降の行がずれないように挿入します。<br>
+    (MSX-Cでは、#pragama noregalo と、cfの-tオプションを使わないと作ったプログラムが誤動作することが多いです。)<br>
+<br>
+  7.変換後のソースは元ソースと行番号が一致してずれないのでコンパイル時のエラー行から元ソースの修正に即入れてコンパイル毎に使える。<br>
+    (MSX-Cでは一行だけずれる場合があります。)<br>
+    (行番号が大きくずれてしまう変換ではコンパイル毎の使用は無理で移植時に一回使うぐらいの使い方しかできない。)<br>
+<br>
+<font size="+1"><b>ソースについて</b></font><br>
+  ANSI Cで書かれているので、極わずかな変更により多くのOSで動作すると思います。<br>
+  HI-TECH C Ver3.09(CP/M)は、元々コンパイルできていたのですがバージョンアップに伴いソースが大きくなり、"Too many temporary labels"というエラーが出てコンパイルできなくなりました。<br>
+  HI-TECH Cは大きなソース(といっても1200行ぐらいですが)になるとコンパイルできないようです。<br>
+  ソースを分割すればコンパイルできるとは思いますがCP/M版はBDS Cで作れているのでする予定はありません。<br>
+  MSX-C Ver 1.2ではコンパイルはできますが変換できない実行ファイルを生成します。<br>
+  元と同じソースを出力するような感じでした。<br>
+<br>
+<font size="+1"><b>実行ファイルのターゲット</b></font><br>
+  2017年3月18日現在、<br>
+  1.C++ BuilderでコンパイルしたWindows版、<br>
+  2.BDS CでコンパイルしたCP/M、MSX-DOS、MSX-DOS2版<br>
+  3.MSX-C Ver 1.2でコンパイルした階層ディレクトリ対応のMSX-DOS2専用版<br>
+  の三つ存在します。<br>
+  BDS CとMSX-Cは直接ANSI Cのソースをコンパイルできないため、すでにコンパイルされたasu ansi2krで変換したソースをコンパイルします。<br>
+<br>
+  旧バージョンにあったHI-TECH C(CP/M)でコンパイルしたCP/M、MSX-DOS、MSX-DOS2版はソースの肥大化に(といってもまだ小さいですが)HI-TECH Cがついてこれずコンパイルできなくなっため無くなりました。<br>
+<br>
+<br>
+<font size="+1"><b>注意点</b></font><br>
+  完全にANSI Cになるわけではありません。<br>
+  主に関数の宣言、定義部分を変更するだけです。<br>
+  条件コンパイル(#defineなど)はノーチェックで変換しています。<br>
+  コメント部分か否かもノーチェックで変換しています。<br>
+  そのため、変換させるためには特定の記述にしたがっている必要があります。<br>
+  変換するソースからincludeされるファイルは変換しません。<br>
+  (#include は無視します。)<br>
+  ただしincludeファイルのファイル名を指定して変換することはできます。<br>
+<br>
+<font size="+1"><b>関数宣言部の変換条件</b></font><br>
+  1.行頭(第一カラム)から始まっている。<br>
+  2.行を分けずに一行で書いてある。<br>
+<br>
+<font size="+1">C++コメントの変換条件</b></font><br>
+  1.行頭(第一カラム)から始まっているか行頭の空白(連続可)の後から始まっている。<br>
+  <br>
+<font size="+1"><b>
+変換の禁止について
+</b></font><br>
+<br>
+  関数宣言部の変換の禁止<br>
+  ・部分的に変換させないようにするには、行頭にスペースでも置けばいいです。<br>
+  ・全体的に変換しないようにするには、最初から変換かけなければよい。<br>
+<br>
+  C++コメントの変換の禁止<br>
+  ・全体的に変換しないようにするには、-c オプションを付ける<br>
+<br>
+  キャストを取り除く変換の禁止<br>
+  ・全体的に変換しないようにするには -u オプションを付けます。<br>
+<br>
+  CP/M EOFの出力の禁止<br>
+  -e オプションで、CP/Mのファイルの終端マークの0x1aの出力を禁止します。<br>
+  出力しても困ることは滅多にないと思いますが、テキストファイルをCP/M以外で合体したときに<br>
+ゴミ(0x1a)が途中に入ることはあります。<br>
+  そして、続きがあってもCP/Mでは0x1aの部分まででファイルは終わりと解釈されるかも知れません。<br>
+<br>
+<br>
+<font size="+1"><b>
+BDS Cについて
+</b></font><br>
+<br>
+  型の区別は厳密ではなくキャストは不要というかできません。<br>
+  そのため、asu ansi2krではBDS Cのためにキャストの記述を取り除きます。<br>
+  アセンブリ言語でコンパイラが作られているので使えるメモリが多いからかメモリが足りないからコンパイルできないというエラーはでにくいです。<br>
+  他のCP/MやMSX-DOSのCコンパイラでコンパイルできない複雑な式、大きな関数、大きなソースもBDS Cならコンパイルできることが多いです。<br>
+  int a=2;のような変数の宣言と同時の初期化ができません。<br>
+  static int a;のようなstatic変数は使えません。<br>
+  区別できる関数名は8文字までで大文字小文字の区別はしません。<br>
+  MSX-C同様に、long、foat、doubleは使えません。<br>
+  作ったプログラムはCP/Mで動く代わりにMSX-DOS2の階層ディレクトリを扱えません。<br>
+  最適化は甘いと思います。<br>
+  BDS CはCP/MまたはMSX-DOS上で動作するCコンパイラの中ではおそらく最もコンパイル速度が高速です。<br>
+  現在はオープンソースのパブリックドメインになっています。<br>
+  新規参入者も自由に使えます。<br>
+  今でも公式ホームページがありそこで配布されています。<br>
+  コンパイラのソースは公開されていますがC言語ではなく8080アセンブリ言語で書かれていて他のOSへの移植は困難です。<br>
+  <br>
+<br>
+<br>
+<font size="+1"><b>
+MSX-Cについて
+</b></font><br>
+<br>
+  MSX-Cはコンパイラの能力の問題からソースは正しいのにエラーを出してコンパイルできないことがよく起こります。<br>
+  式を分解したり関数を分けたりソースファイルを分けたりすることでコンパイルできるようになります。<br>
+  またMSX-Cは区別できる関数名が6文字と短すぎるのでコンパイルには関数名を縮めないといけないことがあります。<br>
+  また関数名は大文字と小文字を区別しません。<br>
+  BDS C同様にlong、float、doubleは使えません。<br>
+  MSX-C Ver 1.2ではMSX-DOS2では階層ディレクトリを扱うプログラムが作れます。<br>
+  char型とint型とchar *の区別が厳密です。<br>
+  cf.com に -tオプションをつけて、ソースに"#pragma noregalo"を書かないと正常動作しないプログラムを生成することがよくあります。<br>
+  BDS Cよりも最適化が効きますがその代償として型の区別が厳密で、誤動作するプログラムを生成する場合があり、実用として使うには型の区別をある程度ゆるくするオプション(cf.comの-t)とレジスタ変数の最適化を禁止(#pragma noregalo)をする必要があると思います。<br>
+  ただし、MSX-C固有の機能を熟知してよくチェックしながら使うなら最適化をフル発揮しながら使うことは可能だと思います。<br>
+  どこを最適化したら問題でどこを最適化したら問題ないかはMSX-Cは判断できません。<br>
+  プログラマーが自己責任でレジスタ変数の最適化をしていい場所といけない場所を#pragma noregalo と#pragma regaloで指定する仕様になっています。<br>
+  もし最適化よりも安全確実を望むなら、ソースの先頭に#pragma noregalo を書きます。<br>
+  asu ansi2krの-mオプションと-pオプションは#pragma noregaloを自動で挿入します。<br>
+  またデフォルトではintとchar *間の変換ができないため誤動作することがあります。<br>
+  そのためにcf.com の-tオプションが必要です。<br>
+  コンパイル速度はMSXturboRを使っても低速です。<br>
+  MSX-Cは厳しいライセンスのまま販売を終了しています。<br>
+  新規参入者は合法的に使うことが難しいかも知れません。<br>
+  最終の合法の配布は「MSX MAGAZINE永久保存版3」という書籍で、付録CD-ROMのMSXエミュレーターの中にMSX-C Ver 1.2が入っています。<br>
+  作成したバイナリの配布も許可を取らないといけないのかも知れませんが当時の問い合わせ先はなくなっています。<br>
+<br>
+<font size="+1"><b>
+BDS CとMSXとHTML5のプログラム
+</b></font><br>
+<br>
+  BDS CはMSXライブラリとソース付きのサンプルプログラムが公開されています。<br>
+  MSX-DOS上のMSXライブラリだけではなく、OSとしてのMSX-BASIC上のMSXライブラリもあります。<br>
+  しかしながら、サンプルプログラムがK&R Cだと魅力が半減してしまいます。<br>
+  BDS CをANSI C化する必要があると考え、asu ansi2krを作成しました。<br>
+  MSXプログラムはHTML5で動くMSXエミュレーターを使うとHTML5ソフトになり自分のサイトにもMSXプログラムを載せられます。<br>
+  BDS CはMSX-DOSを必要としないMSXライブラリもあるためMSX-DOSを添付する必要がないプログラムが作れて便利です。<br>
+<br>
+<br>
+<font size="+1"><b>
+HI-TECH C(CP/M)とBDS Cの比較
+</b></font><br>
+<br>
+  BDS Cはパブリックドメインになりソースも公開されました。<br>
+  HI-TECH C(CP/M)はフリーソフトとなり本家サイトで配布していましたが現在は本家サイトからの配布がないどころか一切の記述がありません。<br>
+  第三者による二次配布のものは現在も配布されています。<br>
+  HI-TECH C(CP/M)のはフリーになりましたが当時公表されたライセンスの文は短く詳しいライセンス内容は分かりません。<br>
+  HI-TECH C(CP/M)のフリー版はクローズドソースで、起動後の初期化ルーチンのソースもないため、CP/M、MSX-DOS以外のOSで動くプログラムを作ることが困難もしくはできません。<br>
+  例えば、MSX-BASIC上で動くプログラムをHI-TECH C(CP/M)のフリー版で作ることは困難もしくはできません。<br>
+  市販版のHI-TECH CのZ80版は現在販売されていないため入手できません。<br>
+  HI-TECH CはANSI Cで、long、float、doubleにも対応し、BDS Cが持っている数々の制限がありません。<br>
+  関数は大文字小文字を区別し長い関数名も区別できます。<br>
+  20文字ぐらいまでは確認しましたが多分31文字まで?<br>
+  しかしHI-TECH Cは小さいソースしかコンパイルできないようです。<br>
+  BDS CはHI-TECH Cがコンパイルできない大きなソースもコンパイルできます。<br>
+  asu ansi2krをWindowsからCP/M、MSX-DOSに移植する際、HI-TECH Cではソースの大きさからエラーになったのでBDS Cを使いました。<br>
+  (MSX-Cでもコンパイルできました。)<br>
+  それでもソースを分割する手間を惜しまなければHI-TECH Cも使えると思います。<br>
+  HI-TECH Cが現在手も足も出ない分野はCP/M、MSX-DOS以外の環境(例えばMSX-BASIC上のプログラム)で、BDS Cの出番になると思います。<br>
+<br>
+<br>
+<font size="+1"><b>
+本物のANSI Cコンパイラに勝てない点
+</b></font><br>
+  BDS C及びMSX-Cは数々の制限があり、ANSI C以前にK&Rすら完全には対応していません。<br>
+  テキスト・テキスト変換のトランスレーターをかますぐらいでは解決できない問題も多いです。<br>
+  列挙すればきりがないですが主な重要な点を書きます。<br>
+  ・区別できる関数名の長さの制限と大文字小文字の区別。<br>
+    BDS Cは区別できる関数名の長さは8文字までで大文字小文字の区別はしません。<br>
+    MSX-Cは区別できる関数名の長さは6文字までで大文字小文字の区別はしません。<br>
+    ANSI Cでは区別できる関数名は31文字までで大文字小文字の区別をします。<br>
+    コンパイラだけの問題だけではなくリンカ、そして使っていればアセンブラの影響も受けます。<br>
+<br>
+  ・使用できる型<br>
+    BDS C、MSX-Cともint(16ビット)、符号なしchar、unsigned(16ビット)だけ使えます。<br>
+    signed char(符号付きchar)、long、float、doubleなどは使えません。<br>
+<br>
+  ・宣言と同時の初期化<br>
+    BDS Cは、"int a=2;"のような記述はできません。<br>
+    MSX-Cはできます。<br>
+<br>
+  ・static変数<br>
+    BDS Cは、"static int a;"のような記述はできません。<br>
+    MSX-Cはできます。<br>
+<br>
+  ・メモリ不足によるコンパイルエラー<br>
+    MSX-Cはメモリ消費が多く大き目の関数や複雑な式のコンパイルができません。<br>
+    その場合、関数を細かく分けたり式を分解して記述しなおす必要があります。<br>
+    BDS Cはそういう傾向はなくだいたい大丈夫ですがそれでもMS-DOSやWindowsで動くコンパイラと比べるとコンパイルできる関数の最大サイズは小さいです。<br>
+    <br>
+  ・ターゲットでの実行時のメモリ空間<br>
+    BDS CとMSX-Cが対応するZ80/8080 CPUでは64Kb(65536バイト)のメモリ空間しかないため小さいプログラムしか作れません。<br>
+    これはコンパイラ以前にターゲットのCPUを変えないと解決しません。<br>
+<br>
+   <a href="http://www.nabeta.tk">http://www.nabeta.tk</a><br>
+   <a href="mailto:admin@nabeta.tk">admin@nabeta.tk</a><br>
+   Masaki Oba <br>
+   9 Apr 2017<br>
+
+</html>
