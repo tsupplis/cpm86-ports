@@ -8,7 +8,6 @@ A collection of c tools ported to CP/M-86
 
 - Makefile for DOS Aztec C cross compilers targetting CP/M-86.  (May require adaptation. emu2 is used to run dos compiler on unix/mac)
 - aztec c compiler version 3.4
-```
 - The Super Cool emu2 DOS emulator to run the DR tools on macOS and Linux (https://github.com/dmsc/emu2). This is an incredible way to bring dos command line development tools to a modern and up to date shell/make/whatever based dev environment. Another stunning emulator. Emu2 and PCE are an incredible pair.
 
 For a rudimentary, cross development environment, look at (https://github.com/tsupplis/cpm86-crossdev).
