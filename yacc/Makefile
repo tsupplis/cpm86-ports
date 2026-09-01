@@ -1,10 +1,10 @@
-AS=aztec34_as
-CC=aztec34_cc
-AR=aztec34_lib
+AS=aztec42_as
+CC=aztec42_cc
+AR=aztec42_lib
 CFLAGS=-I. -B +0 -D__CPM86__ 
-STRIP=aztec34_sqz
+STRIP=aztec42_sqz
 LDFLAGS=-lc86
-LD=aztec34_link
+LD=aztec42_link
 LINK86=pcdev_linkcmd
 RASM86=pcdev_rasm86
 
