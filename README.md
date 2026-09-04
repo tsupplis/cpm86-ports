@@ -13,4 +13,4 @@ Some submit/batch scripts are provided for dos (aztec 3.4) and cp/m-86 (aztec 3.
 
 - ansi2kr converter
 - xlisp lisp repl
-- tiny basic
+- yacc compiler compiler
