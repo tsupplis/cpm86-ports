@@ -1,5 +1,5 @@
 AS=aztec42_as
-CC=aztec42_cc
+ACC=aztec42_cc
 AR=aztec42_lib
 CFLAGS=-I. -B +0 -D__CPM86__ 
 STRIP=aztec42_sqz
@@ -10,15 +10,21 @@ RASM86=pcdev_rasm86
 
 BINARIES=ansi2kr.cmd
 
-all: binaries
+all: binaries ansi2kr
 
 binaries: $(BINARIES) 
 
+ansi2kr: ansi2krn.o
+	$(CC) -O2 -o $@ $<
+
+ansi2krn.o: ansi2kr.c
+	$(CC) -O2 -c -o $@ $<
+
 ansi2kr.cmd: ansi2kr.o
-	$(LD) -o $@ $^ $(LDFLAGS)
+	$(LD) -o $@ $< $(LDFLAGS)
 
 %.o: %.c
-	$(CC) $(CFLAGS) $<
+	$(ACC) $(CFLAGS) $<
 	$(STRIP) $@
 
 clean:

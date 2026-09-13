@@ -16,6 +16,6 @@
 **/*.sym
 **/*.lst
 **/*.map
+ansi2kr/ansi2kr
 .vscode
-**/push
 **/push
