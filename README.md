@@ -9,15 +9,17 @@ Used as a soak testing and source for https://github.com/tsupplis/cpm86-crossdev
 | Project | What | From | License |
 | --- | --- | --- | --- |
 | ansi2kr | ANSI C to K&R C converter for BDS C and MSX-C | masakioba / upstream ansi2kr sources | BSD 2-Clause |
+| filer | VFILER, a full-screen file manager | ZCPR2 VFILER by Rich Conn, CP/M-86 translation by H. M. Van Tassell | Public domain / Abandonware |
 | lispc | Minimal Lisp interpreter written in C | Johan Fjeldtvedt | MIT |
-| tinybas | Tiny BASIC interpreter | Classic Tiny BASIC sources | Public domain / original terms |
-| vtl2 | VTL-2 interpreter port for CP/M, just for fun using xlt86, serves as a regression test for the translator | MITS VTL-2 source, adapted for CP/M | Original upstream / source-specific terms |
-| xlisp | Lisp interpreter and runtime | David Betz | XLISP-style open-source terms |
+| tinybas | Tiny BASIC interpreter | Classic Tiny BASIC sources | Public domain / Abandonware |
+| vtl2 | VTL-2 interpreter port for CP/M, just for fun using xlt86, serves as a regression test for the translator | MITS VTL-2 source, adapted for CP/M | Public domain / Abandonware |
+| xlisp | Lisp interpreter and runtime | David Betz |Public domain / Abandonware |
 | yacc | YACC-compatible parser generator | RetroBSD / original yacc sources | BSD-style |
 
 ## Repository layout
 
 - ansi2kr/ — ANSI C conversion utility
+- filer/ — VFILER full-screen file manager (8086 assembler)
 - lispc/ — tiny Lisp interpreter and runtime
 - tinybas/ — Tiny BASIC implementation
 - vtl2/ — VTL-2 source and generated files

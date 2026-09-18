@@ -1,0 +1,4048 @@
+
+             TITLE  'FILER CP/M-86 (IBM-PC) VERSION 1.3'
+;
+; DATE 05/01/98 - Ken Mauro
+;               - Patched for IBM-PC compatibles. 
+;               - some key & screen display changes. (see help screen)
+;               - Light bar menu, function and cursor key support.                 
+;               - all changes marked by comment: *changed, *added etc. 
+;               - Currently Set to handle drvs: A: - E:  (patchable)
+;
+; DATE 10/10/83  11:21  - last revision (was SIG/M release copy)
+; DATE 10/06/83  17:13
+; by:H.M. Van Tassell 120 Hill Hollow Rd, Watchung NJ 07060 (201)755-5372
+;
+; This is a direct knock-off of Rich Conn's ZCPR2 utility VFILER ver 1.7
+; Please see SIG/M vol 145 for the original release and author credits.
+;
+; The original program was translated to 8086 code using XLT86.
+; The unique ZCPR2 features have been mostly removed. More than 1000
+; lines of code were removed and/or changed to enable the translation.
+; Some of the ZCPR2 code and all of the data storage area are intact.
+;
+; REVIEW! the equates, parameters, and routines at the start of the program.
+;
+; Additions to VFILER ver 1.7 in this CP/M-86 version include:
+;      1. Enhanced video mode if your terminal has reverse, underline, and
+;         dim modes,either hidden or non-hidden video attributes.
+;         Terminal cursor on/off is also supported - stops screen flashing.
+;      2. MDRIVE code was added to allow a gap in drive numbers.
+;      3. Status request now only shows free space on disk
+;      4. Command structure and names changed to suit my preferences.
+;      5. New X command added to eXecute current CMD file.
+;      6. CP/M-86 ver 1.1 supports chaining but not mult. commands so
+;         you can run a CMD file but will not return to VFILER. The new
+;         CP/M-86 Plus will support mult. commands-I'll do new version.
+;      7. External HELP if you modify the HELP.HLP file to support VFILER
+;         and set HLP@FIL equate true. Note VILERr will search along
+;          the specified internal search path for HELP.CMD.
+;      8. Printer output features:
+;           a.  Quit allowed on ESC, Q , or ^C key press
+;           b.  Ask for paging and header options 
+;           c.  Date in header, you must supply your clock read routine
+;           d.  Dont allow Printing (Viewing) of CMD files.
+;      9. Verify Destination Copy Erase option added to mass copy
+;----------------------------------------------------------------------
+;
+; Use: ASM86 VFILER $SZPZ
+;      GENCMD VFILER 8080 CODE[M3FF,XF00]
+;
+; Memory allowed in GENCMD is in paragraphs. The XF00 allows program to use
+; memory up to 0F000h if available at program startup.
+;
+; If you must limit memory, then dont use ',XF00' in GENCMD tail, the 3FF
+; allows room for most any number of directory entrys and a smaller size
+; copy buffer. Increase if not large enough for big hard disk directorys.
+;
+;
+; ENH@VID,HIDDEN,ON@OFF,CLOCK set to FALSE
+; MDRIVE set to 0FF (no Mdrive)
+;
+; Starting Definitions
+
+
+VERS   EQU     13                      ;version number
+
+M      EQU     Byte Ptr 0[BX]
+
+TRUE   EQU     0FFFFH               ;define true and..
+FALSE  EQU     0                    ;..false.
+
+ENH@VID        EQU     TRUE         ;true for enhanced video
+HIDDEN EQU     FALSE                ;true for hidden video attribites
+ON@OFF EQU     FALSE                ;true for cursor on/off control
+HLP@FIL EQU    FALSE                ;true for external help file
+CLOCK  EQU     FALSE                ;true only if special rdtime routine
+
+CPM@BASE EQU   000H                 ;cp/m system base..
+TPA    EQU     100H                 ;..'transient program area' start..
+
+GET    EQU     0FFH                 ;get user area e-reg value
+EPS    EQU     16*4                 ;16 lines x 4 cols per screen
+;  EPS = Entries Per Screen
+
+; IBM-PC Specific Function Keys   chr(0)+ char
+
+HOME@KEY    EQU     'G'
+END@KEY     EQU     'O'
+ARROW@UP    EQU     'H'  
+ARROW@DOWN  EQU     'P' 
+ARROW@RIGHT EQU     'M'
+ARROW@LEFT  EQU     'K' 
+PG@UP       EQU     'I' 
+PG@DN       EQU     'Q'
+
+;---------------------------------------------------------------------
+; This USER@ group is defined but not currently being used in CTABLE
+; cursor positioning as per the user's particular terminal
+; this is set for the IBM-PC            *was for ADM 31 arrow keys
+
+USER@UP     EQU     0bh                 ; ^K  dir page up
+USER@DOWN   EQU     0ah                 ; ^J  dir page dowm 
+USER@RIGHT  EQU     0ch                 ; ^L  go right 
+USER@LEFT   EQU     08                  ; ^H  Left (also BackSpace key)  
+SCR@FOR     EQU     1ah                 ; ^Z Scroll forward 
+SCR@BACK    EQU     17h                 ; ^W Scroll Backward
+; --------------------------------------------------------------------
+
+
+; cursor positioning addresses
+EPSLINE     EQU     (EPS/4)+5           ;position of last line of EPS
+BANADR      EQU     1*256+25            ;banner cursor address
+SDMADR      EQU     3*256+30            ;screen directory message
+CURHOME     EQU     4*256+1             ;home address of cursor
+BOTADR      EQU     23*256+1            ;bottom of screen
+BOTADR1     EQU     22*256+1            ;bottom of screen -1
+CPMADR      EQU     EPSLINE*256+1       ;command prompt message
+CPADR       EQU     EPSLINE*256+30      ;command prompt
+ERADR       EQU     (EPSLINE+1)*256+30  ;error message
+FSADR       EQU     ERADR               ;file size message
+FNADR       EQU     (EPSLINE+1)*256+16  ;address of file name
+
+; ASCII definitions
+CTRLC  EQU     'C'-'@'                 ;..ctrl-C..
+CTRLD  EQU     'D'-'@'
+CTRLE  EQU     'E'-'@'
+CTRLM  EQU     'M'-'@'                 ;..ctrl-M (RETURN)to VIEW
+CTRLP  EQU     'P'-'@'                 ;..ctrl-P, prompt for PRNLST
+CTRLR  EQU     'R'-'@'
+CTRLS  EQU     'S'-'@'                 ;..XOFF..
+CTRLX  EQU     'X'-'@'
+BS     EQU     08H                     ;..backspace..
+TAB    EQU     09H                     ;..tab..
+LF     EQU     0AH                     ;..linefeed..
+CR     EQU     0DH                     ;..carriage return..
+CAN    EQU     18H                     ;..cancel..
+EOFCHAR EQU    1AH                     ;..end-of-file..
+CTRLZ  EQU     1AH                     ;..clear screen..
+ESC    EQU     1BH                     ;..and escape character.
+
+; cp/m system functions
+RDCON  EQU     1                       ;console input function
+WRCON  EQU     2                       ;write character to console..
+PUNCH  EQU     4                       ;..punch and..
+LLIST  EQU     5                       ;..to list logical devices.
+DIRCON EQU     6                       ;direct console i/o
+RDBUF  EQU     10                      ;read input string
+CONST  EQU     11                      ;get console status
+RESETDK EQU    13                      ;reset disk system
+LOGIN  EQU     14                      ;log-in new drive
+OPEN   EQU     15                      ;open file
+CLOSE  EQU     16                      ;close file
+SRCHF  EQU     17                      ;search directory for first..
+SRCHN  EQU     18                      ;..and next occurrence.
+ERASE  EQU     19                      ;erase file
+READ   EQU     20                      ;read and..
+WRITE  EQU     21                      ;..write 128-record.
+MAKE   EQU     22                      ;make file
+REN    EQU     23                      ;rename file
+INQDISK EQU    25                      ;get current (default) drive
+SETDMA EQU     26                      ;set dma address
+INQALC EQU     27                      ;allocation vector
+ATTR   EQU     30                      ;set file attributes
+GETPARM        EQU     31                      ;current drive parameters address
+SGUSER EQU     32                      ;set or get user area
+COMPSZ EQU     35                      ; # of records in file
+
+; system addresses
+BDOS   EQU     CPM@BASE+05H            ;bdos function entry address
+FCB    EQU     CPM@BASE+5CH            ;default file control block
+FCBEXT EQU     FCB+12                  ;extent byte in 'fcb'
+FCBRNO EQU     FCB+32                  ;record number in 'fcb'
+FCB2   EQU     CPM@BASE+6CH            ;2nd FCB
+TBUF   EQU     CPM@BASE+80H            ;default cp/m buffer
+
+;
+; assembly origin (load address) and program beginning
+        ORG    CPM@BASE+TPA
+SOURCE:
+        JMP    FILER
+L_A1   EQU     $
+        DSEG
+        ORG    Offset L_A1
+;
+;
+;  INTERNAL PATH DATA                  ;Used to find HELP.CMD
+;
+; DISK = 1 FOR A, '*' FOR CURRENT
+; USER = NUMBER, '*' FOR CURRENT
+;
+INTPATH DB     1,0                 ; DISK, USER FOR FIRST PATH ELEMENT
+        DB     1,'*'               ; DISK, USER FOR 2OD PATH ELEMENT
+        DB     2,'*'               ; ETC.
+        DB     0,0                 ; was 0,0 *changed -km
+        DB     0,0                     
+        DB     0                   ; END OF PATH
+;
+;  DISK/USER LIMITS
+;
+MDISK  RS       0
+       DB       6                       ; MAXIMUM NUMBER OF DISKS
+MDRIVE RS       0
+       DB       0FFH                    ; MEM DRIVE, = 0FFH IF NONE
+MUSER  RS       0
+       DB       15                      ; MAXIMUM USER NUMBER
+;
+;  CURRENT USER/DISK INDICATOR
+;
+CINDIC RS      0
+       DB     '*'                 ; CP/M Plus notation for SEARCH PATH
+;
+;  DMA ADDRESS FOR DISK TRANSFERS
+;
+DMADR  RS      0
+       DW     80H                     ; TBUFF AREA
+;
+;
+LWIDTH RS      0
+       DB     80                      ; WIDTH OF LINE
+LTPP   RS      0
+       DB     59                      ; LINES OF TEXT PER PAGE
+LSPP   RS      0
+       DB      5                       ; LINES TO SKIP PER PAGE
+CWIDTH RS      0
+       DB     80                      ; WIDTH OF SCREEN
+CTPP   RS      0
+       DB     23                      ; LINES OF TEXT PER SCREEN
+CSPP   RS      0
+       DB     1                       ; LINES TO SKIP PER SCREEN
+
+;  END OF PARAMETER DATA
+;
+;******************************************************************
+
+
+L_A2   EQU     $
+        CSEG
+        ORG    Offset L_A2
+;
+;  Screen Routines
+;
+; screen routines (set for IBM-PC type terminals)
+;  clear screen - must have routine
+CLS:
+        MOV    AL,ESC                  ;clear screen
+        CALL   TTYPE
+        MOV    AL,'b'                  ;clear screen
+        CALL   TTYPE
+        MOV    AL,7                  ;clear screen
+        CALL   TTYPE
+        MOV    AL,ESC                  ;clear screen
+        CALL   TTYPE
+        MOV    AL,'E'                  ;*changed -km
+        JMP    TTYPE
+
+;  position cursor (H=row, L=col) where 0,0=upper left
+;  must have routine
+GOTOXY:
+        MOV    AL,ESC                  ;ESCape
+        CALL   TTYPE
+        MOV    AL,'Y'
+        CALL   TTYPE
+        MOV    AL,BH                   ;row
+        ADD    AL,' '
+        CALL   TTYPE
+        MOV    AL,BL                   ;column
+        ADD    AL,' '
+        JMP    TTYPE
+
+;  erase to end of line
+;  must have routine
+EREOL:
+        MOV    AL,ESC                  ;ESCape
+        CALL   TTYPE
+        MOV    AL,'K'                  ;*changed -km 
+        JMP    TTYPE
+
+;
+; Next four routine are for terminals with enhanced video mode.
+; The video attributes can be either hidden of take a space.
+; Set ENH@VID and HIDDEN equates to suit.
+;
+IF     ENH@VID
+
+STD@VID:                               ;Standard (normal) Video Mode
+        MOV    AL,ESC              
+        CALL   TTYPE
+        MOV    AL,'b'             
+        CALL   TTYPE
+        MOV    AL, 15             
+        CALL   TTYPE
+        MOV    AL,ESC           
+        CALL   TTYPE
+        MOV    AL,'c'          
+        CALL   TTYPE
+        MOV    AL, 0          
+        CALL   TTYPE
+        MOV    AL, 0         
+        JMP    TTYPE
+CUR@VID:                               ;cursor Reverse Video mode
+        MOV    AL,ESC              
+        CALL   TTYPE
+        MOV    AL,'b'             
+        CALL   TTYPE
+        MOV    AL, 0             
+        CALL   TTYPE
+        MOV    AL,ESC           
+        CALL   TTYPE
+        MOV    AL,'c'          
+        CALL   TTYPE
+        MOV    AL, 2          
+        CALL   TTYPE
+        MOV    AL, 0         
+        JMP    TTYPE
+TAG@VID:                         ;tag Video mode -display tagged files
+        MOV    AL,ESC              
+        CALL   TTYPE
+        MOV    AL,'b'             
+        CALL   TTYPE
+        MOV    AL, 12             
+        CALL   TTYPE
+        MOV    AL,ESC           
+        CALL   TTYPE
+        MOV    AL,'c'          
+        CALL   TTYPE
+        MOV    AL, 0          
+        CALL   TTYPE
+        MOV    AL, 0         
+        JMP    TTYPE
+STAT@VID:RET                           ;Status line Video Mode
+        MOV    AL,ESC              
+        CALL   TTYPE
+        MOV    AL,'b'             
+        CALL   TTYPE
+        MOV    AL, 15             
+        CALL   TTYPE
+        MOV    AL,ESC           
+        CALL   TTYPE
+        MOV    AL,'c'          
+        CALL   TTYPE
+        MOV    AL, 0          
+        CALL   TTYPE
+        MOV    AL, 0         
+        JMP    TTYPE
+        ENDIF
+
+IF  NOT ENH@VID
+        STD@VID:
+        CUR@VID:
+        TAG@VID:
+        STAT@VID:
+        RET
+ENDIF
+
+        IF     ON@OFF                  ;set true if terminal has on/off
+CUR@OFF:                               ;WYSE-200 turn off cursor
+        MOV    AL,ESC
+        CALL   TTYPE
+        MOV    AL,'`'
+        CALL   TTYPE
+        MOV    AL,'0'
+        JMP    TTYPE
+CUR@ON:                                        ;turn on cursor
+        MOV    AL,ESC
+        CALL   TTYPE
+        MOV    AL,'`'
+        CALL   TTYPE
+        MOV    AL,'1'
+        JMP    TTYPE
+        ENDIF  ;ON@OFF
+
+        IF  NOT ON@OFF
+        CUR@OFF:
+        CUR@ON:        RET
+ ENDIF                                 ; NOT ON@OFF
+
+
+RDTIME:        ;PUT YOUR CLOCK ROUTINE HERE AND SET CLOCK EQUATE TRUE
+        IF     CLOCK                   ;COMPUPRO CLOCK ROUTINE
+CLKCP  EQU     50H+10                  ;CLOCK COMMAND PORT
+        MOV    BX,OFFSET DATESTR       ;POINT TO DATE STRING
+        MOV    SI,OFFSET DIGTAB        ;POINT TO DIGIT TABLE
+        MOV    CL,6                    ;READ TWO COUNTER
+RTWO:  MOV     CH,2                    ;READ ONE COUNTER
+;
+; READ A DIGIT FROM CLOCK CHIP
+; ENTRY: SI => DIGIT TABLE DATA ENTRY
+;        BX => STRING POSITION
+; EXIT:  ASCII DIGIT LOADED IN STRING
+;        SI & BX INCREMENTED
+;
+RONE:  MOV     AL,[SI]         ;GET DIGIT TABLE DATA
+        INC    SI              ;BUMP TO NEXT ENTRY
+        ADD    AL,10H          ;SET READ BIT
+        OUT    CLKCP,AL        ;OUTPUT DIGIT DATA
+        CMP    AL,15H          ;CHECK FOR HOURS 10 DIGIT
+        IN     AL,CLKCP+1      ;READ BCD DIGIT FROM CLOCK
+        JNE    NOHOUR
+        SUB    AL,8
+NOHOUR:        ADD     AL,'0'          ;MAKE ASCII
+        MOV    [BX],AL
+        INC    BX              ;POINT TO NEXT STR POSITION
+        DEC    CH
+        JNZ    RONE            ;GET SECOND DIGIT
+        INC    BX              ;BUMP OVER SEPERATOR
+        CMP    CL,4
+        JNE    NOBUMP
+        INC    BX              ;BIG BUMP OVER WHITE SPACE
+NOBUMP:        DEC     CL
+        JNZ    RTWO            ;READ TWO MORE DIGITS
+        RET                    ;RETURN TO CALLER
+
+DIGTAB DB      10,9,8,7,12,11,5,4,3,2,1,0 ;CLOCK DIGIT TABLE
+        ENDIF  ;CLOCK
+        RET
+;
+;  END OF TERMINAL DEPENDENT ROUTINES
+;
+;******************************************************************
+
+; start of program
+FILER:
+        MOV    AX,DS
+        MOV    SS,AX
+        MOV    SP,(Offset STACK)       ;start local stack
+        MOV    Word Ptr DATA_SEG,AX    ;save data segment
+        CALL   IDU                     ;set initial disk/user
+        MOV    BX,(Offset BUFENTRY)    ;base address
+        MOV    Word Ptr RING,BX        ;beginning of ring
+        MOV    AL,Byte Ptr MDISK       ;get max disk number
+        ADD    AL,'A'-1
+        MOV    Byte Ptr MAXDR,AL       ;set letter
+        MOV    AL,Byte Ptr .FCB+1      ;check for initial help
+        CMP    AL,'/'
+        JE     FILERH
+        MOV    AL,Byte Ptr .FCB2+1     ;check for wait
+        CMP    AL,'W'
+        JNE    FILER0
+
+FILERSAK:
+        CALL   ILPRT
+        DB     CR,LF,'Strike Any Key to Enter FILER -- ',0
+        CALL   DKEYIN
+        JMPS   FILER0
+FILERH:
+        CALL   HELPMSG                 ;print help message
+FILER0:
+        IF     HLP@FIL
+        CALL   HELPCHK                 ;check for availability of HELP Files
+        ENDIF
+        JMPS   EMBARK
+;  set initial disk/user
+IDU:
+        MOV    BX,FCB+1                ;check for DU specification
+        MOV    AL,M
+        CMP    AL,'/'                  ;is there a help request?
+        JZ     IDU1
+        CMP    AL,' '                  ;<SP>=none
+        JZ     IDU1
+        CALL   DEF@DU0                 ;extrace drive/user
+        MOV    AL,CL                   ;get current user
+        CALL   IDU@USET                ;set it
+        MOV    AL,CH                   ;get current disk
+        CALL   IDU@DSET                ;set it
+        JMP    LOG1Z                   ;log it in
+IDU1:
+        MOV    DL,GET                  ;determine..
+        CALL   GET@USR                 ;..user area then..
+        CALL   IDU@USET                ;set current user
+        MOV    CL,INQDISK              ;determine current disk
+        INT    224
+        CALL   IDU@DSET                ;set current disk
+        JMP    LOG1Z                   ;set current user and disk
+IDU@USET:
+        MOV    Byte Ptr C@U@A,AL       ;..store as current and..
+        MOV    Byte Ptr O@USR,AL       ;..as original for exit.
+        MOV    Byte Ptr R@U@A,AL       ;..requested user area
+        RET
+IDU@DSET:
+        MOV    Byte Ptr C@DR,AL
+        MOV    Byte Ptr R@DR,AL        ;requested disk
+        RET
+; check for availability of HELP Files (HELP.CMD)
+HELPCHK:
+        XOR    AL,AL                   ;assume NO
+        MOV    Byte Ptr HELPFLG,AL     ;set flag
+        MOV    DX,(Offset HELPFCB)
+        CALL   FILECHK                 ;check for file
+        OR     AL,AL                   ;0=no
+        JNZ    L_A3
+        RET
+L_A3:
+        MOV    AL,0FFH                 ;set flag
+        MOV    Byte Ptr HELPFLG,AL
+        MOV    AL,Byte Ptr Z@DR        ;Get disk from FFIND
+        ADD    AL,'A'                  ;convert to ASCII
+        MOV    Byte Ptr MOREHELP,AL    ;put it in filename
+        RET
+
+; check for existance of file whose first 12 FCB bytes are pted to by DE
+;   return with A=0 if not found, A=0FFH if found
+FILECHK:
+        MOV    BX,(Offset S@FCB)       ;copy into FCB
+        XCHG   BX,DX
+        MOV    CH,12                   ;12 bytes
+        CALL   MOVE                    ;copied into S$FCB
+        XCHG   BX,DX                   ;HL pts to FCB
+        CALL   INITFCB                 ;init FCB
+        MOV    DX,(Offset S@FCB)       ;pt to FCB
+        JMP    FFIND
+; determine if specific file(s) requested -- show remaining storage
+EMBARK:
+        CALL   FRESTOR                 ;get bytes remaining on drive (decode default)
+        MOV    BX,(Offset JOKER)       ;..treat as '*.*' with 'joker'..
+        MOV    DX,FCB+1                ;..loaded here.
+        MOV    CH,11                   ; # of characters to move
+        CALL   MOVE                    ;set field to *.*
+; build 'ring' with filename positioned in default 'fcb' area
+PLUNGE:
+        MOV    CL,SETDMA               ;initialize dma address..
+        MOV    DX,TBUF                 ;..to default buffer.
+        INT    224
+        XOR    AL,AL                   ;clear search 'fcb'..
+        MOV    Byte Ptr .FCBEXT,AL     ;extent byte..
+        MOV    Byte Ptr .FCBRNO,AL     ;..and record number.
+        NOT    AL
+        MOV    Byte Ptr CANFLG,AL      ;make cancel flag true
+        MOV    DX,FCB                  ;default 'fcb' for search..
+        MOV    CL,SRCHF                ;..of first occurrence.
+        INT    224
+        INC    AL                      ; 0ffh --> 00h if no file found
+        JZ     L_A4    
+        JMP    SETRING                 ;if found, branch and build ring.
+L_A4:
+        MOV    Byte Ptr CANFLG,AL      ;make log-cancel toggle false
+        CALL   ERMSG                   ;else say none found, fall thru to log.
+        DB     'File not found',0
+; l o g
+; select drive and user area (system reset for disk change on-the-fly)
+LOG:
+        CALL   CPRMPT                  ;prompt to get drive/user selection
+        DB     'Login DIR[u]: ',0
+        CALL   DEF@D@U
+LOG1:
+        CALL   LOG1Z                   ;set current and log in
+        CALL   CRLF                    ;new line
+        JMPS   EMBARK                  ;..restart
+;  set current user and disk
+LOG1X:
+        MOV    BX,(Offset LOG@DU@MSG)
+        MOV    AL,Byte Ptr R@DR        ;set prompt message
+        ADD    AL,'A'                  ;adjust to letter
+        MOV    M,AL
+        INC    BX
+        MOV    M,' '                   ;prep for user < 10
+        MOV    AL,Byte Ptr R@U@A       ;get user
+        CMP    AL,10                   ;less than 10?
+        JB     LOG2
+        MOV    CH,'1'                  ;set digits
+LOG1A:
+        SUB    AL,10                   ;adjust user
+        CMP    AL,10                   ;less?
+        JB     LOG1B
+        INC    CH                      ;incr 10's
+        JMPS   LOG1A
+LOG1B:
+        MOV    M,CH                    ;set 10's
+LOG2:
+        INC    BX                      ;pt to 1's
+        ADD    AL,'0'                  ;to ASCII
+        MOV    M,AL
+        RET
+;  actually log into DU requested
+LOG1Y:
+        MOV    AL,Byte Ptr R@U@A       ;establish requested area..
+        MOV    Byte Ptr C@U@A,AL       ;..as current area.
+        CALL   SET@USR
+        CALL   RESET                   ;reset disk system, make requested current.
+        MOV    BX,0                    ;initialize tagged..
+        MOV    Word Ptr TAG@TOT,BX     ;..file size accumulator.
+        RET
+;  set current DU and log into it
+LOG1Z:
+        CALL   LOG1X                   ;set current
+        CALL   LOG1Y                   ;actually log in
+        RET
+; routine to define current drive and user area with full error trapping.
+; (check validity of user area entry first, then drive validity, then proceed
+; with implementation.)
+DEF@D@U:
+        MOV    BX,(Offset CMDBUF)+2
+        MOV    CH,20                   ; # of blanks to..
+        CALL   FILL                    ;..clear 'cmdbuf'.
+        MOV    DX,(Offset CMDBUF)      ;get DU selection from..
+        MOV    CL,RDBUF                ;..console buffer read.
+        INT    224
+        CALL   CONVERT                 ;make sure alpha is upper case
+        MOV    BX,(Offset CMDBUF)+2    ;pt to possible drive
+DEF@DU0:
+        CALL   ZDNFIND         ;look for DU form and return DU
+        JZ     ERRET                   ;error
+        MOV    AL,CH                   ;return disk and user
+        MOV    Byte Ptr R@DR,AL
+        INC    AL                      ;set FCB
+        MOV    Byte Ptr .FCB,AL
+        MOV    AL,CL
+        MOV    Byte Ptr R@U@A,AL
+        RET
+; error return and recovery from command cancellation
+ERRET:
+        CALL   ERMSG
+        DB     'DIR Entry Error',0
+        JMP    NEUTRAL
+COMCAN:
+        MOV    SP,(Offset STACK)       ;reset stack..
+        MOV    AL,Byte Ptr CANFLG
+        OR     AL,AL                   ;..from..
+        JNZ    L_A5    
+        JMP    PLUNGE
+L_A5:
+        CALL   REFRESH                 ;refresh screen
+        JMP    LOOPFN                  ;..error/command abort.
+; find file along path (file FCB pted to by DE)
+;   on return, A=0FFH if found, A=0 if not found, and flags set
+FFIND:
+        PUSH   DX                      ;save ptr to FCB
+        MOV    DL,GET                  ;get and save current DU
+        CALL   GET@USR
+        MOV    Byte Ptr C@U@A,AL
+        MOV    Byte Ptr Z@U@A,AL
+        MOV    CL,INQDISK
+        INT    224
+        MOV    Byte Ptr C@DR,AL
+        MOV    Byte Ptr Z@DR,AL
+        POP    DX                      ;get ptr to FCB
+        MOV    BX,(Offset INTPATH)     ;internal path
+FFINDL:
+        CALL   SEARF                   ;look for file
+        JNZ    FFOUND                  ;found file
+        MOV    AL,Byte Ptr CINDIC      ;get current indictor
+        MOV    CL,AL                   ;... in C
+        MOV    AL,M                    ;get drive
+        OR     AL,AL                   ;0=done=not found
+        JZ     FNFOUND
+        CMP    AL,CL                   ;current disk?
+        JNZ    FF1
+        MOV    AL,Byte Ptr C@DR        ;get current disk
+        INC    AL                      ;increment for following DCR
+FF1:
+        DEC    AL                      ;adjust to 0 for A
+        MOV    CH,AL                   ;disk in B
+        MOV    Byte Ptr Z@DR,AL        ;note disk
+        INC    BX                      ;pt to user
+        MOV    AL,M                    ;user in A
+        CMP    AL,CL                   ;current?
+        JNZ    FF2
+        MOV    AL,Byte Ptr C@U@A       ;get current user
+FF2:
+        MOV    CL,AL                   ;user in C
+        MOV    Byte Ptr Z@U@A,AL       ;note user
+        LAHF                           ;pt to next entry
+        INC    BX
+        SAHF
+        CALL   SLOGIN                  ;log in DU
+        JMPS   FFINDL
+FFOUND:
+        CALL   DLOGIN                  ;log in default
+        MOV    AL,0FFH                 ;set flag
+        OR     AL,AL
+        RET
+FNFOUND:
+        CALL   DLOGIN                  ;log in default
+        XOR    AL,AL                   ;set flag
+        RET
+; search for file pted to by DE; don't affect DE or HL; ret code in A
+SEARF:
+        PUSH   BX                      ;save regs
+        PUSH   DX
+        MOV    CL,SRCHF                ;search for file
+        INT    224
+        INC    AL                      ;set flags
+        POP    DX                      ;get regs
+        POP    BX
+        RET
+; log in default directory
+DLOGIN:
+        MOV    AL,Byte Ptr C@DR        ;disk in B
+        MOV    CH,AL
+        MOV    AL,Byte Ptr C@U@A       ;user in C
+        MOV    CL,AL                   ;fall thru to SLOGIN
+; log in DU in BC
+SLOGIN:
+        PUSH   BX                      ;save regs
+        PUSH   DX
+        PUSH   CX
+        MOV    AL,CL                   ;set user
+        CALL   SET@USR
+        POP    CX
+        MOV    AL,CH                   ;set disk
+        CALL   SET@DR
+        POP    DX                      ;restore regs
+        POP    BX
+        RET
+
+QUIT:
+        CALL   CPRMPT
+        DB     'Quit (Y/N)? ',0
+        CALL   KEYIN
+        CMP    AL,'Y'
+        JE     CPM@CCP
+        JMP    NEUTRAL
+
+; e x i t
+; return to cp/m ccp
+CPM@CCP:
+        MOV    AL,Byte Ptr O@USR       ;get and set original..
+        CALL   SET@USR                 ;..user area and..
+        MOV    DX,TBUF                 ;..tidy up..
+        MOV    CL,SETDMA               ;..before going home.
+        INT    224
+        CALL   CLS
+        MOV    CL,0
+        MOV    DL,0
+        INT    224
+;warmboot
+; establish ring (circular list) of filenames
+SETRING:
+        MOV    BX,Word Ptr RING        ;initialize ring pointer
+        MOV    Word Ptr RINGPOS,BX     ;start --> current position of ring
+; put each found name in ring.  a-reg --> offset into 'tbuf' name storage
+TO@RING:
+        DEC    AL                      ;un-do 'inr' from above and below
+        ADD    AL,AL                   ;times 32 --> position index
+        ADD    AL,AL
+        ADD    AL,AL
+        ADD    AL,AL
+        ADD    AL,AL
+        ADD    AL,TBUF                 ;add page offset and..
+        MOV    BL,AL                   ;..put address into..
+        MOV    BH,0                    ;..hl-pair.
+        MOV    AL,Byte Ptr .FCB        ;get drive/user designator and..
+        MOV    M,AL                    ;..put into 'fcb' buffer.
+        XCHG   BX,DX
+        MOV    BX,Word Ptr RINGPOS     ;pointer to current load point in ring
+        XCHG   BX,DX
+        MOV    CH,12                   ;move drive designator and name to ring
+        CALL   MOVE
+        XCHG   BX,DX                   ;de-pair contains next load point address
+        MOV    M,' '                   ;space for potential..
+        LAHF                           ;..tagging of files for mass copy.
+        INC    BX
+        SAHF
+        MOV    Word Ptr RINGPOS,BX     ;store and search..
+        MOV    CL,SRCHN                ;..for next occurrence.
+        MOV    DX,FCB                  ;filename address field
+        INT    224
+        INC    AL                      ;if all done, 0ffh --> 00h.
+        JNZ    TO@RING                 ;if not, put next name into ring.
+; all filenames in ring -- setup ring size and copy-buffer start point
+        MOV    BX,Word Ptr RINGPOS     ;next load point of ring is start of buffer
+        MOV    Word Ptr RINGEND,BX     ;set ring end..
+        MOV    Word Ptr BUFSTART,BX    ;..and copy-buffer start.
+        PUSH   BX
+        MOV    BX,Word Ptr RING
+        MOV    DX,13                   ;compare 'ringend' (tab base+13)
+        LAHF
+        ADD    BX,DX
+        RCR    SI,1
+        SAHF
+        RCL    SI,1
+        XCHG   BX,DX
+        POP    BX
+        CALL   CMPDEHL
+        JNZ    L_A6    
+        JMP    CMDLOOP                 ;go to command loop, if no sort.
+L_A6:
+; sort ring of filenames
+SORT:
+        MOV    BX,Word Ptr RING        ;initialize 'i' sort variable and..
+        MOV    Word Ptr RINGI,BX
+        MOV    DX,13                   ;..also 'j' variable.
+        ADD    BX,DX
+        MOV    Word Ptr RINGJ,BX
+SORTLP:
+        MOV    BX,Word Ptr RINGJ       ;compare names 'i & j'
+        XCHG   BX,DX
+        MOV    BX,Word Ptr RINGI
+        PUSH   BX                      ;save position pointers..
+        PUSH   DX                      ;..for potential swap.
+        MOV    CH,13                   ; # of characters to compare
+; left to right compare of two strings (de-pair points to 'a' string;
+; hl-pair, to 'b'; b-reg contains string length.)
+CMPSTR:
+        MOV    SI,DX                   ;get an 'a' string character and..
+        MOV    AL,[SI]
+        CMP    AL,M                    ;..check against 'b' string character.
+        JNZ    NOCMP                   ;if not equal, set flag.
+        INC    BX                      ;bump compare..
+        INC    DX                      ;..pointers and..
+        DEC    CH                      ; (if compare, set as equal.)
+        JNZ    CMPSTR                  ;..do next character.
+NOCMP:
+        POP    DX
+        POP    BX
+        MOV    CH,13
+        JNB    NOSWAP
+; swap if 'j' string larger than 'i'
+SWAP:
+        MOV    CL,M                    ;get character from one string..
+        MOV    SI,DX                   ;..and one from other string.
+        MOV    AL,[SI]
+        MOV    M,AL                    ;second into first
+        MOV    AL,CL                   ;first into second
+        MOV    SI,DX
+        MOV    [SI],AL
+        INC    BX                      ;bump swap pointers
+        INC    DX
+        DEC    CH
+        JNZ    SWAP
+NOSWAP:
+        MOV    BX,Word Ptr RINGJ       ;increment 'j' pointer
+        MOV    DX,13
+        LAHF
+        ADD    BX,DX
+        SAHF
+        MOV    Word Ptr RINGJ,BX
+        XCHG   BX,DX                   ;see if end of 'j' loop
+        MOV    BX,Word Ptr RINGEND
+        CALL   CMPDEHL
+        JNZ    SORTLP                  ;no, so more 'j' looping.
+        MOV    BX,Word Ptr RINGI       ;bump 'i' pointer
+        MOV    DX,13
+        LAHF
+        ADD    BX,DX
+        SAHF
+        MOV    Word Ptr RINGI,BX
+        LAHF                           ;set start over 'j' pointer
+        ADD    BX,DX
+        SAHF
+        MOV    Word Ptr RINGJ,BX
+        XCHG   BX,DX                   ;see if end of 'i' loop
+        MOV    BX,Word Ptr RINGEND
+        CALL   CMPDEHL
+        JZ     L_A7    
+        JMP    SORTLP                  ;must be more 'i' loop to do
+L_A7:
+; sort done -- initialize tables for fast crc calculations
+        CALL   INITCRC
+; calculate buffer maximum available record capacity
+B@SIZE:
+        MOV    CX,0                    ;count records
+        MOV    BX,Word Ptr .BDOS+1     ;get mem. allow from page one
+        DEC    BX
+        XCHG   BX,DX                   ;de-pair --> highest address of buffer
+        MOV    BX,Word Ptr BUFSTART    ;start address of buffer (end of ring list)
+B@SIZE2:
+        INC    CX                      ;increase record count by one
+        PUSH   DX
+        MOV    DX,128                  ; 128-byte record
+        ADD    BX,DX                   ;buffer address + record size
+        POP    DX
+        CALL   CMPDEHL                 ;compare for all done
+        JNB    B@SIZE2                 ;more will fit?
+        DEC    CX                      ;set maximum record count less one
+        MOV    AL,CH                   ;memory available for copy?
+        OR     AL,CL
+        JNZ    B@SIZE3                 ;yes, buffer memory space available.
+        CALL   ERMSG
+        DB     'No Memory for Copy Buffer',0
+        JMP    NEUTRAL
+B@SIZE3:
+        MOV    BL,CL                   ;store..
+        MOV    BH,CH                   ;..maximum..
+        MOV    Word Ptr REC@MAX,BX     ;..record count.
+        JMP    CMDLOOP
+
+; buffer size suitable -- process file/display loop
+LOOPFN:
+        MOV    BX,FNADR                ;position cursor for file name print
+ IF     (ENH@VID AND (NOT HIDDEN))
+        DEC    BX                      ;allow video attribute space
+ ENDIF
+        CALL   GOTOXY
+        MOV    BX,Word Ptr RINGPOS     ;pt to current file name
+        LAHF                           ;pt to first char
+        INC    BX
+        SAHF
+        CALL   STAT@VID
+        CALL   PRFN                    ;print file name
+        CALL   STD@VID
+LOOP:
+        CALL   ATCMD                   ;position at command prompt
+        CALL   DKEYIN                  ;wait for character from keyboard
+        LAHF                           ;save command
+        XCHG   AL,AH
+        PUSH   AX
+        MOV    AL,Byte Ptr ERMFLG      ;error message?
+        OR     AL,AL                   ;0=no
+        JZ     CPROC
+        CALL   ERCLR                   ;erase old error message
+CPROC:
+        POP    AX                      ;get command
+        XCHG   AL,AH
+        SAHF
+
+        CALL   CTPROC                  ;process command or return if not found
+
+        CALL   ERMSG
+        DB     'Invalid Command: ',0
+        MOV    AL,CH                   ;get char
+        CMP    AL,' '                  ;expand if less than space
+        JNB    CPROC1
+        MOV    AL,'^'                  ;control
+        CALL   TTYPE
+        MOV    AL,CH                   ;get byte
+        ADD    AL,'@'                  ;convert to letter
+CPROC1:
+        CALL   TTYPE
+NEUTRAL:
+        JMPS   LOOP                    ;..position.
+
+;*changed - process command from table        
+CTPROC:
+        MOV    BX,(Offset FTABLE)      ; new CHR_LO check   *added -km 
+        MOV    CH,CHR_HI               ; ah=chr      if fkey or keypad 
+        CMP    CHR_LO,0                ; flag=0      if last byte was 0 
+        JZ     CTPR1                   ; yes, process FTABLE 
+        MOV    BX,(Offset CTABLE)      ; no,  process standard CTABLE
+        MOV    CH,AL                   ; command in B
+CTPR1:
+        MOV    AL,M                    ; get table command char
+        OR     AL,AL                   ; end of table?
+        JNZ    L_A8    
+        RET                            ;done if so
+L_A8:
+        CMP    AL,CH                   ;match?
+        JZ     CTPR2
+        INC    BX                      ;skip to next entry
+        INC    BX
+        INC    BX
+        JMPS   CTPR1
+CTPR2:
+        LAHF                           ;pt to address
+        INC    BX
+        SAHF
+        MOV    AL,M                    ;get low
+        LAHF
+        INC    BX
+        SAHF
+        MOV    BH,M                    ;get high
+        MOV    BL,AL
+        MOV    BP,SP                   ;address on stack
+        XCHG   BX,[BP]
+        RET                            ;"jump" to routine
+L_A9    EQU     $
+        DSEG
+        ORG    Offset L_A9
+
+; Command Table Lookup, menu choice
+; --------------------------------------------------------------------
+FTABLE  DB     HOME@KEY                ;user cursor positioning
+        DW     (Offset REVERSE)
+        DB     END@KEY                 ;user cursor positioning
+        DW     (Offset FORWARD)
+        DB     ARROW@UP                 ;user cursor positioning
+        DW     (Offset UP)
+        DB     ARROW@DOWN
+        DW     (Offset DOWN)
+        DB     ARROW@RIGHT
+        DW     (Offset FORWARD)
+        DB     ARROW@LEFT
+        DW     (Offset REVERSE)
+        DB     PG@UP
+        DW     (Offset JUMPF)          ;Prev Directory page
+        DB     PG@DN
+        DW     (Offset JUMPB)          ;Next Directory page
+        DB     0                       ;end of CHR_LO table
+F_A10   EQU    $
+        CSEG
+        ORG    Offset F_A10
+
+
+; Command Table Lookup, menu choice
+; --------------------------------------------------------------------
+CTABLE  DB     CTRLE                   ;system cursor positioning
+        DW     (Offset UP)
+        ;DB     CTRLM                  ;CR *added -km
+        ;DW     (Offset VIEW)
+        DB     CTRLX
+        DW     (Offset DOWN)
+        DB     CTRLD
+        DW     (Offset FORWARD)
+        DB     CTRLP
+        DW     (Offset LSTFILE)        ;ctrl-p to print     *added -km
+        DB     CTRLS
+        DW     (Offset REVERSE)
+        DB     '+'                     ;jump forward
+        DW     (Offset JUMPF)
+        DB     '-'                     ;jump backward
+        DW     (Offset JUMPB)
+        DB     ' '                     ;go forward
+        DW     (Offset FORWARD)
+        DB     '.'                     ;go forward
+        DW     (Offset FORWARD)
+        DB     '>'                     ;go forward
+        DW     (Offset FORWARD)
+        DB     ','                     ;back up?
+        DW     (Offset REVERSE)
+        DB     '<'                     ;back up?
+        DW     (Offset REVERSE)
+        DB     'C'                     ;copy a file?
+        DW     (Offset COPY)
+        DB     'D'                     ;delete a file?
+        DW     (Offset DELETE)
+        DB     'E'                     ;enter a command?
+        DW     (Offset RUN@CMD)
+        DB     'F'                     ;show file size?
+        DW     (Offset FIL@SIZ)
+        DB     'G'                     ;goto a file?
+        DW     (Offset GOTO)
+        DB     'H'                     ;external help?
+        DW     (Offset EXTHELP)
+        DB     'I'                     ;
+        DW     (Offset FIL@SIZ)        ;
+        DB     'L'                     ;log-in another drive?
+        DW     (Offset LOG)
+        DB     'M'                     ;tagged multiple file copy?
+        DW     (Offset MASS@COPY)
+        DB     'N'                     ;new screen
+        DW     (Offset SCREFRESH)
+       ; DB     'P'                     ;output file to 'list' device?
+       ; DW     (Offset LSTFILE)        ;*commented out -km
+        DB     'Q'                     ;quit
+        DW     (Offset QUIT)
+        DB     'R'                     ;if rename, get to work.
+        DW     (Offset RENAME)
+        DB     'S'                     ;free bytes on..
+        DW     (Offset R@DR@ST)        ;..requested drive?
+        DB     'T'                     ;if tag, put '*' in..
+        DW     (Offset TAG@EM)         ;..front of cursor.
+        DB     'U'                     ;remove '*' from..
+        DW     (Offset UNTAG)          ;..in front of cursor?
+        DB     'W'                     ;mass tag/untag?
+        DW     (Offset MASS@TU)
+        DB     'V'                     ; 'view' file at console?
+        DW     (Offset VIEW)
+        DB     'X'                     ;execute command file
+        DW     (Offset XQT@CMD)
+        DB     'Y'                     ;mass delete?
+        DW     (Offset MASS@DEL)
+        DB     ESC                     ; 'esc' quits to cp/m ccp also.
+        DW     (Offset QUIT)
+        DB     '?'                     ;help
+        DW     (Offset HELP)
+        DB     '/'                     ;help also
+        DW     (Offset HELP)
+        DB     0                       ;end of table
+L_A10   EQU    $
+        CSEG
+        ORG    Offset L_A10
+
+
+; h e l p  (menu)
+HELP:
+        CALL   HELPMSG                 ;print message
+        CALL   REFRESH                 ;refresh screen
+        JMP    LOOPFN
+HELPMSG:
+        CALL   CLS
+        CALL   ILPRT
+        DB     27,'b',10
+        DB     ' FILER CP/M-86 (IBM-PC)           COMMAND HELP                      Version '
+        DB     VERS/10+'0','.',(VERS MOD 10)+'0','  ',27,'b',15,cr,lf
+        DB     '                                                                                 ',cr,lf
+        DB     ' [ Tagging Commands ]         [ File Operations ]         [ File Print & View ]  ',cr,lf
+        DB     '   T - Tag File                 C - Copy File               ^P - Print           ',cr,lf
+        DB     '   U - Untag File               D - Delete File              V - View            ',cr,lf
+        DB     '   W - Mass Tag/Untag           F - File Size                   <SP> Scroll one  ',cr,lf 
+        DB     '   M - Mass Copy                R - Rename File                 line forward     ',cr,lf 
+        DB     '   Y - Mass Delete                                                               ',cr,lf      
+        DB     '   I - Tag Info                                                                  ',cr,lf                                    
+        DB     CR,LF
+        DB     ' [ Directory Movement ]       [ CP/M-86 System Related ] ',cr,lf
+ IF     HLP@FIL
+        DB     ' <SP> Scroll Line Forward       H - Detailed HELP',CR,LF
+ ENDIF
+        DB     '  < > - Entry Back,Forth      ?,/ - This Help Screen                            ',cr,lf
+        DB '   ',16,'  - Entry Right             E - Enter command line[*]                     ',cr,lf
+        DB '   ',17,'  - Entry Left              L - Login DIR[USR#]          c0 = drv[c][usr0] ',cr,lf
+        DB '   ',30,'  - Entry Up                N - reNew current Screen                       ',cr,lf
+        DB '   ',31,'  - Entry Dn                S - Status of disk [drv]                       ',cr,lf
+        DB      ' PgUp - Next Page         [Esc],Q - Quit FILER                                ',cr,lf
+        DB      ' PgUp - Prev Page               X - eXecute CP/M-86 CMD file[*]                ',cr,lf
+        DB      '                                                                               ',cr,lf 
+        DB      '                               [*]Does NOT return to FILER                    ',cr,lf
+        DB      '                               [*]F1-F9 keys not yet implemented.              ',cr,lf  
+        DB     cr,lf
+        DB     0
+        CALL   ENDHELP
+        RET
+
+EXTHELP:
+        TEST   HELPFLG,TRUE
+        JZ     EHLP1                   ;jmp if further help not avail
+        CALL   CLS
+        CALL   ILPRT
+        DB     'Running External HELP ....',0
+        MOV    SI,OFFSET MOREHELP      ;run HELP command
+        MOV    DI,TBUF
+        MOV    CX,13
+        CALL   CHAIN
+        JMP    LOOPFN
+
+EHLP1:
+        CALL   ERMSG
+        DB     'External HELP Facility Not Available',0
+        JMP    LOOPFN
+
+; refresh screen
+SCREFRESH:
+        CALL   REFRESH                 ;do it
+        JMP    LOOPFN                  ;reprint name
+
+CHK@CMD:                               ;check if CMD file
+;      ENTRY:  file in RINGPOS
+;      EXIT:   zero set if CMD type
+;
+        PUSH   BX
+        MOV    BX,Word Ptr RINGPOS     ;get addr file location
+        ADD    BX,9                    ;point to file type
+        CMP    Byte Ptr[BX],'C'        ;test for CMD
+        JNE    CC_RET
+        INC    BX
+        CMP    Byte Ptr[BX],'M'
+        JNE    CC_RET
+        INC    BX
+        CMP    Byte Ptr[BX],'D'
+CC_RET: POP     BX
+        RET                            ;zero set if CMD type
+
+XQT@CMD:
+        CALL   CPRMPT
+        DB     'Execute Current CMD File (Y/N)? ',0
+        CALL   KEYIN
+        CMP    AL,'Y'
+        JE     XQT1
+        JMP    NEUTRAL
+XQT1:
+        CALL   CHK@CMD                 ;check if CMD filetype
+        JZ     XQT2                    ;give error if not
+        CALL   ERMSG
+        DB     'Only CMD type files can be executed',0
+        JMP    LOOPFN
+
+XQT2:  CALL    CLS
+        MOV    DI,TBUF                 ;put CMD in default DMA buffer
+        MOV    SI,Word Ptr RINGPOS     ;get position in ring
+        MOV    AL,[SI]                 ;get drive number
+        ADD    AL,'A'-1                ;make into letter
+        MOV    Byte Ptr[DI],AL         ;move it
+        INC    SI ! INC DI             ;SI -> filename
+        MOV    Byte Ptr[DI],':'        
+        INC    DI                      ;DI -> TBUF+2
+        MOV    CX,8                    ;bytes in filename
+        JMP    CHAIN
+
+RUN@CMD:
+        CALL   ERMSG
+        DB     'Enter Command? ',0
+        MOV    BX,OFFSET CRCTBL+256    ;use last half of CRC table
+        MOV    M,102                   ;allow 100 length of line
+        INC    BX
+        MOV    M,0                     ;store count
+        MOV    DX,OFFSET CRCTBL+256
+        PUSH   DX
+        MOV    CL,RDBUF
+        INT    224
+        POP    BX                      ;BX -> beginning of buffer
+        INC    BX                      ;point to char count
+        MOV    CL,M                    ;put in CL
+        INC    BX                      ;point to first char
+        MOV    CH,0                    ;CX = char count
+        PUSH   BX                      ;save current ptr for later
+        ADD    BX,CX
+        MOV    M,0                     ;store ending zero
+        POP    BX                      ;point to first char
+        CMP    Byte Ptr[BX],0          ;abort if no first char
+        JZ     NO_CMD
+        MOV    SI,BX                   ;SI -> Command
+        MOV    DI,TBUF                 
+        CALL   UC_CMD                  ;make sure its upper CASE
+        CALL   CLS
+        JMP    RUN_CMD1
+NO_CMD: JMP     NEUTRAL                 
+
+RUN_CMD1:
+        CALL   CHAIN
+        JMP    LOOPFN
+
+CHAIN:
+;      ENTRY:  SI -> buffer containing command
+;              DI -> dest of command
+;              CX =  length of command
+
+        MOV    AX,Word Ptr DATA_SEG
+        MOV    ES,AX
+
+        CLD                            ;set forward direction
+        REP    MOVSB                   ;move it
+        MOV    ES:Byte Ptr [DI],0      ;end with a zero
+
+        MOV    CL,47                   ;Chain function
+        MOV    DX,0FFFFH               ;chain flag
+        INT    224
+
+        CALL   SCREFRESH
+        RET
+
+UC_CMD:        ;make string ending in 0h upper case
+;      ENTRY:  BX -> string
+;
+
+UC_LOOP:
+        CMP    Byte Ptr[BX],0
+        JZ     UC_RET                  ;quit if zero
+        CMP    Byte Ptr[BX],61h
+        JB     UC_OK                   ;skip unless lower case
+        AND    Byte Ptr[BX],5FH        ;make uppercase
+UC_OK: INC     BX                      ;point to next char
+        JMP    UC_LOOP                 ;and process it
+UC_RET:
+        RET
+
+; mass tag or untag
+MASS@TU:
+        MOV    AL,TRUE                 ;update file totals
+        MOV    Byte Ptr FS@FLG,AL      ;of tagged/untagged files
+        CALL   CPRMPT
+        DB     'Tag/ Untag ALL (from current selection:T/U)? ',0
+        CALL   KEYIN                   ;get response
+        CMP    AL,'T'
+        JZ     MASS@TAG
+        CMP    AL,'U'
+        JZ     L_A11   
+        JMP    NEUTRAL                 ;fall thru to MASS$UNTAG
+L_A11:
+; mass   u n t a g
+MASS@UNTAG:
+        XOR    AL,AL                   ;set tag/untag..
+        MOV    Byte Ptr T@UN@FG,AL     ;..flag to untag
+        MOV    Byte Ptr FSDFLG,AL      ;no file size display
+        CALL   WORKMSG
+MUTLOOP:
+        MOV    BX,Word Ptr RINGPOS     ;move to tag
+        MOV    DX,12
+        ADD    BX,DX
+        MOV    AL,M                    ;get tag
+        CMP    AL,'*'                  ;check for tag
+        MOV    M,' '                   ;clear tag
+        JNZ    L_A12   
+        CALL   FSIZ                    ;adjust sizes
+L_A12:
+        MOV    BX,Word Ptr RINGPOS     ;advance to next
+        MOV    DX,13
+        LAHF
+        ADD    BX,DX
+        SAHF
+        MOV    Word Ptr RINGPOS,BX
+        XCHG   BX,DX                   ;done?
+        MOV    BX,Word Ptr LOCEND
+        CALL   CMPDEHL
+        JNZ    MUTLOOP
+        MOV    BX,CURHOME              ;reset cursor
+        MOV    Word Ptr CURAT,BX
+        MOV    BX,Word Ptr LOCBEG      ;set ring position
+        JMP    JFW0
+; mass   t a g
+MASS@TAG:
+        XOR    AL,AL
+        MOV    Byte Ptr FSDFLG,AL      ;no file size display
+        MOV    AL,TRUE                 ;set tag/untag..
+        MOV    Byte Ptr T@UN@FG,AL     ;..flag to untag
+        CALL   WORKMSG
+MTLOOP:
+        MOV    BX,Word Ptr RINGPOS     ;move to tag
+        MOV    DX,12
+        ADD    BX,DX
+        MOV    AL,M                    ;get tag
+        CMP    AL,'*'                  ;check for tag
+        MOV    M,'*'                   ;clear tag
+        JZ     L_A13   
+        CALL   FSIZ                    ;adjust sizes
+L_A13:
+        MOV    BX,Word Ptr RINGPOS     ;advance to next
+        MOV    DX,13
+        LAHF
+        ADD    BX,DX
+        SAHF
+        MOV    Word Ptr RINGPOS,BX
+        XCHG   BX,DX                   ;done?
+        MOV    BX,Word Ptr LOCEND
+        CALL   CMPDEHL
+        JNZ    MTLOOP
+        MOV    BX,CURHOME              ;reset cursor
+        MOV    Word Ptr CURAT,BX
+        MOV    BX,Word Ptr LOCBEG      ;set ring position
+        JMP    JFW0
+; u n t a g
+UNTAG:
+        XOR    AL,AL                   ;set tag/untag..
+        MOV    Byte Ptr T@UN@FG,AL     ;..flag to untag.
+        NOT    AL
+        MOV    Byte Ptr FS@FLG,AL      ;set flag to compute file size
+        MOV    BX,Word Ptr RINGPOS     ;move back one..
+        MOV    DX,12                   ;..character position..
+        ADD    BX,DX                   ;..and check tagging status.
+        MOV    AL,M                    ;if file previously tagged, remove..
+        CMP    AL,'*'                  ;..size from..
+        LAHF                           ;save flag
+        XCHG   AL,AH
+        PUSH   AX
+        MOV    M,' '                   ; (untag character, to next ring position.)
+        CALL   REFFN                   ;refresh file name
+        POP    AX                      ;get flag
+        XCHG   AL,AH
+        SAHF
+        JZ     FS2                     ;..summation.
+        JMP    FORWARD
+; t a g
+TAG@EM:
+        MOV    AL,TRUE                 ;set..
+        MOV    Byte Ptr T@UN@FG,AL     ;..tag/untag and..
+        MOV    Byte Ptr FS@FLG,AL      ;..file size flags to tag.
+        MOV    BX,Word Ptr RINGPOS
+        MOV    DX,12                   ;move back one..
+        ADD    BX,DX                   ;..position..
+        MOV    AL,M                    ; (if file
+        CMP    AL,'*'                  ; already tagged, skip
+        JNZ    L_A14   
+        JMP    FORWARD                 ; to next file.)
+L_A14:
+        MOV    M,'*'                   ;..and store a '*' tag character.
+        CALL   REFFN                   ;refresh file name
+        JMPS   FS2                     ;get file size
+; refresh file name with new tag
+REFFN:
+
+        MOV    BX,Word Ptr CURAT       ;clear cursor
+ IF     ENH@VID
+        ADD    BX,4                    ;advance 4 spaces
+        CALL   GOTOXY
+ ENDIF
+ IF  NOT  ENH@VID
+        CALL   GOTOXY
+        CALL   ILPRT
+        DB     '    ',0                ;clear cursor
+ ENDIF
+        MOV    BX,Word Ptr RINGPOS     ;reprint file name
+        INC    BX
+        CALL   NC@PRFN                 ;print file name
+        RET
+
+; f i l e   s i z e
+; determine and display file size in kilobytes -- round up to next disk
+; allocation block -- accumulate tagged file summation
+FIL@SIZ:
+        XOR    AL,AL                   ;set file size/tagged..
+        MOV    Byte Ptr FS@FLG,AL      ;..file flag to file size.
+        NOT    AL
+        MOV    Byte Ptr FSDFLG,AL      ;display file size
+        CALL   FSIZ                    ;compute and print file size
+        JMP    LOOPFN
+FS2:
+        MOV    AL,TRUE
+        MOV    Byte Ptr FSDFLG,AL      ;display file size
+        CALL   FSIZ                    ;compute and print file size
+        JMP    FORWARD
+;  print file size
+FSIZ:
+        MOV    AL,Byte Ptr FSDFLG      ;display file size?
+        OR     AL,AL                   ;0=no
+        JZ     L_A15   
+        CALL   FSNOTE
+L_A15:
+        CALL   RINGFCB                 ;move name to 's$fcb'
+; determine file record count and save in 'rcnt'
+        MOV    CL,COMPSZ
+        MOV    DX,(Offset S@FCB)
+        INT    224
+        MOV    BX,Word Ptr S@FCB+33
+        MOV    Word Ptr RCNT,BX        ;save record count and..
+        MOV    BX,0
+        MOV    Word Ptr S@FCB+33,BX    ;..reset cp/m.
+; round up to next disk allocation block
+        MOV    AL,Byte Ptr B@MASK      ;sectors/block - 1
+        LAHF                           ;save 'blm'
+        XCHG   AL,AH
+        PUSH   AX
+        XCHG   AL,AH
+        MOV    BL,AL
+        XCHG   BX,DX
+        MOV    BX,Word Ptr RCNT        ;..use here.
+        LAHF                           ;round up to next block
+        ADD    BX,DX
+        RCR    SI,1
+        SAHF
+        RCL    SI,1
+        MOV    CH,3+1                  ;convert from..
+        CALL   SHIFTLP                 ;..records to kilobytes.
+        POP    AX                      ;retrieve 'blm'
+        XCHG   AL,AH
+        ROR    AL,1                    ;convert..
+        ROR    AL,1                    ;..to..
+        ROR    AL,1                    ;..kilobytes/block.
+        AND    AL,1FH
+        NOT    AL                      ;finish rounding
+        AND    AL,BL
+        MOV    BL,AL                   ;hl-pair contains # of kilobytes
+        MOV    AL,Byte Ptr FS@FLG
+        OR     AL,AL
+        JZ     D@F@SIZ                 ;branch if 'f' function
+; tagged file size summation
+        XCHG   BX,DX                   ;file size to de-pair
+        MOV    AL,Byte Ptr T@UN@FG
+        OR     AL,AL
+        JZ     TAKE                    ;if untag, take size from total.
+        MOV    BX,Word Ptr TAG@TOT     ;accumulate..
+        ADD    BX,DX                   ;..sum of..
+        MOV    Word Ptr TAG@TOT,BX     ;..tagged file sizes.
+        XCHG   BX,DX                   ;file size to hl-pair
+        JMPS   D@F@SIZ                 ;branch to display sizes
+TAKE:
+        MOV    BX,Word Ptr TAG@TOT     ;subtract..
+        MOV    AL,BL                   ;..file..
+        SUB    AL,DL                   ;..size..
+        MOV    BL,AL                   ;..from..
+        MOV    AL,BH                   ;..summation..
+        SBB    AL,DH                   ;..total.
+        MOV    BH,AL                   ;then put..
+        MOV    Word Ptr TAG@TOT,BX     ; (save total)
+        XCHG   BX,DX                   ;..file size in hl-pair.
+; display file size in kilobytes -- right justify tagged file total
+D@F@SIZ:
+        MOV    AL,Byte Ptr FSDFLG      ;display file size?
+        OR     AL,AL                   ;0=no
+        JNZ    L_A16
+        RET
+L_A16:
+        PUSH   BX                      ;save value
+        CALL   ATFS                    ;position for file size print
+        MOV    BX,Word Ptr RINGPOS     ;print file name of current file
+        LAHF
+        INC    BX
+        SAHF
+        CALL   PRFN
+        MOV    AL,':'
+        CALL   TTYPE
+        POP    BX                      ;get value
+        CALL   DECOUT                  ;print individual file size
+        MOV    AL,'K'
+        CALL   TTYPE
+; determine # of digits in tagged summation
+        MOV    BX,Word Ptr TAG@TOT     ;get present summation
+        CALL   ILPRT
+        DB     ' Tagged:',0
+        CALL   DECOUT                  ;print tagged file summation
+        MOV    AL,'K'
+        JMP    TTYPE
+; j u m p
+; backward
+JUMPB:
+        CALL   CUR@OFF                 ;turn off term. cursor
+        MOV    BX,CURHOME              ;set cursor home
+        MOV    Word Ptr CURAT,BX
+        MOV    BX,Word Ptr RING        ;at front?
+        XCHG   BX,DX
+        MOV    BX,Word Ptr LOCBEG
+        CALL   CMPDEHL
+        JZ     JUMPBW                  ;back up and wrap around
+        MOV    Word Ptr LOCEND,BX      ;set new end
+        MOV    DX,-EPS*13              ;back up
+        LAHF
+        ADD    BX,DX
+        RCR    SI,1
+        SAHF
+        RCL    SI,1
+        MOV    Word Ptr LOCBEG,BX      ;new beginning
+        MOV    Word Ptr RINGPOS,BX     ;new position
+        CALL   REFRESH                 ;refresh screen
+        CALL   CUR@ON                  ;turn on term. cursor
+        JMP    LOOPFN
+JUMPBW:
+        MOV    BX,Word Ptr LOCBEG      ;at first screen?
+        XCHG   BX,DX
+        MOV    BX,Word Ptr RING        ;pt to first element of ring
+        CALL   CMPDEHL
+        JZ     JBW0                    ;advance to end
+        MOV    BX,-EPS*13              ;back up
+        LAHF
+        ADD    BX,DX
+        SAHF
+        JMPS   JFW0
+JBW0:
+        MOV    DX,EPS*13               ;pt to next screen
+        LAHF
+        ADD    BX,DX
+        RCR    SI,1
+        SAHF
+        RCL    SI,1
+        XCHG   BX,DX
+        MOV    BX,Word Ptr RINGEND
+        CALL   CMPDEHL
+        XCHG   BX,DX
+        JZ     JBW1
+        JB     JBW0
+JBW1:
+        MOV    DX,-EPS*13
+        LAHF                           ;pt to first element of local ring
+        ADD    BX,DX
+        SAHF
+        JMPS   JFW0
+JUMPF:
+        CALL   CUR@OFF                 ;tuen off term. cursor
+        MOV    BX,CURHOME              ;set cursor to home
+        MOV    Word Ptr CURAT,BX
+        MOV    BX,Word Ptr LOCEND      ;see if Local End <= Ring End
+        XCHG   BX,DX
+        MOV    BX,Word Ptr RINGEND
+        CALL   CMPDEHL
+        JZ     CMDLOOP
+        MOV    BX,Word Ptr LOCEND      ;new screen
+        JMPS   JFW0
+CMDLOOP:
+        CALL   CUR@OFF                 ;turn off cursor
+        MOV    BX,CURHOME              ;set cursor home
+        MOV    Word Ptr CURAT,BX
+        MOV    BX,Word Ptr RING        ;set ring position
+JFW0:
+        MOV    Word Ptr RINGPOS,BX
+JFW0A:
+        MOV    Word Ptr LOCBEG,BX      ;front of ring
+        MOV    DX,EPS*13               ;new end?
+        LAHF
+        ADD    BX,DX
+        RCR    SI,1
+        SAHF
+        RCL    SI,1
+        XCHG   BX,DX
+        MOV    BX,Word Ptr RINGEND     ;end of ring
+        XCHG   BX,DX
+        CALL   CMPDEHL
+        JB     JFW1
+        XCHG   BX,DX
+JFW1:
+        XCHG   BX,DX
+        MOV    Word Ptr LOCEND,BX
+        CALL   REFRESH
+        CALL   CUR@ON                  ;turn on term. cursor
+        JMP    LOOPFN
+
+; f o r w a r d
+FORWARD:
+        CALL   CUR@OFF                 ;turn off term. cursor
+        CALL   CLRCUR                  ;clear cursor
+        CALL   FOR0                    ;position on screen and in ring
+        CALL   SETCUR                  ;set cursor
+        CALL   CUR@ON                  ;turn on term. cursor
+        JMP    LOOPFN
+;  advance routine
+FOR0:
+        MOV    BX,Word Ptr RINGPOS     ;at end of loop yet?
+        MOV    DX,13                   ;i.e., will we be at end of loop?
+        LAHF
+        ADD    BX,DX
+        RCR    SI,1
+        SAHF
+        RCL    SI,1
+        XCHG   BX,DX
+        MOV    BX,Word Ptr LOCEND
+        CALL   CMPDEHL                 ;compare 'present' to 'end'
+        JNZ    FORW                    ;to next print position
+        CALL   CUR@FIRST               ;position cursor
+        MOV    BX,Word Ptr LOCBEG      ;set position pointer to beginning and..
+        MOV    Word Ptr RINGPOS,BX
+        RET
+FORW:
+        MOV    BX,Word Ptr RINGPOS     ;advance in ring
+        MOV    DX,13
+        LAHF
+        ADD    BX,DX
+        RCR    SI,1
+        SAHF
+        RCL    SI,1
+        MOV    Word Ptr RINGPOS,BX     ;new position
+        CALL   CUR@NEXT                ;position cursor
+        RET
+; r e v e r s e
+REVERSE:
+        CALL   CUR@OFF                 ;turn off term. cursor
+        CALL   CLRCUR                  ;clear cursor
+        CALL   REV0                    ;position on screen and in ring
+        CALL   SETCUR                  ;set cursor
+        CALL   CUR@ON                  ;turn on term. cursor
+        JMP    LOOPFN
+;  Back Up Routine
+REV0:
+        MOV    BX,Word Ptr LOCBEG
+        XCHG   BX,DX
+        MOV    BX,Word Ptr RINGPOS     ;see if at beginning of ring
+        CALL   CMPDEHL
+        JNZ    REV1                    ;skip position pointer reset if not..
+        CALL   CUR@LAST                ;end of local ring
+        MOV    BX,Word Ptr LOCEND      ;set to end +1 to backup to end
+        MOV    DX,-13
+        LAHF
+        ADD    BX,DX
+        RCR    SI,1
+        SAHF
+        RCL    SI,1
+        MOV    Word Ptr RINGPOS,BX
+        RET
+REV1:
+        CALL   CUR@BACK                ;back up 1
+REV2:
+        MOV    BX,Word Ptr RINGPOS
+        MOV    DX,-13                  ;one ring position..
+        LAHF                           ;..backwards.
+        ADD    BX,DX
+        RCR    SI,1
+        SAHF
+        RCL    SI,1
+        MOV    Word Ptr RINGPOS,BX
+        RET
+; u p
+UP:
+        CALL   CUR@OFF                 ;turn off term. cursor
+        CALL   CLRCUR                  ;clear cursor
+        MOV    BX,Word Ptr RINGPOS     ;see if wrap around
+        MOV    DX,-13*4                ;4 entries
+        LAHF
+        ADD    BX,DX
+        RCR    SI,1
+        SAHF
+        RCL    SI,1
+        XCHG   BX,DX
+        MOV    BX,Word Ptr LOCBEG      ;beginning of local screen
+        CALL   CMPDEHL
+        JB     UP2                     ;wrap around
+        MOV    CH,4                    ;back up 4 entries
+UP1:
+        PUSH   CX                      ;save count
+        CALL   REV0                    ;back up in ring and on screen (no print)
+        POP    CX                      ;get count
+        DEC    CH
+        JNZ    UP1
+        JMPS   DOWN1A
+UP2:
+        MOV    BX,Word Ptr RINGPOS     ;advance to beyond end
+        MOV    DX,13*4
+        LAHF
+        ADD    BX,DX
+        RCR    SI,1
+        SAHF
+        RCL    SI,1
+        XCHG   BX,DX
+        MOV    BX,Word Ptr LOCEND      ;compare to local end
+        XCHG   BX,DX
+        CALL   CMPDEHL
+        JZ     DOWN1A                  ;at end, so too far
+        JB     DOWN1A                  ;beyond end, so back up
+        MOV    Word Ptr RINGPOS,BX     ;new ring position
+        MOV    BX,Word Ptr CURAT       ;advance cursor
+        INC    BH                      ;next line
+        MOV    Word Ptr CURAT,BX
+        JMPS   UP2
+; d o w n
+DOWN:
+        CALL   CUR@OFF                 ;turn off term. cursor
+        CALL   CLRCUR                  ;clear cursor
+        MOV    BX,Word Ptr RINGPOS     ;see if wrap around
+        MOV    DX,13*4                 ;4 entries
+        LAHF
+        ADD    BX,DX
+        RCR    SI,1
+        SAHF
+        RCL    SI,1
+        XCHG   BX,DX
+        MOV    BX,Word Ptr LOCEND      ;end of local screen
+        XCHG   BX,DX
+        CALL   CMPDEHL
+        JZ     DOWN2                   ;wrap around
+        JB     DOWN2                   ;wrap around
+        MOV    CH,4                    ;forward 4 entries
+DOWN1:
+        PUSH   CX                      ;save count
+        CALL   FOR0                    ;advance in ring and on screen (no print)
+        POP    CX                      ;get count
+        DEC    CH
+        JNZ    DOWN1
+DOWN1A:
+        CALL   SETCUR                  ;set cursor
+        CALL   CUR@ON                  ;turn on term. cursor
+        JMP    LOOPFN
+DOWN2:
+        MOV    BX,Word Ptr CURAT       ;preserve column
+        MOV    CH,BL                   ;column number in B
+        MOV    BX,CURHOME              ;home position
+        MOV    Word Ptr CURAT,BX       ;set new position
+        MOV    BX,Word Ptr LOCBEG      ;beginning of local ring
+        MOV    Word Ptr RINGPOS,BX     ;new ring position
+DOWN3:
+        MOV    BX,Word Ptr CURAT       ;check for at top of column
+        MOV    AL,BL                   ;get col
+        CMP    AL,CH                   ;there?
+        JZ     DOWN1A
+        MOV    BX,Word Ptr RINGPOS     ;advance in ring
+        MOV    DX,13                   ;13 bytes/entry
+        ADD    BX,DX
+        MOV    Word Ptr RINGPOS,BX
+        MOV    BX,Word Ptr CURAT       ;get cursor position
+        MOV    DX,19                   ;advance 19 bytes/screen entry
+        ADD    BX,DX
+        MOV    Word Ptr CURAT,BX
+        JMPS   DOWN3
+; s t a t
+; determine remaining storage on requested disk
+R@DR@ST:
+        CALL   CPRMPT
+        DB     'Status of Disk: ',0
+        CALL   KEYIN                   ;get char
+        LAHF
+        XCHG   AL,AH
+        PUSH   AX
+        CALL   CRLF
+        POP    AX
+        XCHG   AL,AH
+        SUB    AL,'A'                  ;convert to number
+        JNB    L_A17   
+        JMP    NEUTRAL
+L_A17:
+        MOV    CH,AL                   ;... in B
+        MOV    AL,Byte Ptr MAXDR       ;compare to max
+        SUB    AL,'A'
+        CMP    AL,CH
+        JNB    L_A18   
+        MOV    AL,Byte Ptr MDRIVE
+        DEC    AL
+        CMP    AL,CH
+        JE     L_A18
+        JMP    LOOPFN
+L_A18:
+        MOV    AL,CH                   ;get disk
+        MOV    Byte Ptr R@DR,AL        ;requested drive
+        CALL   RESET                   ;..login as current.
+        CALL   FRESTOR                 ;determine free space remaining
+        CALL   PRINT@FRE               ;print value
+        MOV    AL,Byte Ptr C@DR        ;login original as..
+        CALL   SET@DR                  ;..current drive.
+        JMP    LOOPFN                  ;done
+
+
+; d e l e t e
+
+; mass delete
+MASS@DEL:
+        CALL   CPRMPT
+        DB     'Mass Delete (Y/N/V=Verify Each)? ',0
+        CALL   KEYIN                   ;get response
+        CMP    AL,'Y'
+        JZ     MD1
+        CMP    AL,'V'
+
+        JNZ    NEUT_J                  ;return to position
+        JMPS   MD1
+NEUT_J:        JMP     NEUTRAL                 ;too far for a jmps
+
+MD1:
+        MOV    Byte Ptr MDFLG,AL       ;set flag
+        XOR    AL,AL                   ;set for mass delete
+        MOV    Byte Ptr MFLAG,AL
+        MOV    BX,Word Ptr RING
+        MOV    Word Ptr RINGPOS,BX     ;set ring position
+MD@LP:
+        MOV    BX,Word Ptr RINGPOS     ;get current position
+        MOV    DX,12                   ;pt to tag
+        ADD    BX,DX
+        MOV    AL,M                    ;get tag
+        CMP    AL,'*'
+        JNZ    MD@LOOP
+        CALL   RINGFCB                 ;set up file name
+        MOV    AL,Byte Ptr MDFLG       ;verify?
+        CMP    AL,'V'
+        JZ     MDEL1                   ;delete with verify
+        JMP    DEL1                    ;delete without verify
+MD@LOOP:
+        MOV    BX,Word Ptr RINGPOS     ;re-entry point for next file mass-copy
+        MOV    DX,13                   ;advance to next
+        LAHF
+        ADD    BX,DX
+        RCR    SI,1
+        SAHF
+        RCL    SI,1
+        MOV    Word Ptr RINGPOS,BX
+MD1@LOOP:
+        XCHG   BX,DX                   ;at ring..
+        MOV    BX,Word Ptr RINGEND     ;..end yet?
+        CALL   CMPDEHL                 ; (compare present position with end)
+        JNZ    MD@LP                   ;no, loop 'till thru ring list.
+MD@EXIT:
+        MOV    AL,TRUE                 ;set no
+        MOV    Byte Ptr MFLAG,AL       ;..mass-delete request.
+        JMP    CMDLOOP                 ;jump to 'ring' beginning
+; set up to delete filename at cursor position
+DELETE:
+        MOV    AL,TRUE                 ;set for no mass delete
+        MOV    Byte Ptr MFLAG,AL
+        MOV    Byte Ptr MDFLG,AL
+MDELETE:
+        CALL   RINGFCB                 ;move file name
+MDEL1:
+        CALL   CPRMPT
+        DB     'Delete ',0
+        CALL   PRFNS                   ;print file name in S$FCB
+        CALL   ILPRT
+        DB     ' (Y/N)? ',0
+        CALL   KEYIN
+        CMP    AL,'Y'
+        JZ     DEL1
+        MOV    AL,Byte Ptr MFLAG       ;mass delete?
+        OR     AL,AL
+        JZ     MD@LOOP
+MDEL2:
+        MOV    BX,Word Ptr LOCEND      ;move in end
+        MOV    DX,-13
+        LAHF
+        ADD    BX,DX
+        RCR    SI,1
+        SAHF
+        RCL    SI,1
+        MOV    Word Ptr LOCEND,BX
+        XCHG   BX,DX
+        MOV    BX,Word Ptr RINGPOS     ;position beyond end of ring?
+        CALL   CMPDEHL
+        JNZ    MDEL3
+        CALL   CUR@BACK                ;back up cursor
+        MOV    BX,Word Ptr LOCEND      ;reset position
+        MOV    DX,-13
+        LAHF
+        ADD    BX,DX
+        RCR    SI,1
+        SAHF
+        RCL    SI,1
+        MOV    Word Ptr RINGPOS,BX
+        MOV    BX,Word Ptr LOCEND      ;get end
+        XCHG   BX,DX
+MDEL3:
+        MOV    BX,Word Ptr LOCBEG      ;erased all local files?
+        CALL   CMPDEHL
+        JNZ    L_B3    
+        JMP    CMDLOOP                 ;reset
+L_B3:
+        JMP    JFW0A                   ;rescreen
+; delete file
+DEL1:
+        MOV    AL,Byte Ptr MDFLG       ;Y option on Mass Delete?
+        CMP    AL,'Y'
+        JNZ    DEL1A
+        CALL   ERMSG
+        DB     'Deleting File ',0
+        CALL   PRFNS
+DEL1A:
+        MOV    BX,(Offset S@FCB)       ;set file to R/W
+        CALL   ATTRIB
+        MOV    DX,(Offset S@FCB)       ;point at delete 'fcb'
+        MOV    CL,ERASE                ;erase function
+        INT    224
+        INC    AL
+        JZ     FNF@MSG                 ;print error message
+        CALL   DEL2                    ;close up erased position
+        MOV    AL,Byte Ptr MFLAG       ;check for mass delete
+        OR     AL,AL
+        JZ     L_B4    
+        JMP    MDEL2
+L_B4:
+        MOV    BX,Word Ptr RINGPOS     ;no advance because of close up
+        JMP    MD1@LOOP
+FNF@MSG:
+        CALL   ERMSG                   ;show error message
+        DB     'No File Found',0
+        JMP    LOOPFN
+; reverse ring to close up erased position
+DEL2:
+        MOV    BX,Word Ptr RINGPOS     ;prepare move up pointers
+        PUSH   BX
+        MOV    DX,13                   ;13 bytes/entry
+        LAHF                           ;de-pair = 'to' location
+        ADD    BX,DX
+        RCR    SI,1
+        SAHF
+        RCL    SI,1
+        POP    DX                      ;hl-pair = 'from' location
+MOVUP:
+        XCHG   BX,DX
+        PUSH   BX                      ;check if at end
+        MOV    BX,Word Ptr RINGEND     ;get old end pointer
+        CALL   CMPDEHL                 ;check against current end location
+        POP    BX
+        XCHG   BX,DX
+        JZ     MOVDONE                 ;must be at end of ring
+        MOV    CH,13                   ;one name size
+        CALL   MOVE                    ;move one name up
+        JMPS   MOVUP                   ;go check end parameters
+MOVDONE:
+        MOV    BX,Word Ptr RING        ;see if ring is empty
+        XCHG   BX,DX
+        MOV    Word Ptr RINGEND,BX     ;set new ring end if all moved
+        CALL   CMPDEHL                 ;..(listend --> listpos --> ring)
+        JZ     L_B5
+        RET
+L_B5:
+        MOV    BX,Word Ptr RINGPOS
+        CALL   CMPDEHL
+        JZ     L_B6    
+        RET                            ;neither equal so not empty
+L_B6:
+        MOV    SP,(Offset STACK)       ;reset stack
+        CALL   ERMSG
+        DB     'List Empty',0
+        MOV    AL, 0FFh
+        MOV    Byte Ptr CANFLG,AL      ;make log-cancel toggle false
+        JMP    LOG                     ;go to drive/user area with files
+; r e n a m e
+; set-up to rename file at cursor position -- scan keyboard buffer and
+; move filename to 'rename' destination 'fcb' (dfcb)
+RENAME:
+        MOV    BX,Word Ptr RINGPOS     ;move name from ring to rename 'fcb'
+        MOV    DX,(Offset D@FCB)       ;place to move name
+        MOV    CH,12                   ;amount to move
+        CALL   MOVE
+        CALL   CPRMPT                  ;new name prompt
+        DB     'Rename File to: ',0
+        MOV    DX,(Offset D@FCB)+16    ;pt to FCB to fill
+        CALL   FILENAME                ;get file name
+        MOV    BX,(Offset D@FCB)+1     ;check for any wild cards -- none permitted
+        MOV    CH,11                   ;11 bytes
+WILDCHK:
+        MOV    AL,M                    ;get char
+        INC    BX                      ;pt to next
+        CMP    AL,'?'                  ;wild?
+        JZ     WILDFND
+        DEC    CH
+        JNZ    WILDCHK
+; copy old file status bit ($r/o or $sys) to new filename
+CPYBITS:
+        MOV    DX,(Offset D@FCB)+1     ;first character of old name..
+        MOV    BX,(Offset D@FCB)+17    ;..and of new name.
+        MOV    CH,11                   ; # of bytes with tag bits
+CBITS1:
+        MOV    SI,DX                   ;fetch bit of old name character
+        MOV    AL,[SI]
+        AND    AL,128                  ;strip upper bit and..
+        MOV    CL,AL                   ;..save in b-reg.
+        MOV    AL,7FH                  ;mask for character only
+        AND    AL,M                    ;put masked character into a-reg
+        OR     AL,CL                   ;add old bit
+        MOV    M,AL                    ;copy new byte back
+        LAHF                           ;bump copy pointers
+        INC    BX
+        SAHF
+        LAHF
+        INC    DX
+        SAHF
+        DEC    CH
+        JNZ    CBITS1
+; check if new filename already exists.  if so, say so.  then go
+; to command loop without moving ring position
+        MOV    AL,Byte Ptr D@FCB       ;copy new name to source 'fcb'
+        MOV    Byte Ptr S@FCB,AL
+        MOV    CH,11
+        MOV    BX,(Offset D@FCB)+17    ;copy new name to..
+        MOV    DX,(Offset S@FCB)+1     ;..source 'fcb' for existence check.
+        CALL   MOVE
+        MOV    BX,(Offset S@FCB)+12    ;clear cp/m 'fcb' system..
+        CALL   INITFCB                 ;..fields.
+        MOV    DX,(Offset S@FCB)       ;search to see if this file exists
+        MOV    CL,SRCHF                ;search first function
+        INT    224
+        INC    AL                      ; 0ffh --> 00h if file not found
+        JZ     RENFILE                 ;to rename, if duplicate doesn't exists.
+        CALL   ERMSG                   ;announce the situation
+        DB     'File Already Exists',0
+        JMP    COMCAN                  ;try again?
+; wild char found in file name -- error
+WILDFND:
+        CALL   ERMSG
+        DB     'Ambiguous File Name NOT Allowed',0
+        JMP    COMCAN
+; copy new name into ring position
+RENFILE:
+        MOV    BX,Word Ptr RINGPOS     ;get ring position pointer
+        LAHF                           ;pt to name
+        INC    BX
+        SAHF
+        PUSH   BX                      ;save ptr
+        XCHG   BX,DX
+        MOV    BX,(Offset D@FCB)+17    ;point at new name and..
+        MOV    CH,11
+        CALL   MOVE                    ;..move.
+        MOV    BX,Word Ptr CURAT       ;get current position on screen
+        MOV    DX,4                    ;advance 4 chars
+        LAHF
+        ADD    BX,DX
+        RCR    SI,1
+        SAHF
+        RCL    SI,1
+        CALL   GOTOXY
+        POP    BX                      ;get ptr
+        CALL   AC@PRFN                 ;print file name
+        MOV    DX,(Offset D@FCB)       ;rename 'fcb' location
+        MOV    CL,REN                  ;rename function
+        INT    224
+        INC    AL                      ; 0ffh --> 00h if rename error
+        JZ     L_B7    
+        JMP    NEUTRAL                 ;if okay, proceed, else..
+L_B7:
+        JMP    FNF@MSG                 ;..show no-file msg.
+; get file name from user and process into FCB pted to by DE
+FILENAME:
+        PUSH   DX                      ;save ptr
+        MOV    DX,(Offset CMDBUF)      ;command line location
+        MOV    CL,RDBUF                ;console read-buffer function
+        INT    224
+        CALL   CONVERT                 ;capitalize alpha
+        POP    BX                      ;set to null drive
+        MOV    M,0                     ;..required by 'bdos'.
+        LAHF
+        INC    BX
+        SAHF
+; initialize new filename field with spaces
+        PUSH   BX                      ;save start pointer
+        MOV    CH,11                   ; # of spaces to 'blank'
+        CALL   FILL
+        POP    BX
+        XCHG   BX,DX
+        MOV    BX,(Offset CMDBUF)+1    ;put length..
+        MOV    CL,M                    ;..in c-reg.
+        LAHF
+        INC    BX
+        SAHF
+        XCHG   BX,DX                   ;de-pair --> buffer pointer and hl-pair..
+        CALL   UNSPACE                 ;..--> 'fcb' pointer.  remove leading spaces.
+; extend buffer to spaces beyond command length
+EXTEND:
+        PUSH   BX
+        MOV    BL,CL                   ;double-byte remaining length
+        MOV    BH,0
+        LAHF                           ;to buffer end +1
+        ADD    BX,DX
+        RCR    SI,1
+        SAHF
+        RCL    SI,1
+        MOV    M,' '                   ;force illegal character end
+        POP    BX
+; start filename scan
+SCAN:
+        MOV    CH,8                    ; 8 characters in filename
+SCAN1:
+        CALL   CKLEGAL                 ;get and see if legal character
+        JNB    L_B8    
+        JMP    COMCAN                  ;all of command line?
+L_B8:
+        CMP    AL,' '                  ;see if end of parameter field
+        JNZ    L_B9    
+        RET                            ;rename file
+L_B9:
+        CMP    AL,'.'                  ;at end of filename
+        JZ     SCAN2                   ;process filetype field
+        CMP    AL,'*'                  ;rest wild?
+        JZ     SCAN1B
+        MOV    M,AL                    ;put character into destination 'fcb'
+        LAHF
+        INC    BX
+        SAHF
+        DEC    CH
+        JNZ    SCAN1
+; entry if eight characters without a 'period'
+SCAN1A:
+        CALL   CKLEGAL                 ;scan buffer up to period or end
+        JNB    L_B10   
+        RET                            ;no extent if not legal
+L_B10:
+        CMP    AL,' '                  ;end of parameter field?
+        JNZ    L_B11
+        RET
+L_B11:
+        CMP    AL,'.'
+        JNZ    SCAN1A                  ;do till end or period
+        JMPS   SCAN2A                  ;continue at correct place
+; make rest of entry wild
+SCAN1B:
+        MOV    M,'?'                   ;fill with ?'s
+        INC    BX
+        DEC    CH
+        JNZ    SCAN1B
+        MOV    SI,DX                   ;get next char
+        MOV    AL,[SI]
+        INC    DX                      ;pt to after dot
+        CMP    AL,'.'                  ;must be dot
+        JZ     L_B12   
+        JMP    COMCAN                  ;cancel if not
+L_B12:
+        JMPS   SCAN2A
+; build filetype field
+SCAN2:
+        LAHF                           ;advance ptr to file type field
+        INC    BX
+        SAHF
+        DEC    CH
+        JNZ    SCAN2
+SCAN2A:
+        MOV    CH,3                    ;length of filetype field
+SCAN3:
+        CALL   CKLEGAL                 ;get and check character
+        JB     SCAN4                   ;name done if illegal
+        CMP    AL,' '                  ;end of parameter field?
+        JZ     SCAN4
+        CMP    AL,'.'                  ;check if another period
+        JZ     SCAN4
+        CMP    AL,'*'                  ;rest wild?
+        JZ     SCAN4B
+        MOV    M,AL
+        LAHF
+        INC    BX
+        SAHF
+        DEC    CH
+        JNZ    SCAN3                   ;get next character
+        JMPS   SCAN4A
+SCAN4:
+        LAHF                           ;advance to end of type field
+        INC    BX
+        SAHF
+        DEC    CH
+        JNZ    SCAN4
+SCAN4A:
+        CALL   INITFCB                 ;..and zero counter fields.
+        RET
+SCAN4B:
+        MOV    M,'?'                   ;make wild
+        LAHF
+        INC    BX
+        SAHF
+        DEC    CH
+        JNZ    SCAN4B
+        JMPS   SCAN4A                  ;complete rest
+; goto file
+GOTO:
+        CALL   CPRMPT
+        DB     'Goto Filename: ',0
+        MOV    DX,(Offset D@FCB)       ;pt to FCB
+        CALL   FILENAME                ;get file name
+        MOV    BX,Word Ptr RING        ;pt to first element of ring
+        MOV    Word Ptr RINGPOS,BX     ;set position
+        MOV    Word Ptr LOCBEG,BX      ;set local beginning
+        XOR    AL,AL                   ;set local counter
+        MOV    Byte Ptr CRCTBL,AL      ;use this buffer
+GOTOL:
+        CALL   GOTOCOMP                ;compare
+        JZ     GOTOF                   ;we are there
+        MOV    AL,Byte Ptr CRCTBL      ;increment count
+        INC    AL
+        MOV    Byte Ptr CRCTBL,AL
+        CMP    AL,EPS
+        JNZ    GOTOL1
+        XOR    AL,AL                   ;reset count
+        MOV    Byte Ptr CRCTBL,AL
+        MOV    BX,Word Ptr LOCBEG      ;reset local beginning
+        MOV    DX,EPS*13
+        LAHF
+        ADD    BX,DX
+        SAHF
+        MOV    Word Ptr LOCBEG,BX
+GOTOL1:
+        MOV    BX,Word Ptr RINGPOS     ;advance to next entry
+        MOV    DX,13
+        LAHF
+        ADD    BX,DX
+        RCR    SI,1
+        SAHF
+        RCL    SI,1
+        MOV    Word Ptr RINGPOS,BX     ;new position
+        XCHG   BX,DX                   ;position in DE
+        MOV    BX,Word Ptr RINGEND     ;check for completion
+        CALL   CMPDEHL                 ;compare current position with end of ring
+        JNZ    GOTOL
+        MOV    BX,Word Ptr RING        ;pt to first element
+        MOV    Word Ptr RINGPOS,BX     ;set position
+        CALL   ERMSG
+        DB     'File NOT Found',0
+        JMP    CMDLOOP
+GOTOF:
+        MOV    BX,Word Ptr LOCBEG      ;we have local beginning
+        PUSH   BX
+        XCHG   BX,DX                   ;ring location in DE
+        MOV    BX,CURHOME              ;set cursor ptr
+        MOV    Word Ptr CURAT,BX
+GOTOF0:
+        CALL   CUR@OFF                 ;turn off term. cursor
+GOTOF0A:
+        MOV    BX,Word Ptr RINGPOS     ;at position?
+        CALL   CMPDEHL
+        JZ     GOTOF1
+        MOV    BX,13                   ;advance location
+        LAHF
+        ADD    BX,DX
+        RCR    SI,1
+        SAHF
+        RCL    SI,1
+        PUSH   BX
+        CALL   CUR@NEXT                ;advance cursor
+        POP    DX                      ;pt to next ring position
+        JMPS   GOTOF0A
+GOTOF1:
+        CALL   CUR@ON                  ;turn on term. cursor
+        POP    BX                      ;pt to local ring
+        JMP    JFW0A                   ;process
+GOTOCOMP:
+        MOV    BX,Word Ptr RINGPOS     ;pt to current entry
+        INC    BX                      ;pt to first char of file name
+        MOV    DX,(Offset D@FCB)+1     ;pt to first char of new file
+        MOV    CH,11                   ;11 bytes
+GOTOC1:
+        MOV    SI,DX                   ;get char
+        MOV    AL,[SI]
+        CMP    AL,'?'                  ;match?
+        JZ     GOTOC2
+        CMP    AL,M                    ;match?
+        JZ     L_B13   
+        RET                            ;no match
+L_B13:
+GOTOC2:
+        LAHF                           ;pt to next
+        INC    DX
+        SAHF
+        LAHF
+        INC    BX
+        SAHF
+        DEC    CH
+        JNZ    GOTOC1
+        RET
+
+; v i e w
+; type file to console, pagination set to 'lps' - single-line scroll
+; using <space> bar , <ctrl-x> to cancel, any other key to page screen.
+VIEW:
+        CALL   CHK@CMD                 ;check if CMD filetype
+        JNZ    OK_VIEW                 ;give error if CMD type
+        CALL   ERMSG
+        DB     'Can not View CMD type files',0
+        JMP    LOOPFN
+OK_VIEW:
+        CALL   CLS
+        CALL   ILPRT
+        DB     CR,LF,0                ;header msg *commented out -km 
+        MOV    AL,1                    ;initialize..
+        MOV    Byte Ptr LPSCNT,AL      ;..lines-per-screen counter.
+        MOV    Byte Ptr VIEWFLG,AL     ; 'view' paginate if not zero
+        MOV    AL,WRCON                ;write console out function
+        JMP    CURRENT                 ;to common i/o processing
+; p r i n t e r
+; send file to logical list device -- any keypress cancels
+LSTFILE:
+        CALL   CPRMPT
+        DB     'Print current file (Y/N)? ',0
+        CALL   KEYIN                   ;get response
+        CMP    AL,'Y'
+        JE     L_B14   
+        JMP    NEUTRAL
+L_B14:
+        CALL   CHK@CMD                 ;check if CMD filetype
+        JNZ    OK_LST                  ;give error if CMD type
+        CALL   ERMSG
+        DB     'Can not Print CMD type files',0
+        JMP    LOOPFN
+OK_LST:
+        CALL   RDTIME                  ;read clock
+        MOV    AL,Byte Ptr LTPP        ;get lines to print per page
+        MOV    Byte Ptr LTPP1,AL       ;stash
+        MOV    Byte Ptr HEADFLG,TRUE   ;set flag defaults
+        MOV    Byte Ptr PAGEFLG,TRUE
+        CALL   ERMSG
+        DB     '*** Make Printer Ready ***',0
+        CALL   CPRMPT
+        DB     'Page the printer output (Y/N)? ',0
+        CALL   KEYIN
+        CMP    AL,'Y'
+        JE     L_B14A
+        MOV    Byte Ptr PAGEFLG,FALSE
+        JMPS   L_B14B
+L_B14A:
+        CALL   CPRMPT
+        DB     'Print Header on every page (Y/N)? ',0
+        CALL   KEYIN
+        CMP    AL,'Y'
+        JE     L_B14B
+        MOV    HEADFLG,FALSE           ;set flag false
+L_B14B:
+        CALL   ERMSG
+        DB     'Printing ',0
+        MOV    BX,Word Ptr RINGPOS     ;pt to file name
+        LAHF
+        INC    BX
+        SAHF
+        CALL   PRFN                    ;print it
+        CALL   CPRMPT
+        DB     'Press ESC, or Q key to quit printing ',0
+
+        MOV    AL,1                    ;one for..
+        MOV    Byte Ptr VIEWFLG,AL     ;..output to printer.
+        DEC    AL                      ;zero for..
+        MOV    Byte Ptr LPSCNT,AL      ;..lines-per-page counter
+        MOV    AL,LLIST                ;out to 'list' device function and fall thru
+; output character for console/list/punch processing
+CURRENT:
+        MOV    Byte Ptr CON@LST,AL     ;save bdos function
+; output file to console/printer/punch
+        CALL   RINGFCB                 ;position name to 'fcb'
+        XCHG   BX,DX                   ;HL pts to S$FCB
+        CALL   INITFCB                 ;set 'fcb' for use
+        MOV    DX,TBUF                 ;set to use default cp/m dma buffer
+        MOV    CL,SETDMA               ;address set function
+        INT    224
+        MOV    DX,(Offset S@FCB)       ;open file for reading
+        MOV    CL,OPEN                 ;file open function code
+        INT    224
+        INC    AL                      ; 0ffh --> 00h if open not okay
+        JNZ    ZEROCR                  ;if not okay, show error message.
+        CALL   ERMSG
+        DB     'Unable to Open File',0
+        JMP    NEUTRAL
+ZEROCR:
+        XOR    AL,AL
+        MOV    Byte Ptr S@FCB+32,AL    ;zero file 'current record' field
+        MOV    Byte Ptr CHARCNT,AL     ;zero char count for tabbing
+        CALL   PHEAD                   ;print heading if output to LST device
+READMR:
+        MOV    DX,(Offset S@FCB)       ;point at file 'fcb' for reading
+        MOV    CL,READ                 ;record read function
+        INT    224
+        OR     AL,AL                   ;check if read okay
+        JZ     L_B15   
+        JMP    CURDONE                 ;eof?
+L_B15:
+        MOV    BX,TBUF                 ;point at record just read
+        MOV    CH,128                  ;set record character counter to output
+READLP:
+        MOV    AL,M                    ;get a character
+        AND    AL,7FH                  ;force to 'ascii'
+        CMP    AL,EOFCHAR              ;see if end-of-file
+        JNZ    L_B16   
+        JMP    CURDONE                 ;back to ring loop if 'eof'
+L_B16:
+        MOV    DL,AL                   ;put character for 'bdos' call
+        PUSH   CX
+        PUSH   BX
+        PUSH   DX                      ; (character in e-reg)
+        MOV    AL,Byte Ptr CON@LST     ;get function for punch/list/console output
+        MOV    CL,AL
+        MOV    AL,DL                   ;check char
+        CMP    AL,TAB                  ;tabulate?
+        JNZ    NOTAB
+        MOV    DL,' '                  ;space over
+TABL:
+        PUSH   CX                      ;save key regs
+        PUSH   DX
+        INT    224
+        POP    DX                      ;get key regs
+        POP    CX
+        CALL   INCCCNT                 ;increment char count
+        AND    AL,7                    ;check for done at every 8
+        JNZ    TABL
+        JMPS   TABDN
+NOTAB:
+        INT    224                     ;send character
+        CALL   INCCCNT                 ;increment char count
+TABDN:
+        MOV    AL,Byte Ptr VIEWFLG     ;if 'view'..
+        OR     AL,AL
+        POP    DX                      ;get char in E in case PAGER is called
+        JZ     L_B17   
+        CALL   PAGER                   ;..check for 'lf'.
+L_B17:
+        MOV    DL,GET                  ;get status or char
+        MOV    CL,DIRCON               ;console status function
+        INT    224                     ;status?
+        POP    BX
+        POP    CX
+        AND    AL,7FH                  ;if character there, then abort..
+        JZ     L_B18   
+        CALL   CHK@CAN                 ;already got char
+L_B18:
+        INC    BX                      ;if not, bump buffer pointer.
+        DEC    CH
+        JZ     L_B19   
+        JMP    READLP                  ;no, more in present record.
+L_B19:
+        JMP    READMR                  ;yes, get next record.
+CURDONE:
+        MOV    AL,Byte Ptr CON@LST     ;console?
+        CMP    AL,WRCON
+        JNZ    L_B20   
+        CALL   BOTTOM                  ;prompt for user
+L_B20:
+        CALL   REFRESH                 ;refresh screen
+        JMP    LOOPFN
+PAGER:
+        MOV    AL,DL                   ; (character in e-reg)
+        CMP    AL,LF
+        JZ     L_B21
+        RET
+L_B21:
+        XOR    AL,AL                   ;zero char count
+        MOV    Byte Ptr CHARCNT,AL
+        MOV    AL,Byte Ptr CON@LST     ;printer or console?
+        CMP    AL,LLIST                ;check for printer
+        JZ     PAGEP
+        MOV    AL,Byte Ptr CTPP        ;get number of lines of text per screen
+        MOV    CH,AL                   ;... in B
+        MOV    AL,Byte Ptr LPSCNT      ;is counter..
+        INC    AL                      ;..at..
+        MOV    Byte Ptr LPSCNT,AL      ;..limit..
+        CMP    AL,CH                   ;..of lines-per-screen?
+        JNB    L_B22   
+        RET                            ;no, return.
+L_B22:
+        XOR    AL,AL                   ;yes, initialize..
+        MOV    Byte Ptr LPSCNT,AL      ;..for next screen full.
+        CALL   ILPRT
+        DB     CR,'[More..]',CR,0         ;show -more- msg line
+        CALL   DKEYIN                  ;wait for keyboard input
+        CMP    AL,' '                  ;see if <space> bar..
+        LAHF
+        XCHG   AL,AH
+        PUSH   AX
+        CALL   ILPRT
+        DB     '                ',CR,0 ;clear above msg line
+        POP    AX
+        XCHG   AL,AH
+        SAHF
+        JNZ    CHK@CAN                 ;..if not, see if cancel.
+        MOV    AL,Byte Ptr CTPP        ;set for single line
+        DEC    AL
+        MOV    Byte Ptr LPSCNT,AL      ;..scroll and..
+        RET                            ;..return for one more line.
+
+PAGEP:
+        CALL   PRN@CAN                 ;check if cancel
+        TEST   Byte Ptr PAGEFLG,TRUE   ;test paging flag
+        JZ     PAGE_RET                ;if true then...
+        MOV    AL,Byte Ptr LTPP1       ;get number of lines of text per page
+        MOV    CH,AL                   ;... in B
+        MOV    AL,Byte Ptr LPSCNT      ;is counter..
+        INC    AL                      ;..at..
+        MOV    Byte Ptr LPSCNT,AL      ;..limit..
+        CMP    AL,CH                   ;..of lines-per-screen?
+        JNB    L_B23   
+        RET                            ;no, return.
+L_B23:
+        XOR    AL,AL                   ;zero for..
+        MOV    Byte Ptr LPSCNT,AL      ;..lines-per-page counter
+        MOV    AL,Byte Ptr LSPP        ;number of lines to skip
+        MOV    CH,AL                   ;number of lines to skip
+        MOV    CL,LLIST                ;LST output
+PAGELST:
+        CALL   LCRLF                   ;new line on LST
+        DEC    CH
+        JNZ    PAGELST
+
+        TEST   Byte Ptr HEADFLG,TRUE   ;test if print header true
+        JNZ    PRN_HEAD                ;if not true then...
+
+        MOV    AL,Byte Ptr LTPP        ;get lines to print per page
+        INC AL ! INC AL                        ;add 2 lines 
+        MOV    Byte Ptr LTPP1,AL
+        RET                            ;and return
+PRN_HEAD:
+        CALL   PHEAD                   ;...else print heading
+PAGE_RET:
+        RET                            ;done
+
+PRN@CAN:                               ;check for list cancel
+        CALL   CST                     ;has key been hit
+        CMP    AL,0
+        JNZ    KEY_HIT
+        RET                            ;if not, return
+KEY_HIT:
+        CALL   CIN                     ;else get char
+                                        ;and ... 
+CHK@CAN:                               ;check for cancel
+        CALL   UCASE
+        CMP    AL,'Q'                  ;Q = quit
+        JE     L_B24   
+        CMP    AL,ESC                  ;so does ESC
+        JE     L_B24
+        CMP    AL,CTRLC                ;and ^C
+        JE     L_B24
+        RET                            ;return for another page
+L_B24:
+        MOV    CL,Byte Ptr CON@LST     ;get function
+        MOV    DL,CR                   ;and send it a <CR>
+        INT    224                     ;to flush printer buffer
+        JMP    COMCAN                  ;cancel
+
+INCCCNT:
+        MOV    AL,Byte Ptr CHARCNT     ;increment char count
+        INC    AL
+        MOV    Byte Ptr CHARCNT,AL
+        RET
+
+PHEAD:
+        MOV    AL,Byte Ptr CON@LST     ;printing to printer?
+        CMP    AL,LLIST
+        JZ     L_B25
+        RET
+L_B25:
+        MOV    BX,(Offset HEADMSG)     ;print heading
+        CALL   PHEAD1
+PHEAD2:
+        MOV    BX,(Offset S@FCB)+1     ;pt to file name
+        MOV    CH,8                    ;8 chars
+        CALL   PHEAD3
+        MOV    AL,'.'                  ;dot
+        CALL   LOUT
+        MOV    CH,3                    ;3 more chars
+        CALL   PHEAD3
+
+        MOV    BX,OFFSET DATE
+        CALL   PHEAD1
+
+        CALL   LCRLF                   ;new line
+        CALL   LCRLF                   ;blank line
+        RET
+
+PHEAD1:
+        MOV    AL,M                    ;get char
+        OR     AL,AL                   ;done?
+        JZ     PH1_RET
+        CALL   LOUT                    ;send to printer
+        INC    BX                      ;pt to next
+        JMPS   PHEAD1
+PH1_RET:
+        RET
+
+PHEAD3:
+        MOV    AL,M                    ;get char
+        CALL   LOUT                    ;LST it
+        LAHF                           ;pt to next
+        INC    BX
+        SAHF
+        DEC    CH
+        JNZ    PHEAD3
+        RET
+
+; m a s s   c o p y
+; copy files tagged using the 't' command.  auto-erase if file exists
+; on requested destination drive or in user area.
+MASS@COPY:
+        CALL   CPRMPT
+        DB     'Mass Copy (Y/N/V=Verify Overwrite)? ',0
+        CALL   KEYIN
+        CMP    AL,'Y' ! JE MASC1
+        CMP    AL,'V' ! JE MASC1
+        JMP    NEUTRAL
+MASC1:
+        MOV    Byte Ptr MCFLG,AL       ;save answer
+        MOV    BX,Word Ptr RINGPOS     ;save position
+        MOV    Word Ptr SRINGPOS,BX
+        MOV    BX,Word Ptr RING
+        MOV    Word Ptr RINGPOS,BX     ;set position
+MASS@LP:
+        MOV    BX,Word Ptr RINGPOS     ;get position
+        MOV    DX,12                   ;get 1st possible tag location
+        ADD    BX,DX
+        MOV    AL,M                    ;get tag
+        CMP    AL,'*'
+        JZ     MCOPY                   ;copy filename with tag character (*)
+M@LP:
+        MOV    BX,Word Ptr RINGPOS     ;re-entry point for next file mass-copy
+        MOV    DX,13                   ;advance to next
+        LAHF
+        ADD    BX,DX
+        SAHF
+        MOV    Word Ptr RINGPOS,BX
+        XCHG   BX,DX                   ;at ring..
+        MOV    BX,Word Ptr RINGEND     ;..end yet?
+        CALL   CMPDEHL                 ; (compare present position with end)
+        JNZ    MASS@LP                 ;loop 'till thru ring list.
+MF@EXIT:
+        XOR    AL,AL                   ;reset flags..
+        MOV    Byte Ptr FIRST@M,AL     ;..for..
+        NOT    AL                      ;..next..
+        MOV    Byte Ptr MFLAG,AL       ;..mass-copy request.
+        MOV    BX,Word Ptr SRINGPOS    ;reset ring position
+        MOV    Word Ptr RINGPOS,BX
+        MOV    BX,Word Ptr LOCBEG      ;local ring
+        JMP    JFW0A                   ;rescreen
+; c o p y
+; copy source file at current 'ring' position to another drive.  set-up
+; fcb's and buffer area and check for correct keyboard inputs.  contains
+; auto-crc file copy verification.
+MCOPY:
+        XOR    AL,AL                   ;zero flag to..
+        MOV    Byte Ptr MFLAG,AL       ;..mass copy.
+        JMPS   COPY0M
+COPY:
+        MOV    Byte Ptr MCFLG,'V'      ;initialize verify flag
+COPY0M:
+        MOV    BX,0                    ;initialize storage for..
+        MOV    Word Ptr CRCVAL,BX      ;..'crc' working value.
+        CALL   RINGFCB                 ;move from 'ring' to 'sfcb'
+        MOV    BX,(Offset S@FCB)+12    ;set pointer to source extent field
+        CALL   INITFCB
+        XOR    AL,AL                   ;zero fcb 'cr' field
+        MOV    Byte Ptr S@FCB+32,AL
+        MOV    CH,32                   ;copy source 'fcb' to destination 'fcb'
+        MOV    BX,(Offset S@FCB)+1     ;from point..
+        MOV    DX,(Offset D@FCB)+1     ;..to point..
+        CALL   MOVE                    ;..move across.
+        MOV    DX,(Offset S@FCB)       ;open file for reading
+        MOV    CL,OPEN                 ;open function
+        INT    224
+        INC    AL                      ; 0ffh --> 00h if bad open
+        JNZ    COPY2                   ;if okay, skip error message.
+        CALL   ERMSG
+        DB     'Unable to Open Source',0
+        JMP    NEUTRAL
+
+COPY2:
+        MOV    AL,Byte Ptr FIRST@M     ;by-pass prompt, drive/user compatibility..
+        OR     AL,AL                   ;..test, and disk reset after..
+        JNZ    COPY3M                  ;..1st time thru in mass-copy mode.
+        CALL   CPRMPT                  ;prompt for drive selection
+        DB     'Copy to DIR: ',0
+        CALL   DEF@D@U
+; either drives or user areas must be different
+        MOV    AL,Byte Ptr .FCB        ;get requested drive from 'fcb' and..
+        MOV    CH,AL                   ;..put into b-reg for..
+        MOV    AL,Byte Ptr S@FCB       ;..comparison.
+        CMP    AL,CH
+        JNZ    COPY3                   ;branch if different
+        MOV    AL,Byte Ptr R@U@A       ;requested user area --> rua
+        MOV    CH,AL
+        MOV    AL,Byte Ptr C@U@A       ;current user area --> cua
+        CMP    AL,CH
+        JNZ    COPY3
+        CALL   ERMSG                   ;if not, show error condition:
+        DB     'Drives or User Areas must be different',0
+        JMP    NEUTRAL                 ;try again?
+COPY3:
+        CALL   RESET                   ;make sure disk is read/write
+COPY3M:
+        CALL   ATCMD                   ;clear command line
+        CALL   ERMSG 
+        DB     'Copying File ',0
+        MOV    BX,(Offset D@FCB)+1     ;print file name
+        CALL   PRFNSX
+
+        MOV    AL,Byte Ptr .FCB        ;put requested drive into..
+        MOV    Byte Ptr D@FCB,AL       ;..place in destination fcb.
+        MOV    AL,Byte Ptr R@U@A       ;toggle to..
+        CALL   SET@USR                 ;..requested user area.
+        MOV    DX,(Offset D@FCB)       ;search for duplicate
+        MOV    CL,SRCHF                ; 'search first' function
+        INT    224
+        INC    AL                      ;if not found, 0ffh --> 00h.  then..
+        JZ     COPY5                   ;go to 'make' function for new file.
+
+        CMP    Byte Ptr MCFLG,'V'      ;verify or auto erase
+        JNE    COPY4M                  ;..in mass-copy mode.
+        CALL   CPRMPT                  ;CPR2 - if found, ask to replace:
+        DB     'Overwrite Existing File (Y/N)? ',0
+        CALL   KEYIN                   ;get answer
+        CMP    AL,'Y'                  ;if yes, then..
+        JZ     COPY4M                  ;..delete and overlay.
+        CMP    Byte Ptr MFLAG,0        ;zero is mass copy
+        JNZ    NOT_MASS
+        MOV    Byte Ptr FIRST@M,0FFH   ;set first pass flag
+        JMP    M@LP                    ;...and re-enter mass copy loop
+NOT_MASS:
+        MOV    AL,Byte Ptr C@U@A       ;reset to..
+        CALL   SET@USR                 ;..current user area.
+        JMP    FORWARD                 ;if re-copy not wanted, to next position.
+COPY4M:
+        MOV    BX,(Offset D@FCB)       ;pt to FCB
+        CALL   ATTRIB                  ;clear bytes in FCB and set attr of file
+        MOV    DX,(Offset D@FCB)       ;delete file already existing
+        MOV    CL,ERASE                ;erase function
+        INT    224
+COPY5:
+        MOV    DX,(Offset D@FCB)       ;create new file and open for writing
+        MOV    CL,MAKE                 ;make function
+        INT    224
+        INC    AL                      ;if directory full, 0ffh --> 00h.
+        JNZ    COPY6                   ;if not, branch.
+        CALL   ERMSG
+        DB     'Destination Directory Full',0
+        JMP    LOOPFN                  ;if error, back to ring processor.
+COPY6:
+;      CALL    ERMSG
+;      DB      'Copying File ',0
+;      MOV     BX,(Offset D@FCB)+1     ;print file name
+;      CALL    PRFNSX
+        MOV    BX,ERADR
+        ADD    BX,26                   ;position cursor after file name
+        CALL   GOTOXY
+        XOR    AL,AL                   ;clear 'eof'..
+        MOV    Byte Ptr EOFLAG,AL      ;..flag.
+COPY6A:
+        MOV    AL,Byte Ptr C@U@A       ;reset user area..
+        CALL   SET@USR                 ;..to current.
+        MOV    BX,0                    ;clear current-record..
+        MOV    Word Ptr REC@CNT,BX     ;..counter.
+        MOV    BX,Word Ptr BUFSTART    ;set buffer start pointer..
+        MOV    Word Ptr BUF@PT,BX      ;..to begin pointer.
+; read source file -- fill buffer memory or stop on 'eof' -- update 'crc'
+; on-the-fly
+COPY7:
+        MOV    BX,Word Ptr BUF@PT      ;set dma address to buffer pointer
+        XCHG   BX,DX                   ; de-pair --> dma address
+        MOV    CL,SETDMA
+        INT    224
+        MOV    DX,(Offset S@FCB)       ;source 'fcb' for reading
+        MOV    CL,READ                 ;record read function
+        INT    224
+        OR     AL,AL                   ; 00h --> read okay
+        JZ     S@RD@OK
+        DEC    AL                      ;eof?
+        JZ     COPY8                   ;yes, end-of-file, set 'eof' flag.
+        CALL   ERMSG
+        DB     'Source Read Error',0
+        JMP    LOOPFN
+S@RD@OK:
+        MOV    BX,Word Ptr BUF@PT
+        MOV    CH,128
+COPY7A:
+        MOV    AL,M                    ;get character and..
+        CALL   UPDCRC                  ;..add to 'crc' value.
+        INC    BX
+        DEC    CH
+        JNZ    COPY7A                  ;loop 'till record read finished
+        MOV    BX,Word Ptr BUF@PT      ;bump buffer pointer..
+        MOV    DX,128                  ;..by..
+        LAHF                           ;..one..
+        ADD    BX,DX
+        SAHF
+        MOV    Word Ptr BUF@PT,BX      ;..record.
+        MOV    BX,Word Ptr REC@CNT     ;bump buffer..
+        LAHF                           ;..record count and..
+        INC    BX
+        SAHF
+        MOV    Word Ptr REC@CNT,BX     ;..store.
+        XCHG   BX,DX                   ;ready to compare to..
+        MOV    BX,Word Ptr REC@MAX     ;..maximum record count (full-buffer).
+        CALL   CMPDEHL                 ;compare
+        JNZ    COPY7                   ;if not full, get next record.
+        JMPS   COPY9                   ;full, start first write session.
+; indicate end-of-file read
+COPY8:
+        MOV    AL,TRUE                 ;set 'eof' flag
+        MOV    Byte Ptr EOFLAG,AL
+; write 'read-file' from memory buffer to destination 'written-file'
+COPY9:
+        MOV    AL,Byte Ptr R@U@A       ;set user to requested..
+        CALL   SET@USR                 ;..area.
+        MOV    BX,Word Ptr BUFSTART    ;adjust buffer pointer..
+        MOV    Word Ptr BUF@PT,BX      ;..to start address.
+COPY10:
+        MOV    BX,Word Ptr REC@CNT     ;buffer empty?
+        MOV    AL,BH
+        OR     AL,BL
+        JZ     COPY11                  ;buffer empty, check 'eof' flag.
+        DEC    BX                      ;dec buffer record count for each write
+        MOV    Word Ptr REC@CNT,BX
+        MOV    BX,Word Ptr BUF@PT      ;set up dma address
+        PUSH   BX                      ;save for size bump
+        XCHG   BX,DX                   ;pointer in de-pair
+        MOV    CL,SETDMA
+        INT    224
+        POP    BX
+        MOV    DX,128                  ;bump pointer one record length
+        ADD    BX,DX
+        MOV    Word Ptr BUF@PT,BX
+        MOV    DX,(Offset D@FCB)       ;destination file 'fcb'
+        MOV    CL,WRITE                ;write record function
+        INT    224
+        OR     AL,AL                   ; 00h --> write okay
+        JZ     COPY10                  ;okay, do next record.  else..
+        CALL   ERMSG                   ;..say disk write error.
+        DB     'Copy Disk Full',0
+C@ERA:
+        MOV    DX,(Offset D@FCB)       ;delete..
+        MOV    CL,ERASE                ;..partial..
+        INT    224                     ;..from directory.
+        XOR    AL,AL                   ;reset 1st-time-thru tag flag..
+        MOV    Byte Ptr FIRST@M,AL     ;..for continuation of mass copying.
+        JMP    LOOPFN                  ;back to ring
+COPY11:
+        MOV    AL,Byte Ptr EOFLAG      ;buffer all written, check for 'eof'.
+        OR     AL,AL
+        JNZ    L_C19   
+        JMP    COPY6A                  ;branch to read next buffer full
+L_C19:
+        MOV    DX,(Offset D@FCB)       ;point at 'fcb' for file closure
+        MOV    CL,CLOSE
+        INT    224
+        INC    AL                      ;if no-close-error then..
+        JNZ    CRC@CMP                 ;..compare file crc's.
+        CALL   ERMSG
+        DB     'Copy Close Error',0
+        JMPS   C@ERA
+; read destination 'written-file' and compare crc's
+CRC@CMP:
+        MOV    BX,Word Ptr CRCVAL      ;transfer 'crc' value to..
+        MOV    Word Ptr CRCVAL2,BX     ;..new storage area.
+        MOV    BX,0                    ;clear working storage..
+        MOV    Word Ptr CRCVAL,BX      ;..to continue.
+        MOV    DX,TBUF
+        MOV    CL,SETDMA
+        INT    224
+        MOV    BX,(Offset D@FCB)+12
+        CALL   INITFCB
+        MOV    DX,(Offset D@FCB)
+        MOV    CL,OPEN
+        INT    224
+        INC    AL                      ; 0ffh --> 00h if bad open
+        JNZ    L_C20   
+        JMP    BADCRC                  ;if bad open, just say 'bad-crc'.
+L_C20:
+        XOR    AL,AL                   ;zero 'fcb'..
+        MOV    Byte Ptr D@FCB+32,AL    ;..'cr' field.
+CRCWF1:
+        MOV    DX,(Offset D@FCB)
+        MOV    CL,READ
+        INT    224
+        OR     AL,AL                   ;read okay?
+        JZ     D@RD@OK                 ;yes, read more.
+        DEC    AL                      ;eof?
+        JNZ    L_C21   
+        JMP    FINCRC                  ;yes, finish up and make 'crc' comparison.
+L_C21:
+        CALL   ERMSG
+        DB     'Copy Read Error',0
+        JMP    NEUTRAL
+D@RD@OK:
+        MOV    BX,TBUF
+        MOV    CH,128
+CRCWF2:
+        MOV    AL,M                    ;get character to..
+        CALL   UPDCRC                  ;..add to 'crc' value. 
+        INC    BX
+        DEC    CH
+        JNZ    CRCWF2
+        JMPS   CRCWF1
+; clear attributes of file (HL) and set attributes on disk
+ATTRIB:
+        PUSH   BX                      ;save ptr
+        INC    BX                      ;pt to first char
+        MOV    CH,11                   ;11 Bytes
+ATTRIB1:
+        MOV    AL,M                    ;get byte
+        AND    AL,7FH                  ;mask it
+        MOV    M,AL                    ;put byte
+        INC    BX                      ;pt to next
+        DEC    CH                      ;count down
+        JNZ    ATTRIB1
+        POP    DX                      ;pt to FCB
+        MOV    CL,ATTR
+        INT    224
+        RET
+; crc subroutines
+; initialize tables for fast crc calculations
+INITCRC:
+        MOV    BX,(Offset CRCTBL)
+        MOV    CL,0                    ;table index
+GLOOP:
+        XCHG   BX,DX
+        MOV    BX,0                    ;initialize crc register pair
+        MOV    AL,CL
+        PUSH   CX                      ;save index in c-reg
+        MOV    CH,8
+        XOR    AL,BH
+        MOV    BH,AL
+LLOOP:
+        SHL    BX,1
+        JNB    LSKIP
+        MOV    AL,10H                  ;generator is x^16 + x^12 + x^5 + x^0 as..
+        XOR    AL,BH                   ;..recommended by ccitt for asynchronous..
+        MOV    BH,AL                   ;..communications.  produces the same..
+        MOV    AL,21H                  ;..results as public domain programs..
+        XOR    AL,BL                   ;..chek, comm7, mdm7, and modem7.
+        MOV    BL,AL
+LSKIP:
+        DEC    CH
+        JNZ    LLOOP
+        POP    CX
+        XCHG   BX,DX                   ;de-pair now has crc, hl pointing into table.
+        MOV    M,DH                    ;store high byte of crc..
+        INC    BH
+        MOV    M,DL                    ;..and store low byte.
+        DEC    BH
+        LAHF                           ;move to next table entry
+        INC    BX
+        SAHF
+        INC    CL                      ;next index
+        JNZ    GLOOP
+        RET
+UPDCRC:
+        PUSH   CX                      ;update 'crc'..
+        PUSH   BX                      ;..accumulator..
+        MOV    BX,Word Ptr CRCVAL      ;pick up partial remainder
+        XCHG   BX,DX                   ;de-pair now has partial
+        MOV    CH,0
+        XOR    AL,DH
+        MOV    CL,AL
+        MOV    BX,(Offset CRCTBL)
+        ADD    BX,CX
+        MOV    AL,M
+        XOR    AL,DL
+        MOV    DH,AL
+        INC    BH
+        MOV    DL,M
+        XCHG   BX,DX
+        MOV    Word Ptr CRCVAL,BX
+        POP    BX
+        POP    CX
+        RET
+FINCRC:
+        MOV    AL,Byte Ptr C@U@A       ;reset user from 'requested'..
+        CALL   SET@USR                 ;..to 'current' area.
+        MOV    BX,Word Ptr CRCVAL      ;put written-file 'crc' into..
+        XCHG   BX,DX                   ;..de-pair.
+        MOV    BX,Word Ptr CRCVAL2     ;put read-file 'crc' and..
+        CALL   CMPDEHL                 ;..compare 'de/hl' for equality.
+        JNZ    BADCRC                  ;if not zero, show copy-error message.
+        CALL   ILPRT                   ;if zero, show 'verified' message.
+        DB     ' -- CRC Verified',0
+        MOV    AL,Byte Ptr MFLAG       ;if not mass-copy mode, return..
+        OR     AL,AL                   ;..to next 'ring' position.
+        JZ     L_C22   
+        JMP    FORWARD                 ;else..
+L_C22:
+        NOT    AL                      ;..set 1st-time-thru flag..
+        MOV    Byte Ptr FIRST@M,AL     ;..and..
+        JMP    M@LP                    ;..get next file to copy, if one.
+BADCRC:
+        CALL   ERMSG
+        DB     'Error on CRC compare',0
+        JMP    FORWARD                 ;move to next 'ring' position
+; w o r k h o r s e   r o u t i n e s
+; inline print of message
+ILPRT:
+        MOV    BP,SP                   ;save hl, get msg pointer.
+        XCHG   BX,[BP]
+        MOV    AL,27
+        CALL   TTYPE
+        MOV    AL,'b'
+        CALL   TTYPE
+        MOV    AL,10
+        CALL   TTYPE
+ILPLP:
+        MOV    AL,M                    ;get character
+        INC    BX                      ;pt to next
+        AND    AL,7FH                  ;strip type bits
+        JZ     ILPLP1
+        CALL   TTYPE                   ;show on console
+        JMPS   ILPLP
+ILPLP1:
+        MOV    BP,SP                   ;set hl-pair and..
+        XCHG   BX,[BP]
+        MOV    AL,27
+        CALL   TTYPE
+        MOV    AL,'b'
+        CALL   TTYPE
+        MOV    AL,15
+        CALL   TTYPE
+        RET                            ;..return past message.
+; output 'crlf' to console
+CRLF:
+        MOV    AL,CR
+        CALL   TTYPE
+        MOV    AL,LF
+; conout routine
+TTYPE:
+        LAHF
+        XCHG   AL,AH
+        PUSH   AX
+        XCHG   AL,AH
+        PUSH   CX
+        PUSH   DX
+        PUSH   BX
+        LAHF                           ; check for flow control
+        XCHG   AL,AH
+        PUSH   AX
+        XCHG   AL,AH
+        CALL   CST                     ; BIOS console status
+        OR     AL,AL                   ; 0 means nothing
+        JZ     TYPE1
+        CALL   CIN                     ; BIOS console input
+        CMP    AL,CTRLS                ; pause?
+        JNZ    TYPE1
+        CALL   CIN                     ; BIOS console input
+TYPE1:
+        POP    AX                      ; get char
+        XCHG   AL,AH
+        MOV    DL,AL
+        MOV    CL,WRCON
+        INT    224
+        POP    BX
+        POP    DX
+        POP    CX
+        POP    AX
+        XCHG   AL,AH
+        SAHF
+        RET
+
+; direct I/O
+CST:   ;Console status
+        PUSH   DX
+        PUSH   BX
+        MOV    DL,0FFH
+        MOV    CL,DIRCON
+        INT    224
+        POP    BX
+        POP    DX
+        RET
+
+CIN:   ;Input from console - no echo   (getchar)
+        PUSH   DX
+        PUSH    BX
+
+CIN0:   MOV     ah,0            ;*changed IBM-PC BiosKey 
+        INT     16h
+        
+       ;MOV     DL,0FFH         ; *changed  CP/M Bdos to BiosKey 
+       ;MOV     CL,1            ; *changed  DIRCON to CONIN 
+       ;INT     224
+
+        MOV     Byte Ptr CHR_LO, al ; ah=0      if fkey or keypad  
+        MOV     Byte Ptr CHR_HI, ah ; ah=chrin  if fkey or keybad  
+
+       ;OR      AL,AL            ; *commented out
+       ;JZ      CIN1             ; *changed was JZ CIN0
+
+        POP     BX
+        POP     DX
+        RET
+
+;*changed *added -km new routine
+
+CIN1:   
+        JZ      CIN0
+        JNZ     CIN0
+
+
+; output 'crlf' to printer
+LCRLF:
+        MOV    AL,CR
+        CALL   LOUT
+        MOV    AL,LF
+; printer routine
+LOUT:
+        LAHF
+        XCHG   AL,AH
+        PUSH   AX
+        XCHG   AL,AH
+        PUSH   CX
+        PUSH   DX
+        PUSH   BX
+        MOV    DL,AL
+        MOV    CL,LLIST
+        INT    224
+        POP    BX
+        POP    DX
+        POP    CX
+        POP    AX
+        XCHG   AL,AH
+        SAHF
+        RET
+; crt clear-line function
+CLR@L:
+        MOV    AL,CR
+        CALL   TTYPE
+        MOV    CH,30                   ;blank # of characters on line
+        MOV    AL,' '
+CL@LP:
+        CALL   TTYPE
+        DEC    CH
+        JNZ    CL@LP
+        RET
+; conin routine (waits for response)
+KEYIN:
+        MOV    CL,RDCON
+        INT    224
+; convert character in a-reg to upper case
+UCASE:
+        CMP    AL,61H                  ;less than small 'a'?
+        JNB    L_C23   
+        RET                            ;if so, no convert needed.
+L_C23:
+        CMP    AL,7AH+1                ; >small 'z'?
+        JNAE   L_C24   
+        RET                            ;if so, ignore.
+L_C24:
+        AND    AL,5FH                  ;otherwise convert
+        RET
+; direct console input w/o echo (waits for input)
+DKEYIN:
+        CALL   CIN                     ;get char from BIOS
+        AND    AL,7FH                  ;mask MSB
+        JMPS   UCASE                   ;capitalize
+; convert keyboard input to upper case
+CONVERT:
+        MOV    BX,(Offset CMDBUF)+1    ; 'current keyboard buffer length'..
+        MOV    CH,M                    ;..to b-reg.
+        MOV    AL,CH
+        OR     AL,AL                   ;if zero length, skip conversion.
+        JNZ    L_C25   
+        JMP    COMCAN
+L_C25:
+CONVLP:
+        LAHF                           ;point at character to capitalize
+        INC    BX
+        SAHF
+        MOV    AL,M
+        CALL   UCASE
+        MOV    M,AL                    ;put back into buffer
+        DEC    CH
+        JNZ    CONVLP
+        RET
+; fill buffer with 'spaces' with count in b-reg
+FILL:
+        MOV    M,' '                   ;put in space character
+        LAHF
+        INC    BX
+        SAHF
+        DEC    CH
+        JNZ    FILL                    ;no, branch.
+        RET
+; ignore leading spaces (ls) in buffer, length in c-reg.
+UNSPACE:
+        MOV    SI,DX                   ;get character
+        MOV    AL,[SI]
+        CMP    AL,' '
+        JZ     L_C26   
+        RET                            ;not blank, a file is entered.
+L_C26:
+        INC    DX                      ;to next character
+        DEC    CL
+        JNZ    L_C27   
+        JMP    COMCAN                  ;all spaces --> command recovery error
+L_C27:
+        JMPS   UNSPACE
+; check for legal cp/m filename character -- return with carry set if illegal
+CKLEGAL:
+        MOV    SI,DX                   ;get character from de-pair
+        MOV    AL,[SI]
+        INC    DX                      ;point at next character
+        CMP    AL,' '                  ;less than space?
+        JNB    L_C28   
+        RET                            ;return carry if unpermitted character
+L_C28:
+        PUSH   BX
+        PUSH   CX
+        CMP    AL,'['                  ;if greater than 'z', exit with..
+        JNB    CKERR                   ;..carry set.
+        MOV    CH,(Offset CHR@TEND)-(Offset CHR@TBL)
+        MOV    BX,(Offset CHR@TBL)
+CHR@LP:
+        CMP    AL,M
+        JZ     CKERR
+        INC    BX
+        DEC    CH
+        JNZ    CHR@LP
+        OR     AL,AL                   ;clear carry for good character
+        POP    CX
+        POP    BX
+        RET
+CKERR:
+        POP    CX
+        POP    BX
+        STC                            ;error exit with carry set
+        RET
+L_C29  EQU     $
+        DSEG
+        ORG    Offset L_C29
+CHR@TBL        RS      0
+        DB     ',',':',';','<','=','>' ;invalid character table
+L_C30  EQU     $
+        CSEG
+        ORG    Offset L_C30
+CHR@TEND:
+        RS     0
+; print file name in S$FCB
+PRFNSX:
+        PUSH   BX                      ;save regs
+        PUSH   CX
+        JMPS   PRFNS0
+PRFNS:
+        PUSH   BX                      ;affect only PSW
+        PUSH   CX
+        MOV    BX,(Offset S@FCB)+1
+PRFNS0:
+        CALL   PRFN                    ;print file name
+        POP    CX                      ;restore
+        POP    BX
+        RET
+; print file name pted to by HL
+PRFN:
+        MOV    CH,8                    ;8 chars
+        CALL   PRFNS1
+        MOV    AL,'.'
+        CALL   TTYPE
+        MOV    CH,3                    ;file type and fall thru
+PRFNS1:
+        MOV    AL,M                    ;get char
+        CALL   TTYPE
+        LAHF                           ;pt to next
+        INC    BX
+        SAHF
+        DEC    CH
+        JNZ    PRFNS1
+        RET
+
+; print filename  & tag in reverse video if at cursor
+AC@PRFN:
+IF     ENH@VID
+        CALL   CUR@VID                 ;set reverse video 
+        CALL   PRFN                    ;print file name
+        CMP    M,'*'                   ;is it tagged?
+        JNE    AC@RET
+        MOV    AL,M                    ;print tag
+        CALL   TTYPE
+AC@RET:
+        MOV    AL,' '                  ;*added -ken
+        CALL   TTYPE                   ;*added -ken
+        CALL   STD@VID
+        RET
+ENDIF  ;ENH@VID
+
+IF  NOT ENH@VID
+        CALL   PRFN
+        MOV    AL,M                    ;print tag
+        JMP    TTYPE
+ENDIF  ;NOT ENH@VID
+
+; print filename if not at  cursor
+NC@PRFN:
+        CMP    Byte Ptr .11[BX],'*'    ;is it tagged?
+        JNZ    STD                     ;use std video if not tagged
+        CALL   TAG@VID
+        JMPS   NO@STD
+STD:    
+        CALL   STD@VID
+NO@STD: 
+        CALL   PRFN                    ;print file name
+        MOV    AL,M
+        CALL   TTYPE
+        JMP    STD@VID
+
+; filename from 'ring' to 'sfcb'
+RINGFCB:
+        MOV    BX,Word Ptr RINGPOS     ;move name from ring to source 'fcb'
+        MOV    DX,(Offset S@FCB)       ;place to move filename and..
+        MOV    CH,12                   ;..amount to move.
+; move subroutine -- move b-reg # of bytes from hl-pair to de-pair
+MOVE:
+        MOV    AL,M                    ;get hl-pair referenced source byte
+        AND    AL,7FH                  ;strip cp/m 2.x attributes
+        MOV    SI,DX                   ;put to de-pair referenced destination
+        MOV    [SI],AL
+        LAHF                           ;fix pointers for next search
+        INC    BX
+        SAHF
+        LAHF
+        INC    DX
+        SAHF
+        DEC    CH
+        JNZ    MOVE
+        RET
+; initialize 'fcb' cp/m system fields (entry with hl-pair pointing to 'fcb')
+INITFCB:
+        MOV    CH,4                    ;fill ex, s1, s2, rc counters with zeros.
+INITLP:
+        MOV    M,0                     ;put zero (null) in memory
+        LAHF
+        INC    BX
+        SAHF
+        DEC    CH
+        JNZ    INITLP
+        RET
+; disk system reset -- login requested drive
+RESET:
+        MOV    CL,INQDISK              ;determine and..
+        INT    224                     ;..save..
+        MOV    Byte Ptr C@DR,AL        ;..current drive.
+        MOV    CL,RESETDK              ;reset system
+        INT    224
+        MOV    AL,Byte Ptr R@DR        ;make requested drive..
+SET@DR:
+        MOV    DL,AL                   ;..current.
+        MOV    CL,LOGIN
+        INT    224                     ;return to caller
+        RET
+; set/reset (or get) user area (call with binary user area in a-reg)
+SET@USR:
+        MOV    DL,AL                   ; 0 --> 0, 1 --> 1, etc.
+GET@USR:
+        MOV    CL,SGUSER
+        INT    224                     ;return to caller
+        RET
+; compare de-pair to hl-pair and set flags accordingly
+CMPDEHL:
+        MOV    AL,DH                   ;see if high bytes set flags
+        CMP    AL,BH
+        JZ     L_C31   
+        RET                            ;return if not equal
+L_C31:
+        MOV    AL,DL
+        CMP    AL,BL                   ;low bytes set flags instead
+        RET
+; shift hl-pair b-reg bits (-1) to right (divider routine)
+SHIFTLP:
+        DEC    CH
+        JNZ    L_C32
+        RET
+L_C32:
+        MOV    AL,BH
+        OR     AL,AL
+        RCR    AL,1
+        MOV    BH,AL
+        MOV    AL,BL
+        RCR    AL,1
+        MOV    BL,AL
+        JMPS   SHIFTLP
+; decimal pretty print (h-reg contains msb; l-reg, the lsb.)
+DECOUT:
+        MOV    AL,5                    ;set leading space count
+        MOV    Byte Ptr LDSP,AL
+DECOU1:
+        LAHF
+        XCHG   AL,AH
+        PUSH   AX
+        PUSH   CX
+        PUSH   DX
+        PUSH   BX
+        MOV    AL,Byte Ptr LDSP        ;count down
+        DEC    AL
+        MOV    Byte Ptr LDSP,AL
+        MOV    CX,-10                  ;radix
+        MOV    DX,-1
+DECOU2:
+        ADD    BX,CX                   ;sets..
+        INC    DX
+        JB     DECOU2                  ;..carry.       
+        MOV    CX,10
+        ADD    BX,CX
+        XCHG   BX,DX
+        MOV    AL,BH
+        OR     AL,BL
+        JZ     L_C33   
+        CALL   DECOU1                  ; (recursive)
+L_C33:
+        MOV    AL,Byte Ptr LDSP        ; any spaces?
+        OR     AL,AL                   ; 0=none
+        JZ     DECOU4
+        MOV    CH,AL                   ; count in B
+        MOV    AL,' '
+DECOU3:
+        CALL   TTYPE
+        DEC    CH
+        JNZ    DECOU3
+        XOR    AL,AL                   ;A=0
+        MOV    Byte Ptr LDSP,AL        ;set flag
+DECOU4:
+        MOV    AL,DL
+        ADD    AL,'0'                  ;make ascii
+        CALL   TTYPE
+        POP    BX
+        POP    DX
+        POP    CX
+        POP    AX
+        XCHG   AL,AH
+        SAHF
+        RET
+; determine free storage remaining on selected drive
+FRESTOR:
+        MOV    CL,INQDISK              ;determine current drive
+        INT    224                     ;returns 0 as a:, 1 as b:, etc.
+        INC    AL                      ;make 1 --> a:, 2 --> b:, etc.
+        MOV    Byte Ptr .FCB,AL
+        MOV    CL,GETPARM              ;current disk parameter block
+        INT    224
+        INC    BX                      ;bump to..
+        INC    BX
+        MOV    AL,ES:M                 ;..block shift factor.
+        MOV    Byte Ptr BSHIFTF,AL     ; 'bsh'
+        INC    BX                      ;bump to..
+        MOV    AL,ES:M                 ;..block mask.
+        MOV    Byte Ptr B@MASK,AL      ; 'blm'
+        INC    BX                      ;bump to..
+        INC    BX                      ;..get..
+        MOV    DL,ES:M                 ;..maximum block number..
+        INC    BX                      ;..double..
+        MOV    DH,ES:M                 ;..byte.
+        XCHG   BX,DX
+        MOV    Word Ptr B@MAX,BX       ; 'dsm'
+        MOV    CL,INQALC               ;address of cp/m allocation vector
+        INT    224
+        XCHG   BX,DX                   ;get its length
+        MOV    BX,Word Ptr B@MAX
+        INC    BX
+        MOV    CX,0                    ;initialize block count to zero
+GSPBYT:
+        PUSH   DX                      ;save allocation address
+        MOV    SI,DX
+        MOV    AL,ES:[SI]
+        MOV    DL,8                    ;set to process 8 bits (blocks)
+GSPLUP:
+        RCL    AL,1                    ;test bit
+        JB     NOT@FRE
+        INC    CX
+NOT@FRE:
+        MOV    DH,AL                   ;save bits
+        DEC    BX
+        MOV    AL,BL
+        OR     AL,BH
+        JZ     END@ALC                 ;quit if out of blocks
+        MOV    AL,DH                   ;restore bits
+        DEC    DL                      ;count down 8 bits
+        JNZ    GSPLUP                  ;branch to do another bit
+        POP    DX                      ;bump to next count..
+        INC    DX                      ;..of allocation vector.
+        JMPS   GSPBYT                  ;process it
+END@ALC:
+        POP    DX                      ;clear alloc vector pointer from stack
+        MOV    BL,CL                   ;copy # blocks to hl-pair
+        MOV    BH,CH
+        MOV    AL,Byte Ptr BSHIFTF     ;get block shift factor
+        SUB    AL,3                    ;convert from sectors to thousands (k)
+        JZ     PRT@FRE                 ;skip shifts if 1k blocks
+FREK@LP:
+        SHL    BX,1                    ;multiply blocks by k-bytes per block
+        DEC    AL                      ;multiply by 2, 4, 8, or 16.
+        JNZ    FREK@LP
+PRT@FRE:
+        MOV    Word Ptr DISKSP,BX      ;save disk space
+        RET
+;
+;  Print free space on disk
+;
+PRINT@FRE:
+        CALL   ERMSG                   ;position and set flags
+        DB     0
+        MOV    BX,Word Ptr DISKSP
+        CALL   DECOUT                  ; # of free k-bytes in hl-pair
+        CALL   ILPRT
+        DB     'K Bytes on Disk',0
+        RET
+;
+;
+;
+;
+;
+ZDNFIND:
+        PUSH   DX                      ; SAVE DE
+        MOV    Word Ptr DIRNAME,BX     ; SAVE DIRECTORY NAME AWAY
+        MOV    CL,INQDISK              ; SAVE CURRENT POSITION
+        INT    224
+        MOV    Byte Ptr DISK,AL
+        MOV    Byte Ptr T@DR,AL
+        MOV    DL,GET
+        CALL   GET@USR
+        MOV    Byte Ptr USER,AL
+        MOV    BX,Word Ptr DIRNAME     ; PT TO NAME
+        JMPS   SVDISK                  ; CHECK DU FORM FIRST
+;
+;  LOOK AT START OF DU: FORM
+;      ON ENTRY, HL PTS TO FIRST CHAR OF DIRECTORY NAME
+;
+SVDISK:
+        MOV    CL,Byte Ptr MDISK       ; GET MAX DISK
+;      INC     CL                      ; +1 FOR LATER COMPARE
+        MOV    AL,M                    ; GET DISK LETTER
+        CMP    AL,'A'                  ; DIGIT?
+        JB     USERCK                  ; IF NO DIGIT, MUST BE USER OR COLON
+        SUB    AL,'A'                  ; CONVERT TO NUMBER
+        CMP    AL,CL                   ; LIMIT?
+        JNAE   L_D3    
+        MOV    CL,MDRIVE
+        DEC    CL
+        CMP    CL,AL
+        JE     L_D3
+        JMP    DIRNXX                  ; NAME IF OUT OF LIMIT
+L_D3:
+        MOV    Byte Ptr DISK,AL        ; SAVE DISK
+        INC    BX                      ; PT TO NEXT CHAR
+;
+;  CHECK FOR USER
+;
+USERCK:
+        MOV    AL,M                    ; GET POSSIBLE USER NUMBER
+        CMP    AL,':'                  ; NO USER NUMBER
+        JZ     DIRNX                   ; EXIT IF SO
+        CMP    AL,' '                  ; NO USER NUMBER
+        JZ     DIRNX
+        OR     AL,AL
+        JZ     DIRNX
+        XOR    AL,AL                   ; ZERO USER NUMBER
+        MOV    CH,AL                   ; B=ACCUMULATOR FOR USER NUMBER
+USRLOOP:
+        MOV    AL,M                    ; GET DIGIT
+        INC    BX                      ; PT TO NEXT
+        CMP    AL,':'                  ; DONE?
+        JZ     USRDN
+        CMP    AL,' '                  ; DONE?
+        JZ     USRDN
+        SUB    AL,'0'                  ; CONVERT TO BINARY
+        JB     DIRNXX                  ; NAME IF USER NUMBER ERROR
+        CMP    AL,10
+        JNB    DIRNXX
+        MOV    CL,AL                   ; NEXT DIGIT IN C
+        MOV    AL,CH                   ; OLD NUMBER IN A
+        ADD    AL,AL                   ; *2
+        ADD    AL,AL                   ; *4
+        ADD    AL,CH                   ; *5
+        ADD    AL,AL                   ; *10
+        ADD    AL,CL                   ; *10+NEW DIGIT
+        MOV    CH,AL                   ; RESULT IN B
+        JMPS   USRLOOP
+USRDN:
+        MOV    AL,CH                   ; GET NEW USER NUMBER
+        CMP    AL,32                   ; WITHIN RANGE?
+        JNB    DIRNXX                  ; NAME IF OUT OF RANGE
+        MOV    Byte Ptr USER,AL        ; SAVE IN FLAG
+;
+;  VALID EXIT -- FOUND IT, SO LOAD BC AND EXIT FLAG; ON ENTRY, HL PTS TO :
+;
+DIRNX:
+        MOV    AL,Byte Ptr USER        ; RETURN USER IN C, DISK IN B
+        MOV    CL,AL
+        MOV    AL,Byte Ptr DISK
+        MOV    CH,AL
+        MOV    AL,0FFH                 ; SET NO ERROR
+        OR     AL,AL                   ; SET FLAGS
+        POP    DX                      ; RESTORE DE
+        RET
+;
+;  INVALID EXIT -- NOT FOUND OR ERROR
+;      NO VALID RETURN PARAMETERS (BC, HL)
+;
+DIRNERR:
+        XOR    AL,AL                   ; ERROR CODE
+        MOV    Byte Ptr DNLOAD,AL      ; SET LOAD FLAG TO NO LOAD
+        POP    DX                      ; RESTORE DE
+        RET
+DIRNXX:
+        POP    DX
+        XOR    AL,AL
+        RET
+
+;
+;  OPEN FILE FOR GET
+;
+FIOPEN:
+        PUSH   DX
+        MOV    CL,OPEN                 ; OPEN FILE
+        INT    224
+        POP    DX
+FIO1:
+        MOV    CL,READ                 ; READ FIRST BLOCK
+        INT    224
+        MOV    BX,TBUF                 ; SET PTR
+        MOV    Word Ptr FIPTR,BX
+        RET
+;
+;  GET NEXT BYTE FROM FILE
+;
+FGET:
+        PUSH   BX                      ; SAVE REGS
+        PUSH   DX
+        PUSH   CX
+        MOV    BX,Word Ptr FIPTR       ; PT TO NEXT CHAR
+        MOV    AL,M                    ; GET IT
+        MOV    Byte Ptr FICHAR,AL      ; SAVE IT
+        LAHF                           ; PT TO NEXT
+        INC    BX
+        SAHF
+        MOV    Word Ptr FIPTR,BX       ; SET PTR
+        MOV    DX,TBUF+80H             ; END OF BUFFER?
+        CALL   CMPDEHL                 ; COMPARE
+        JNZ    FGETD                   ; DONE IF NOT
+        MOV    DX,(Offset S@FCB)       ; PT TO FCB
+        CALL   FIO1                    ; READ BLOCK AND SET PTR
+        OR     AL,AL                   ; SET FLAG (NZ = ERROR)
+        JMPS   FGETD1
+FGETD:
+        XOR    AL,AL                   ; NO ERROR (Z)
+FGETD1:
+        POP    CX                      ; GET REGS
+        POP    DX
+        POP    BX
+        MOV    AL,Byte Ptr FICHAR      ; GET CHAR
+        RET
+; message routines
+; print VFILER banner
+BANNER:
+        CALL   CLS                     ;clear screen
+        MOV    BX,BANADR
+        CALL   GOTOXY
+        CALL   ILPRT                   ;print banner
+        DB     27,'b',10
+        DB     'FILER CP/M-86 (IBM-PC) Version '
+        DB     VERS/10+'0','.',(VERS MOD 10)+'0',27,'b',15
+        DB     0
+        RET
+; home the cursor
+CUR@FIRST:
+        MOV    BX,CURHOME              ; HOME ADDRESS
+        MOV    Word Ptr CURAT,BX       ; SET CURSOR POSITION
+        JMP    GOTOXY
+; last file position
+CUR@LAST:
+        MOV    BX,Word Ptr RINGPOS     ; ADVANCE
+        MOV    Word Ptr LOCPOS,BX      ; SET LOCAL POSITION
+CL0:
+        MOV    DX,13
+        LAHF
+        ADD    BX,DX
+        RCR    SI,1
+        SAHF
+        RCL    SI,1
+        XCHG   BX,DX
+        MOV    BX,Word Ptr LOCEND      ; END OF LOCAL RING?
+        CALL   CMPDEHL
+        JNZ    L_C34
+        RET
+L_C34:
+        XCHG   BX,DX                   ; NEW POSITION
+        MOV    Word Ptr LOCPOS,BX
+        PUSH   BX                      ; SAVE POSITION
+        CALL   CUR@NEXT                ; ADVANCE CURSOR
+        POP    BX                      ; GET POSITION
+        JMPS   CL0
+; advance the cursor
+CUR@NEXT:
+        MOV    BX,Word Ptr CURAT       ; COMPUTE NEW POSITION
+        MOV    AL,BL                   ; CHECK FOR NEW LINE
+        ADD    AL,19                   ; SIZE OF EACH ENTRY
+        CMP    AL,70
+        JNB    CN1                     ; ADVANCE TO NEXT LINE
+        MOV    BL,AL                   ; NEW POSITION
+        MOV    Word Ptr CURAT,BX
+        JMP    GOTOXY
+CN1:
+        MOV    AL,BH                   ; GET LINE
+        MOV    BX,CURHOME              ; GET COL
+        MOV    BH,AL                   ; SET LINE AND FALL GO TO CUR$DOWN
+        MOV    Word Ptr CURAT,BX
+        JMPS   CUR@DOWN
+; back up the cursor
+CUR@BACK:
+        MOV    BX,CURHOME              ; GET HOME
+        XCHG   BX,DX                   ; ... IN DE
+        MOV    BX,Word Ptr CURAT
+        CALL   CMPDEHL                 ; COMPARE
+        JZ     CUR@LAST                ; GOTO END IF LAST
+        MOV    AL,BL                   ; CHECK FOR FIRST COL
+        CMP    AL,DL
+        JZ     CB1
+        SUB    AL,19                   ; BACK UP ONE COL
+        MOV    BL,AL
+        MOV    Word Ptr CURAT,BX       ; NEW POS
+        JMP    GOTOXY
+CB1:
+        MOV    AL,DL                   ; GET HOME COL
+        ADD    AL,19*3                 ; GET LAST COL
+        MOV    BL,AL
+        DEC    BH                      ; PREV LINE
+        MOV    Word Ptr CURAT,BX
+        JMP    GOTOXY
+; move cursor down one line
+CUR@DOWN:
+        MOV    BX,CURHOME              ; GET HOME ADDRESS
+        MOV    CH,BH                   ; LINE IN B
+        MOV    BX,Word Ptr CURAT       ; GET CURRENT ADDRESS
+        INC    BH                      ; MOVE DOWN
+        MOV    AL,BH                   ; CHECK FOR TOO FAR
+        SUB    AL,CH
+        CMP    AL,EPS/4
+        JNB    CD1
+        MOV    Word Ptr CURAT,BX       ; OK, SO SET POSITION
+        JMP    GOTOXY
+CD1:
+        MOV    AL,BL                   ; GET COL
+        MOV    BX,CURHOME
+        MOV    BL,AL
+        MOV    Word Ptr CURAT,BX
+        JMP    GOTOXY
+; refresh screen
+REFRESH:
+        MOV    BX,Word Ptr CURAT       ; SAVE CURSOR AND RING POSITIONS
+        MOV    Word Ptr SCURAT,BX
+        MOV    BX,Word Ptr RINGPOS
+        MOV    Word Ptr SRINGPOS,BX
+        CALL   CLS                     ; CLEAR SCREEN
+        CALL   CUR@OFF                 ; TURN OFF TERM. CURSOR
+        CALL   BANNER                  ; PRINT BANNER
+        CALL   NEWPOS                  ; DISPLAY FILES
+        MOV    BX,CPMADR               ; COMMAND PROMPT MESSAGE
+        CALL   GOTOXY
+        CALL   ILPRT                   ; PROMPT WITH DRIVE PREFIX
+LOG@DU@MSG:
+        DB     '   :  '
+        DB     27,'b',10,'Command (? = Help)  :',27,'b',15,0
+        MOV    BX,SDMADR               ; SCREEN DIRECTORY MESSAGE
+        CALL   GOTOXY
+        CALL   ILPRT                   ; *commented out -km  
+        DB     0                       ; '[ Screen Directory ]',0
+        MOV    BX,FNADR                ; PT TO WHERE FILE NAME IS PRINTED
+        MOV    BL,1                    ; COL 1 FOR THIS MESSAGE
+        CALL   GOTOXY                  ; GO THERE
+        CALL   ILPRT
+        DB     'Current File:',0
+        MOV    BX,Word Ptr SCURAT      ; RESTORE CURSOR AND RING POSITIONS
+        MOV    Word Ptr CURAT,BX
+        MOV    BX,Word Ptr SRINGPOS
+        MOV    Word Ptr RINGPOS,BX
+        CALL   SETCUR                  ; RESTORE CURSOR ON SCREEN
+        CALL   CUR@ON                  ; TURN ON TERM. CURSOR
+        RET
+
+; refresh file display
+NEWPOS:
+        CALL   CUR@FIRST               ; POSITION CURSOR AT FIRST POSITION
+        MOV    BX,Word Ptr LOCBEG      ; PT TO FIRST FILE NAME
+        MOV    Word Ptr LOCPOS,BX      ; SAVE LOCAL POSITION
+NEWP1:
+        MOV    BX,Word Ptr LOCEND      ; AT END?
+        XCHG   BX,DX
+        MOV    BX,Word Ptr LOCPOS
+        CALL   CMPDEHL
+        JNZ    L_C35   
+        JMP    CUR@FIRST               ; POSITION AT FIRST ENTRY AND RETURN
+L_C35:
+        MOV    CH,4                    ; 4 SPACE
+        MOV    AL,' '
+T4:
+        CALL   TTYPE
+        DEC    CH
+        JNZ    T4
+        PUSH   BX                      ; SAVE CURRENT LOCAL POSITION IN RING
+        LAHF                           ; PT TO FILE NAME
+        INC    BX
+        SAHF
+        CALL   NC@PRFN                 ; PRINT FILE NAME
+        POP    BX                      ; GET CURRENT LOCAL POSITION
+        MOV    DX,13
+        LAHF
+        ADD    BX,DX
+        RCR    SI,1
+        SAHF
+        RCL    SI,1
+        MOV    Word Ptr LOCPOS,BX
+        CALL   CUR@NEXT                ; ADVANCE CURSOR
+        JMPS   NEWP1
+
+; position cursor at CURAT
+SETCUR:
+        MOV    BX,Word Ptr CURAT
+
+ IF     ENH@VID
+        ADD    BX,4                    ;advance 4 spaces
+        CALL   GOTOXY
+ ENDIF
+ IF  NOT ENH@VID
+        CALL   GOTOXY
+        CALL   ILPRT
+        DB     32,32,16,32,0                ;'--> ' *changed -km
+ ENDIF
+        MOV    BX,Word Ptr RINGPOS     ;pt to current file name
+        INC    BX                      ;pt to first char
+        CALL   AC@PRFN
+        RET
+
+; clear cursor
+CLRCUR:
+        MOV    BX,Word Ptr CURAT
+
+        IF     ENH@VID
+        ADD    BX,4                    ;advance 4 spaces
+        CALL   GOTOXY
+        ENDIF
+        IF  NOT ENH@VID
+        CALL   GOTOXY
+        CALL   ILPRT
+        DB     '    ',0
+        ENDIF
+
+        MOV    BX,Word Ptr RINGPOS     ;pt to current file name
+        INC    BX                      ;pt to first char
+        CALL   NC@PRFN                 ;print file name
+        RET
+
+; command prompt
+CPRMPT:
+        MOV    BX,CPADR                ; GET ADDRESS
+MPRINT:
+        PUSH   BX                      ; SAVE ADDRESS
+        CALL   GOTOXY
+        CALL   EREOL                   ; ERASE TO EOL
+        POP    BX                      ; GET ADDRESS
+        CALL   GOTOXY                  ; POSITION CURSOR
+        JMP    ILPRT                   ; PRINT MESSAGE AND RETURN
+
+; working message
+WORKMSG:
+        CALL   ERMSG
+        DB     'Working ...',0
+        RET
+; error message
+ERMSG:
+        MOV    AL,0FFH                 ; SET ERROR MESSAGE FLAG
+        MOV    Byte Ptr ERMFLG,AL
+        MOV    BX,ERADR                ; GET ADDRESS
+        JMPS   MPRINT
+; print file size info
+FSNOTE:
+        CALL   ERMSG                   ; USE THIS ROUTINE
+        DB     'File Size of ',0
+        RET
+; position for file size print
+ATFS:
+        MOV    BX,FSADR+13             ; POSITION FOR PRINT OF FILE SIZE
+        JMP    GOTOXY
+; clear error message
+ERCLR:
+        XOR    AL,AL                   ; CLEAR FLAG
+        MOV    Byte Ptr ERMFLG,AL
+        MOV    BX,ERADR                ; POSITION
+        CALL   GOTOXY
+        JMP    EREOL                   ; ERASE TO EOL
+; position at command prompt and clear it
+ATCMD:
+        MOV    BX,CPADR                ; POSITION
+        CALL   GOTOXY
+        CALL   EREOL                   ; CLEAR MESSAGE
+        MOV    BX,CPADR                ; REPOSITION
+        JMP    GOTOXY
+; position at bottom of screen and prompt for continuation
+
+BOTTOM:
+        MOV    BX,BOTADR               ; POSITION
+        CALL   GOTOXY
+        CALL   ILPRT
+        DB     CR,LF,'[End of file..]',0
+        JMP    KEYIN
+
+ENDHELP:
+        MOV    BX,BOTADR1               ; POSITION (bottom-1) 
+        CALL   GOTOXY
+        CALL   ILPRT
+        DB     cr,lf,' Press any key to return. ',0
+        JMP    KEYIN
+
+L_C36  EQU     $
+        DSEG
+        ORG    Offset L_C36
+
+;Intialized Storage
+
+CHR_LO      DB  0                       ; CHR_LO    *added -km
+CHR_HI      DB  0                       ; CHR_HI    *added -km
+
+HELPFLG        DB      0                ;is HELP available externally?  0=No
+
+HEADMSG        DB      'File: ',0
+
+DATE   DB      '      '
+
+;-------------------------------------------------------------------
+ IF     CLOCK
+        DATESTR DB  'MM/DD/YY  MM:MM:SS' ;date & time go here
+ ENDIF
+        DB     0
+
+MOREHELP RS     0
+        DB     'A'                     ;SET BY HELPCHK ROUTINE
+        DB     ':HELP FILER',0        ;HELP Command for further info
+HELPFCB RS      0
+        DB      0,'HELP    CMD'
+FILERCMD RS     0
+        DB     '!FILER '
+FILE@D  RS      0
+        DB     'x'
+FILE@U  RS      0
+        DB     'xx'
+        DB     ' W'                    ;WAIT option
+        DB     0
+JOKER  RS      0
+        DB     '???????????'           ; *.* equivalent
+FIRST@M RS     0
+        DB     FALSE                   ; 1st time thru in mass-copy mode
+MFLAG   RS     0
+        DB     TRUE                    ;multiple file copy flag --> 0 for mass copy
+TAG@TOT RS     0
+        DW     0                       ;summation of tagged file sizes
+CMDBUF  RS     0
+        DB     32,0                    ;command buffer maximum length, usage, and..
+
+; uninitialized data
+        RS     100                     ;..storage for buffer and local stack.
+STACK   RS     0
+        RS     2                       ;cp/m's stack pointer stored here
+B@MAX   RS     0
+        RS     2                       ;highest block number on drive
+B@MASK  RS     0
+        RS     1                       ;sec/blk - 1
+BSHIFTF RS     0
+        RS     1                       ; # of shifts to multiply by sec/blk
+BUF@PT  RS     0
+        RS     2                       ;copy buffer current pointer..
+BUFSTART RS    0
+        RS     2                       ;..and begin pointer.
+CANFLG  RS     0
+        RS     1                       ;no-file-found cancel flag
+C@DR    RS     0
+        RS     1                       ; 'current drive'
+CHARCNT RS     0
+        RS     1                       ;character count for tab expansion
+CON@LST RS     0
+        RS     1                       ;bdos function storage
+CRCTBL  RS     0
+        RS     512                     ;tables for 'crc' calculations
+CRCVAL  RS     0
+        RS     2                       ; 2-byte 'crc' value of working file and..
+CRCVAL2 RS     0
+        RS     2                       ;..of finished source read-file.
+C@U@A   RS     0
+        RS     1                       ; 'current user area'
+CURAT   RS     0
+        RS     2                       ;current cursor position
+D@FCB   RS     0
+        RS     33                      ;fcb for destination file/new name if rename
+DIRNAME RS     0
+        RS     2                       ;ptr to DIR prefix
+DISK    RS     0
+        RS     1                       ;selected disk for ZDNAME
+DISKSP  RS     0
+        RS     2                       ;space remaining on disk
+DNLOAD  RS     0
+        RS     1                       ;NAMES.DIR loaded flag
+DRLET   RS     0
+        RS     1                       ;scratch for drive letter
+ENTRY   RS     0
+        RS     11                      ;scratch for ZDNAME/ZDNFIND
+EOFLAG  RS     0
+        RS     1                       ;file copy loop 'eof' flag
+ERMFLG  RS     0
+        RS     1                       ;error message present flag
+FICHAR  RS     0
+        RS     1                       ;byte-oriented input char
+FIPTR   RS     0
+        RS     2                       ;byte-oriented input ptr
+FSDFLG  RS     0
+        RS     1                       ;display file size flag (yes/no)
+FS@FLG  RS     0
+        RS     1                       ;tag total versus file size flag
+LDSP    RS     0
+        RS     1                       ;leading space count for DECOUT
+LPSCNT  RS     0
+        RS     1                       ;lines-per-screen for 'view'
+LOCBEG  RS     0
+        RS     2                       ;local beginning of ring
+LOCEND  RS     0
+        RS     2                       ;local end of ring
+LOCPOS  RS     0
+        RS     2                       ;local ring position (temp)
+MAXDR   RS     0
+        RS     1                       ;max driver letter
+MDFLG   RS     0
+        RS     1                       ;mass delete verify flag
+O@USR   RS     0
+        RS     1                       ;store initial user area for exit
+R@DR    RS     0
+        RS     1                       ; 'requested drive'
+RCNT    RS     0
+        RS     2                       ; # of records in file and..
+REC@CNT RS     0
+        RS     2                       ;..currently in ram buffer.
+REC@MAX RS     0
+        RS     2                       ;maximum 128-byte record capacity of buffer
+RING    RS     0
+        RS     2                       ;ptr to beginning of ring
+RINGI   RS     0
+        RS     2                       ;ring sort pointer
+RINGJ   RS     0
+        RS     2                       ;another ring sort pointer
+RINGEND RS     0
+        RS     2                       ;current ring end pointer
+RINGPOS RS     0
+        RS     2                       ;current ring position in scan
+R@U@A   RS     0
+        RS     1                       ; 'requested user area'
+SCURAT  RS     0
+        RS     2                       ;save cursor position
+S@FCB   RS     0
+        RS     36                      ;fcb for source (random record) file
+SRINGPOS RS    0
+        RS     2                       ;save ring position
+T@DR    RS     0
+        RS     1                       ;temp disk
+TEST@RT RS     0
+        RS     1                       ;intermediate right-justify data
+T@U@A   RS     0
+        RS     1                       ;temp user
+T@UN@FG RS     0
+        RS     1                       ;tag/untag file summation switch
+USER    RS     0
+        RS     1                       ;temp user buffer
+VIEWFLG RS     0
+        RS     1                       ; 00h --> to list/punch else to crt 'view'
+Z@DR    RS     0
+        RS     1                       ;disk for ZDNAME
+Z@U@A   RS     0
+        RS     1                       ;user area for ZDNAME
+DATA_SEG RS    2                       ;program data segment
+PAGEFLG RS     1                       ;true for printing pages
+HEADFLG RS     1                       ;true for printing header
+LTPP1   RS     1                       ;modified lines per page
+MCFLG   RS     1                       ;mass copy verify flag
+
+
+
+; assembled 'com' and 'ram-loaded' file size (0c00h = 3k)
+COMFILE        EQU     ((Offset CMDBUF)+2)-256 ; 'prn' listing shows 'com'..
+ALAST  RS      1                       ; 1 for byte before BUFENTRY
+; even-page base of filename ring storage
+BUFENTRY EQU   (((Offset $)/100H)*100H)+100H
+        END                            ;..and loaded file size.
+

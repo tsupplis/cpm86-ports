@@ -1,4 +1,4 @@
-SUBDIRS=ansi2kr tinybas lispc yacc vtl2
+SUBDIRS=ansi2kr tinybas lispc yacc vtl2 filer
 
 all clean:
 	for d in $(SUBDIRS); do \
