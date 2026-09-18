@@ -51,11 +51,6 @@ BDOS	EQU	0005H
 CONSTAT	EQU	0BH		; Console status
 CONIN	EQU	01H		; Console input
 CONOUT	EQU	02H		; Console output
-SETDMA	EQU	26		; Set DMA address
-OPEN	EQU	15		; Open file
-READ	EQU	20		; Read sequential record
-FCB	EQU	05CH		; Default FCB
-DMA	EQU	080H		; Default DMA buffer
 bufsiz	EQU	73		; Size of input buffer
 brkpnt	EQU	0000H		; Address of RST 0
 
@@ -897,38 +892,6 @@ done:	POP	B
 	POP	H
 	RET
 
-;--------------------------------
-; Refill script buffer from file (not yet called).
-
-scrrfl:	LXI	D,DMA
-	MVI	C,SETDMA
-	CALL	BDOS
-	LXI	D,FCB
-	MVI	C,READ
-	CALL	BDOS
-	ORA	A
-	JNZ	screof
-	LXI	H,DMA
-	LXI	D,scrbuf
-	MVI	B,80H
-scrcpy:	MOV	A,M
-	STAX	D
-	INX	H
-	INX	D
-	DCR	B
-	JNZ	scrcpy
-	MVI	A,0
-	STA	scriptptr
-	MVI	A,80H
-	STA	scriptlen
-	RET
-
-screof:	MVI	A,0
-	STA	scriptflg
-	STA	scriptptr
-	STA	scriptlen
-	RET
-
 vars:	DS	62		; @, A - Z
 number:	DS	4
 exclam:	DS	4		; !
@@ -946,10 +909,6 @@ valvar:	DS	12
 decbuf:	DS	4+1
 delim:	DS	1
 linbuf:	DS	bufsiz
-scriptflg:	DB	0
-scriptptr:	DB	0
-scriptlen:	DB	0
-scrbuf:	DS	128
 
 prgm	EQU	$
 
