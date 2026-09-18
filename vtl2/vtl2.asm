@@ -898,6 +898,48 @@ done:	POP	B
 	RET
 
 ;--------------------------------
+; Get next char from script file if active, else console (not yet called).
+
+getchr:	LDA	scriptflg
+	ORA	A
+	JZ	inch
+	CALL	scrget
+	RET
+
+scrget:	LDA	scriptptr
+	MOV	B,A
+	LDA	scriptlen
+	CMP	B
+	JNZ	scrbyt
+	CALL	scrrfl
+	LDA	scriptflg
+	ORA	A
+	JZ	inch
+scrbyt:	LXI	H,scrbuf
+	LDA	scriptptr
+	MOV	E,A
+	MVI	D,0
+	DAD	D
+	MOV	A,M
+	CPI	lf
+	JNZ	scrnlf
+	LDA	scriptptr
+	INR	A
+	STA	scriptptr
+	JMP	scrget
+scrnlf:	CPI	1AH
+	JZ	scrend
+	PUSH	PSW
+	LDA	scriptptr
+	INR	A
+	STA	scriptptr
+	POP	PSW
+	RET
+
+scrend:	CALL	screof
+	JMP	inch
+
+;--------------------------------
 ; Open script file from default FCB, if a name is present (not yet called).
 
 scrini:	MVI	A,0
