@@ -11,7 +11,7 @@ Used as a soak testing and source for https://github.com/tsupplis/cpm86-crossdev
 | ansi2kr | ANSI C to K&R C converter for BDS C and MSX-C | masakioba / upstream ansi2kr sources | BSD 2-Clause |
 | lispc | Minimal Lisp interpreter written in C | Johan Fjeldtvedt | MIT |
 | tinybas | Tiny BASIC interpreter | Classic Tiny BASIC sources | Public domain / original terms |
-| vtl2 | VTL-2 interpreter port for CP/M, just for fun using xlt86 | MITS VTL-2 source, adapted for CP/M | Original upstream / source-specific terms |
+| vtl2 | VTL-2 interpreter port for CP/M, just for fun using xlt86, serves as a regression test for the translator | MITS VTL-2 source, adapted for CP/M | Original upstream / source-specific terms |
 | xlisp | Lisp interpreter and runtime | David Betz | XLISP-style open-source terms |
 | yacc | YACC-compatible parser generator | RetroBSD / original yacc sources | BSD-style |
 

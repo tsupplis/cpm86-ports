@@ -25,6 +25,8 @@ vtl2.hex: vtl2.asm
 vtl2.a86: vtl2.asm
 	$(XLT86) $(basename $<)
 
+test:
+	sh test.sh
 
 clean:
 	rm -f vtl2.com vtl2.cmd vtl2.hex vtl2.h86 vtl2.prn \

@@ -78,6 +78,11 @@ start:	LHLD	BDOS+1		; Get end of TPA
 	MVI	L,0		; Clear lower part
 	SPHL			; Initialize stack pointer
 	CALL	scrini		; Optional file input from default FCB
+	LDA	skipok		; A loaded script suppresses this prompt once
+	ORA	A
+	MVI	A,0
+	STA	skipok
+	JNZ	loop
 	XRA	A		; Initialize delimiter (after scrini, which clobbers A)
 	LXI	H,okm		; Point to "OK" prompt
 	CALL	strng		; Display it on terminal
@@ -990,6 +995,7 @@ scrini:	LDA	scrdid		; Already initialized once?
 	JZ	scrdon
 	MVI	A,1
 	STA	scriptflg
+	STA	skipok
 scrdon:	RET
 
 ;--------------------------------
@@ -1042,6 +1048,7 @@ scriptflg:	DB	0
 scriptptr:	DB	0
 scriptlen:	DB	0
 scrdid:	DB	0
+skipok:	DB	0
 
 scrbuf:	DS	128
 decbuf:	DS	4+1
