@@ -1,6 +1,7 @@
 
-             TITLE  'FILER CP/M-86 (IBM-PC) VERSION 1.3'
+             TITLE  'FILER CP/M-86 (IBM-PC) VERSION 1.4'
 ;
+; DATE 18/09/26 Fix Colour, Keyboard on BDOS for CCP/M-86 support
 ; DATE 05/01/98 - Ken Mauro
 ;               - Patched for IBM-PC compatibles. 
 ;               - some key & screen display changes. (see help screen)
@@ -61,7 +62,7 @@
 ; Starting Definitions
 
 
-VERS   EQU     13                      ;version number
+VERS   EQU     14                      ;version number
 
 M      EQU     Byte Ptr 0[BX]
 
@@ -993,6 +994,10 @@ CTABLE  DB     CTRLE                   ;system cursor positioning
         DW     (Offset LSTFILE)        ;ctrl-p to print     *added -km
         DB     CTRLS
         DW     (Offset REVERSE)
+        DB     LF                      ;PgDn sends a bare line feed
+        DW     (Offset JUMPB)
+        DB     1AH                     ;End sends a bare ctrl-Z
+        DW     (Offset FORWARD)
         DB     '+'                     ;jump forward
         DW     (Offset JUMPF)
         DB     '-'                     ;jump backward
@@ -3034,31 +3039,52 @@ CST:   ;Console status
 
 CIN:   ;Input from console - no echo   (getchar)
         PUSH   DX
-        PUSH    BX
+        PUSH   BX
+        PUSH   CX
 
-CIN0:   MOV     ah,0            ;*changed IBM-PC BiosKey 
-        INT     16h
-        
-       ;MOV     DL,0FFH         ; *changed  CP/M Bdos to BiosKey 
-       ;MOV     CL,1            ; *changed  DIRCON to CONIN 
-       ;INT     224
-
+; Concurrent CP/M traps the PC BIOS keyboard interrupt, so read through the
+; BDOS. Cursor keys then arrive as VT52 escape sequences instead of scan
+; codes, so map them back to the codes FTABLE expects. Console status is not
+; dependable here, so the byte after ESC is always read; ESC twice still quits.
+        CALL    CINRAW
+        CMP     AL,ESC
+        JNZ     CIN3                    ;ordinary key
+        CALL    CINRAW                  ;second byte selects the cursor key
+        MOV     BX,(Offset ESCTAB)
+CIN1:
+        MOV     AH,M
+        OR      AH,AH
+        JZ      CIN5                    ;not a cursor key, so ESC as typed
+        CMP     AH,AL
+        JZ      CIN2
+        INC     BX
+        INC     BX
+        JMPS    CIN1
+CIN2:
+        INC     BX
+        MOV     AH,M                    ;scan code for the FTABLE lookup
+        MOV     AL,0
+        JMPS    CIN4
+CIN5:
+        MOV     AL,ESC
+CIN3:
+        MOV     AH,0
+CIN4:
         MOV     Byte Ptr CHR_LO, al ; ah=0      if fkey or keypad  
         MOV     Byte Ptr CHR_HI, ah ; ah=chrin  if fkey or keybad  
 
-       ;OR      AL,AL            ; *commented out
-       ;JZ      CIN1             ; *changed was JZ CIN0
-
+        POP     CX
         POP     BX
         POP     DX
         RET
 
-;*changed *added -km new routine
-
-CIN1:   
-        JZ      CIN0
-        JNZ     CIN0
-
+CINRAW:                                 ;wait for one byte, no echo
+        MOV     DL,0FFH
+        MOV     CL,DIRCON
+        INT     224
+        OR      AL,AL
+        JZ      CINRAW
+        RET
 
 ; output 'crlf' to printer
 LCRLF:
@@ -3878,6 +3904,21 @@ L_C36  EQU     $
 
 CHR_LO      DB  0                       ; CHR_LO    *added -km
 CHR_HI      DB  0                       ; CHR_HI    *added -km
+
+; VT52 sequence letter -> the scan code FTABLE was written against
+ESCTAB  DB     'A'
+        DB     ARROW@UP
+        DB     'B'
+        DB     ARROW@DOWN
+        DB     'C'
+        DB     ARROW@RIGHT
+        DB     'D'
+        DB     ARROW@LEFT
+        DB     'H'
+        DB     HOME@KEY
+        DB     'I'
+        DB     PG@UP
+        DB     0                        ;end of table
 
 HELPFLG        DB      0                ;is HELP available externally?  0=No
 
