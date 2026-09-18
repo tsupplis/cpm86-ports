@@ -8,7 +8,7 @@ TARGET=vtl2
 
 all: vtl2.cmd vtl2.com
 
-vtl2.h86: vtl2.asm
+vtl2.h86: vtl2.a86
 	unix2dos vtl2.asm
 	$(ASM86) $(basename $<)
 

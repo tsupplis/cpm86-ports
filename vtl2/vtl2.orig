@@ -912,4 +912,4 @@ linbuf:	DS	bufsiz
 
 prgm	EQU	$
 
-	END
+	END	begin

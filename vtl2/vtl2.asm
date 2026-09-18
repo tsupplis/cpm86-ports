@@ -28,6 +28,7 @@
 
 ctrlC	EQU	03H		; Abort key
 backs	EQU	08H		; Backspace
+rubout	EQU	7FH		; DEL, sent by most terminals' Backspace key
 lf	EQU	0AH		; Line Feed
 cr	EQU	0DH		; Carriage Return
 quote	EQU	22H		; Surrounds strings
@@ -742,6 +743,7 @@ pwrs10:	DW	10000
 	DW	  100
 	DW	   10
 	DW	    1
+	DB	7EH		; prnt2 end marker; was the MOV A,M opcode of tstn
 
 ;--------------------------------
 ; Test if it is an ASCII decimal number character.
@@ -819,7 +821,8 @@ inln:	LXI	H,linbuf+1	; Point to first char in line buffer
 inln5:	DCX	H		; Point before the first char
 	MOV	A,L
 	CPI	(linbuf-1) AND 0FFH	; Is it the end of the line?
-	JZ	newlin		; Yes: Start a new line
+	JNZ	inln2		; No: Get another char
+	INX	H		; Rubout on an empty line: stay where we are
 
 ; Not at end of line: Get another char, and check it.
 
@@ -828,6 +831,8 @@ inln2:	CALL	getchr		; Input another char (console or script)
 	MOV	M,A
 	CPI	backs		; Backspace to erase a char?
 	JZ	inln5		; Yes: Check if we erased everything
+	CPI	rubout		; Terminals usually send DEL for Backspace
+	JZ	inln5
 
 ; No: Check if the user had ended inputting a line.
 
