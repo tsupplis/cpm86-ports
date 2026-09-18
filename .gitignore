@@ -4,6 +4,9 @@
 **/.D*
 **/*.log
 **/*.cmd
+**/*.h86
+**/*.hex
+**/*.com
 **/*.lib
 **/.*.swp
 **/*.obj
@@ -19,3 +22,5 @@
 ansi2kr/ansi2kr
 .vscode
 **/push
+**/.*.swp
+**/.D*
