@@ -1,12 +1,13 @@
 AS=aztec42_as
 ACC=aztec42_cc
 AR=aztec42_lib
-CFLAGS=-I. -B +0 -D__CPM86__ 
+CFLAGS=-I. -B +0 -D__CPM86__
 STRIP=aztec42_sqz
 LDFLAGS=-lc86
 LD=aztec42_link
 LINK86=pcdev_linkcmd
 RASM86=pcdev_rasm86
+HOST_CFLAGS=-Wno-deprecated-non-prototype
 
 BINARIES=ansi2kr.cmd
 
@@ -15,10 +16,10 @@ all: binaries ansi2kr
 binaries: $(BINARIES) 
 
 ansi2kr: ansi2krn.o
-	$(CC) -O2 -o $@ $<
+	$(CC) $(HOST_CFLAGS) -O2 -o $@ $<
 
 ansi2krn.o: ansi2kr.c
-	$(CC) -O2 -c -o $@ $<
+	$(CC) $(HOST_CFLAGS) -O2 -c -o $@ $<
 
 ansi2kr.cmd: ansi2kr.o
 	$(LD) -o $@ $< $(LDFLAGS)
