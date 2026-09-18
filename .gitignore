@@ -1,3 +1,4 @@
+rom
 **/*.lock
 **/*.lha
 **/*.zip
@@ -15,6 +16,8 @@
 **/dostest.img
 **/cpmhd.img
 **/cpm86*.img
+**/ccpm86*.img
+**/cpmbase.img
 **/cpmtest.img
 **/*.sym
 **/*.lst
