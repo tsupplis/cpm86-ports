@@ -18,9 +18,11 @@
 **/cpmtest.img
 **/*.sym
 **/*.lst
+**/*.prn
 **/*.map
 ansi2kr/ansi2kr
 .vscode
 **/push
 **/.*.swp
 **/.D*
+vtl2/*.a86
