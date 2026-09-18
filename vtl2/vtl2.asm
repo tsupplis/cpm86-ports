@@ -76,7 +76,8 @@ begin:	LXI	H,prgm		; Initialize SV for next byte of
 start:	LHLD	BDOS+1		; Get end of TPA
 	MVI	L,0		; Clear lower part
 	SPHL			; Initialize stack pointer
-	XRA	A		; Initialize delimiter
+	CALL	scrini		; Optional file input from default FCB
+	XRA	A		; Initialize delimiter (after scrini, which clobbers A)
 	LXI	H,okm		; Point to "OK" prompt
 	CALL	strng		; Display it on terminal
 
@@ -838,6 +839,9 @@ inln2:	CALL	getchr		; Input another char (console or script)
 	XRA	A		; Mark end of line with a 00H
 	MOV	M,A
 	LXI	H,linbuf	; Why?
+	LDA	scriptflg	; Script input has no echoed CR to complete,
+	ORA	A
+	RNZ			;   so the LF would leave a blank line
 	JMP	prlf		; It was CR: add LF
 
 ;--------------------------------
@@ -898,12 +902,23 @@ done:	POP	B
 	RET
 
 ;--------------------------------
-; Get next char from script file if active, else console (not yet called).
+; Get next char from script file if active, else console.
 
-getchr:	LDA	scriptflg
+; Caller does MOV M,A with HL pointing into linbuf, so this must preserve
+; HL/DE/BC exactly like inch does.
+
+getchr:	PUSH	H
+	PUSH	D
+	PUSH	B
+	LDA	scriptflg
 	ORA	A
-	JZ	inch
+	JZ	getcon
 	CALL	scrget
+	JMP	getdon
+getcon:	CALL	inch
+getdon:	POP	B
+	POP	D
+	POP	H
 	RET
 
 scrget:	LDA	scriptptr
@@ -921,6 +936,7 @@ scrbyt:	LXI	H,scrbuf
 	MVI	D,0
 	DAD	D
 	MOV	A,M
+	ANI	7FH		; Mask high bit, same as inch does for console input
 	CPI	lf
 	JNZ	scrnlf
 	LDA	scriptptr
@@ -940,12 +956,22 @@ scrend:	CALL	screof
 	JMP	inch
 
 ;--------------------------------
-; Open script file from default FCB, if a name is present (not yet called).
+; Open script file from default FCB, if a name is present.
+; Runs only once: `start` is re-entered on every REPL bounce, but the
+; script file must be opened exactly once, at true cold start.
 
-scrini:	MVI	A,0
+scrini:	LDA	scrdid		; Already initialized once?
+	ORA	A
+	RNZ			; Yes: leave scriptflg/ptr/len untouched
+	MVI	A,1
+	STA	scrdid
+	MVI	A,0
 	STA	scriptflg
 	STA	scriptptr
 	STA	scriptlen
+	LDA	0080H		; Command tail length (0 = no argument given)
+	ORA	A
+	RZ			; No argument at all: skip file logic entirely
 	LXI	H,FCB+1
 	MOV	A,M
 	ORA	A
@@ -962,7 +988,7 @@ scrini:	MVI	A,0
 scrdon:	RET
 
 ;--------------------------------
-; Refill script buffer from file (not yet called).
+; Refill script buffer from file.
 
 scrrfl:	LXI	D,DMA
 	MVI	C,SETDMA
@@ -1007,13 +1033,15 @@ linumb:	DS	2
 curent:	DS	2
 valvar:	DS	12
 
-decbuf:	DS	4+1
-delim:	DS	1
-linbuf:	DS	bufsiz
 scriptflg:	DB	0
 scriptptr:	DB	0
 scriptlen:	DB	0
+scrdid:	DB	0
+
 scrbuf:	DS	128
+decbuf:	DS	4+1
+delim:	DS	1
+linbuf:	DS	bufsiz
 
 prgm	EQU	$
 
