@@ -898,6 +898,28 @@ done:	POP	B
 	RET
 
 ;--------------------------------
+; Open script file from default FCB, if a name is present (not yet called).
+
+scrini:	MVI	A,0
+	STA	scriptflg
+	STA	scriptptr
+	STA	scriptlen
+	LXI	H,FCB+1
+	MOV	A,M
+	ORA	A
+	JZ	scrdon
+	CPI	' '
+	JZ	scrdon
+	LXI	D,FCB
+	MVI	C,OPEN
+	CALL	BDOS
+	CPI	0FFH
+	JZ	scrdon
+	MVI	A,1
+	STA	scriptflg
+scrdon:	RET
+
+;--------------------------------
 ; Refill script buffer from file (not yet called).
 
 scrrfl:	LXI	D,DMA
