@@ -822,7 +822,7 @@ inln5:	DCX	H		; Point before the first char
 
 ; Not at end of line: Get another char, and check it.
 
-inln2:	CALL	inch		; Input another char
+inln2:	CALL	getchr		; Input another char (console or script)
 
 	MOV	M,A
 	CPI	backs		; Backspace to erase a char?
