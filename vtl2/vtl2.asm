@@ -16,8 +16,7 @@
 ; - moved variable storage from predefined addresses after code,
 ;   requiring minor change to convp
 ; - modified decimal print routine to deal with powers of ten table
-;   where low byte comes before high byte
-
+	CPI ' '
 ; Tips
 ; - to return to CP/M type ">=<return>"
 ; - to delete the user program type "&=1353<return>"
@@ -26,34 +25,34 @@
 ;--------------------------------
 ; ASCII characters used (ASR-33 Teletype).
 
+	CALL script_refill
 ctrlC	EQU	03H		; Abort key
 backs	EQU	08H		; Backspace
 lf	EQU	0AH		; Line Feed
-cr	EQU	0DH		; Carriage Return
-quote	EQU	22H		; Surrounds strings
-dolar	EQU	24H		; Dollar
-Lparen	EQU	28H		; Left	parenthesis
-Rparen	EQU	29H		; Right parenthesis
-star	EQU	2AH		; Multiplication
-plus	EQU	2BH		; Addition
-minus	EQU	2DH		; Subtraction
-slash	EQU	2FH		; Division
-zero	EQU	30H		; Number zero
-colon	EQU	3AH		; Start of array statement
-semicol EQU	3BH		; Semicolon after PRINT
-equal	EQU	3DH		; Equal sign
-greatR	EQU	3EH		; Greater sign
-quest	EQU	3FH		; Question mark
-atsign	EQU	40H		; Discard line
-
-; CP/M constants
-BDOS	EQU	0005H
-CONSTAT	EQU	0BH		; Console status
-CONIN	EQU	01H		; Console input
-CONOUT	EQU	02H		; Console output
+	LDA scriptptr
+	MOV B,A
+	LDA scriptlen
+	CMP B
+	JZ script_refill
+	LXI H,scrbuf
+	LDA scriptptr
+	MOV E,A
+	MVI D,0
+	DAD D
+	MOV A,M
+	PUSH PSW
+	LDA scriptptr
+	INR A
+	STA scriptptr
+	POP PSW
+	RET
+OPEN	EQU	15		; Open file
+READ	EQU	20		; Read sequential record
+CLOSE	EQU	16		; Close file
+FCB	EQU	05CH		; Default FCB
+DMA	EQU	080H		; Default DMA buffer
 bufsiz	EQU	73		; Size of input buffer
 brkpnt	EQU	0000H		; Address of RST 0
-
 ;--------------------------------
 ;	User program
 ;--------------------------------
@@ -65,13 +64,14 @@ begin:	LXI	H,prgm		; Initialize SV for next byte of
 ; Can also restart here (0106) to keep user program
 	LHLD	BDOS+1		; Get end of TPA
 	LXI	D,0FC00H
-	DAD	D		; Subtract space for stack
-	SHLD	asterix		; Store in SV for memory size in bytes
-
+	LXI H,DMA
+	LXI D,scrbuf
+	MVI B,80H
 start:	LHLD	BDOS+1		; Get end of TPA
 	MVI	L,0		; Clear lower part
 	SPHL			; Initialize stack pointer
 	XRA	A		; Initialize delimiter
+	CALL	script_init	; Optional file input from default FCB
 	LXI	H,okm		; Point to "OK" prompt
 	CALL	strng		; Display it on terminal
 
@@ -79,9 +79,8 @@ start:	LHLD	BDOS+1		; Get end of TPA
 
 loop:	LXI	H,0000H		; = 0
 	SHLD	dollar		; Initialize char ptr
-	CALL	cvtln		; Was a line number inputted?
 
-	JNC	stmnt		; 0: List (display) user program statements
+	CALL	cvtln		; Was a line number inputted?
 
 	CALL	exec		; No: Execute direct statement
 
@@ -817,7 +816,7 @@ inln5:	DCX	H		; Point before the first char
 
 ; Not at end of line: Get another char, and check it.
 
-inln2:	CALL	inch		; Input another char
+inln2:	CALL	getchr		; Input another char (console or script)
 
 	MOV	M,A
 	CPI	backs		; Backspace to erase a char?
@@ -836,7 +835,94 @@ inln2:	CALL	inch		; Input another char
 	JMP	prlf		; It was CR: add LF
 
 ;--------------------------------
+getchr:	LDA	scriptflg
+	ORA	A
+	JZ	getcons
+	CALL	scriptch
+	RET
 
+getcons:	CALL	inch
+	RET
+
+script_init:
+	MVI	A,0
+	STA	scriptflg
+	STA	scriptptr
+	STA	scriptlen
+	LXI	H,FCB
+	MOV	A,M
+	ORA	A
+	JZ	scrdone
+	MOV	A,M
+	CPI	' '
+	JZ	scrdone
+	LXI	D,FCB
+	MVI	C,OPEN
+	CALL	BDOS
+	CPI	0FFH
+	JZ	scrdone
+	MVI	A,1
+	STA	scriptflg
+scrdone:	RET
+
+scriptch:
+	LDA	scriptlen
+	MOV	B,A
+	LDA	scriptptr
+	CMP	B
+	JC	script_byte
+	CALL	script_refill
+	LDA	scriptptr
+	MOV	B,A
+	LDA	scriptlen
+	CMP	B
+	JZ	script_eof
+script_byte:
+	LXI	H,scrbuf
+	LDA	scriptptr
+	MOV	E,A
+	MVI	D,0
+	DAD	D
+	MOV	A,M
+	INR	A		; dummy to keep pointer moving
+	LDA	scriptptr
+	INR	A
+	STA	scriptptr
+	RET
+
+script_eof:
+	MVI	A,0
+	STA	scriptflg
+	MVI	A,0
+	STA	scriptptr
+	STA	scriptlen
+	MVI	A,0
+	RET
+
+script_refill:
+	LXI	D,DMA
+	MVI	C,SETDMA
+	CALL	BDOS
+	LXI	D,FCB
+	MVI	C,READ
+	CALL	BDOS
+	ORA	A
+	JNZ	script_eof
+	LXI	H,scrbuf
+	LXI	D,DMA
+	MVI	B,80H
+script_copy:
+	MOV	A,M
+	STAX	D
+	INX	H
+	INX	D
+	DCR	B
+	JNZ	script_copy
+	MVI	A,0
+	STA	scriptptr
+	MVI	A,80H
+	STA	scriptlen
+	RET
 quote2: INX	H		; Skip beginning quote
 
 strng:	CALL	strtmsg		; Proceed start of string
@@ -909,6 +995,10 @@ valvar:	DS	12
 decbuf:	DS	4+1
 delim:	DS	1
 linbuf:	DS	bufsiz
+scriptflg:	DB	0
+scriptptr:	DB	0
+scriptlen:	DB	0
+scrbuf:	DS	128
 
 prgm	EQU	$
 
