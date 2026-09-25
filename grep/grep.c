@@ -1,0 +1,627 @@
+/*
+ * grep -- print lines matching (or not matching) a pattern
+ *
+ *  status returns:
+ *      0 - ok, and some matches
+ *      1 - ok, but no matches
+ *      2 - some error
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <ctype.h>
+
+#define CBRA    1
+#define CCHR    2
+#define CDOT    4
+#define CCL 6
+#define NCCL    8
+#define CDOL    10
+#define CEOF    11
+#define CKET    12
+#define CBRC    14
+#define CLET    15
+#define CBACK   18
+
+#define STAR    01
+
+#define LBSIZE  BUFSIZ
+#define ESIZE   256
+#define NBRA    9
+
+void    compile(char *);
+void    execute(char *);
+int     advance(char *, char *);
+void    succeed(char *);
+int     ecmp(char *, char *, int);
+void    errexit(char *, char *);
+void    casefold(char *);
+void    usage(int);
+
+char    expbuf[ESIZE];
+long    lnum;
+char    linebuf[LBSIZE+1];
+char    ybuf[ESIZE];
+char    cfbuf[ESIZE];
+int bflag;
+int lflag;
+int nflag;
+int cflag;
+int vflag;
+int nfile;
+int hflag   = 1;
+int sflag;
+int yflag;
+int wflag;
+int retcode = 0;
+int circf;
+int blkno;
+long    tln;
+int nsucc;
+char    *braslist[NBRA];
+char    *braelist[NBRA];
+char    bittab[] = {
+    1,
+    2,
+    4,
+    8,
+    16,
+    32,
+    64,
+    128
+};
+
+int
+main(argc, argv)
+int argc;
+char **argv;
+{
+    int c;
+
+    while (--argc > 0 && (++argv)[0][0]=='-') {
+        /* the CP/M-86 CCP folds the command tail, so accept either case */
+        c = argv[0][1];
+        if (c >= 'A' && c <= 'Z')
+            c += 'a' - 'A';
+        switch (c) {
+
+        case 'i':
+        case 'y':
+            yflag++;
+            continue;
+
+        case 'w':
+            wflag++;
+            continue;
+
+        case 'h':
+            hflag = 0;
+            continue;
+
+        case 's':
+            sflag++;
+            continue;
+
+        case 'v':
+            vflag++;
+            continue;
+
+        case 'b':
+            bflag++;
+            continue;
+
+        case 'l':
+            lflag++;
+            continue;
+
+        case 'c':
+            cflag++;
+            continue;
+
+        case 'n':
+            nflag++;
+            continue;
+
+        case '?':
+            usage(0);
+            continue;
+
+        case 'e':
+            --argc;
+            ++argv;
+            goto out;
+
+        default:
+            errexit("grep: unknown flag\n", (char *)NULL);
+            continue;
+        }
+    }
+out:
+    if (argc<=0)
+        usage(2);
+    casefold(*argv);
+    *argv = cfbuf;
+    if (yflag) {
+        register char *p, *s;
+        for (s = ybuf, p = *argv; *p; ) {
+            if (*p == '\\') {
+                *s++ = *p++;
+                if (*p)
+                    *s++ = *p++;
+            } else if (*p == '[') {
+                while (*p != '\0' && *p != ']')
+                    *s++ = *p++;
+            } else if (islower(*p)) {
+                *s++ = '[';
+                *s++ = toupper(*p);
+                *s++ = *p++;
+                *s++ = ']';
+            } else
+                *s++ = *p++;
+            if (s >= ybuf+ESIZE-5)
+                errexit("grep: argument too long\n", (char *)NULL);
+        }
+        *s = '\0';
+        *argv = ybuf;
+    }
+    compile(*argv);
+    nfile = --argc;
+    if (argc<=0) {
+        if (lflag)
+            exit(1);
+        execute((char *)NULL);
+    } else while (--argc >= 0) {
+        argv++;
+        execute(*argv);
+    }
+    exit(retcode != 0 ? retcode : nsucc == 0);
+}
+
+void
+compile(astr)
+char *astr;
+{
+    register int c;
+    register char *ep, *sp;
+    char *cstart;
+    char *lastep;
+    int cclcnt;
+    char bracket[NBRA], *bracketp;
+    int closed;
+    char numbra;
+    char neg;
+
+    ep = expbuf;
+    sp = astr;
+    lastep = 0;
+    bracketp = bracket;
+    closed = numbra = 0;
+    if (*sp == '^') {
+        circf++;
+        sp++;
+    }
+    if (wflag)
+        *ep++ = CBRC;
+    for (;;) {
+        if (ep >= &expbuf[ESIZE])
+            goto cerror;
+        if ((c = *sp++) != '*')
+            lastep = ep;
+        switch (c) {
+
+        case '\0':
+            if (wflag)
+                *ep++ = CLET;
+            *ep++ = CEOF;
+            return;
+
+        case '.':
+            *ep++ = CDOT;
+            continue;
+
+        case '*':
+            if (lastep==0 || *lastep==CBRA || *lastep==CKET ||
+                *lastep == CBRC || *lastep == CLET)
+                goto defchar;
+            *lastep |= STAR;
+            continue;
+
+        case '$':
+            if (*sp != '\0')
+                goto defchar;
+            *ep++ = CDOL;
+            continue;
+
+        case '[':
+            if(&ep[17] >= &expbuf[ESIZE])
+                goto cerror;
+            *ep++ = CCL;
+            neg = 0;
+            if((c = *sp++) == '^') {
+                neg = 1;
+                c = *sp++;
+            }
+            cstart = sp;
+            do {
+                if (c=='\0')
+                    goto cerror;
+                if (c=='-' && sp>cstart && *sp!=']') {
+                    for (c = sp[-2]; c<*sp; c++)
+                        ep[c>>3] |= bittab[c&07];
+                    sp++;
+                }
+                ep[c>>3] |= bittab[c&07];
+            } while((c = *sp++) != ']');
+            if(neg) {
+                for(cclcnt = 0; cclcnt < 16; cclcnt++)
+                    ep[cclcnt] ^= -1;
+                ep[0] &= 0376;
+            }
+
+            ep += 16;
+
+            continue;
+
+        case '\\':
+            if((c = *sp++) == 0)
+                goto cerror;
+            if(c == '<') {
+                *ep++ = CBRC;
+                continue;
+            }
+            if(c == '>') {
+                *ep++ = CLET;
+                continue;
+            }
+            if(c == '(') {
+                if(numbra >= NBRA) {
+                    goto cerror;
+                }
+                *bracketp++ = numbra;
+                *ep++ = CBRA;
+                *ep++ = numbra++;
+                continue;
+            }
+            if(c == ')') {
+                if(bracketp <= bracket) {
+                    goto cerror;
+                }
+                *ep++ = CKET;
+                *ep++ = *--bracketp;
+                closed++;
+                continue;
+            }
+
+            if(c >= '1' && c <= '9') {
+                if((c -= '1') >= closed)
+                    goto cerror;
+                *ep++ = CBACK;
+                *ep++ = c;
+                continue;
+            }
+
+        defchar:
+        default:
+            *ep++ = CCHR;
+            *ep++ = c;
+        }
+    }
+    cerror:
+    errexit("grep: RE error\n", (char *)NULL);
+}
+
+void
+execute(file)
+char *file;
+{
+    register char *p1, *p2;
+    register int c;
+
+    if (file) {
+        if (freopen(file, "r", stdin) == NULL) {
+            fprintf(stderr, "grep: can't open %s\n", file);
+            retcode = 2;
+            return;     /* otherwise we would read the console instead */
+        }
+    }
+    lnum = 0;
+    tln = 0;
+    for (;;) {
+        lnum++;
+        p1 = linebuf;
+        while ((c = getchar()) != '\n') {
+            if (c == EOF) {
+                if (cflag) {
+                    if (nfile>1)
+                        printf("%s:", file);
+                    printf("%ld\n", tln);
+                    fflush(stdout);
+                }
+                return;
+            }
+            *p1++ = c;
+            if (p1 >= &linebuf[LBSIZE-1])
+                break;
+        }
+        *p1++ = '\0';
+        p1 = linebuf;
+        p2 = expbuf;
+        if (circf) {
+            if (advance(p1, p2))
+                goto found;
+            goto nfound;
+        }
+        /* fast check for first character */
+        if (*p2==CCHR) {
+            c = p2[1];
+            do {
+                if (*p1!=c)
+                    continue;
+                if (advance(p1, p2))
+                    goto found;
+            } while (*p1++);
+            goto nfound;
+        }
+        /* regular algorithm */
+        do {
+            if (advance(p1, p2))
+                goto found;
+        } while (*p1++);
+    nfound:
+        if (vflag)
+            succeed(file);
+        continue;
+    found:
+        if (vflag==0)
+            succeed(file);
+    }
+}
+
+int
+advance(lp, ep)
+register char *lp, *ep;
+{
+    register char *curlp;
+    char c;
+    char *bbeg;
+    int ct;
+
+    for (;;) switch (*ep++) {
+
+    case CCHR:
+        if (*ep++ == *lp++)
+            continue;
+        return(0);
+
+    case CDOT:
+        if (*lp++)
+            continue;
+        return(0);
+
+    case CDOL:
+        if (*lp==0)
+            continue;
+        return(0);
+
+    case CEOF:
+        return(1);
+
+    case CCL:
+        c = *lp++ & 0177;
+        if(ep[c>>3] & bittab[c & 07]) {
+            ep += 16;
+            continue;
+        }
+        return(0);
+    case CBRA:
+        braslist[*ep++] = lp;
+        continue;
+
+    case CKET:
+        braelist[*ep++] = lp;
+        continue;
+
+    case CBACK:
+        bbeg = braslist[*ep];
+        if (braelist[*ep]==0)
+            return(0);
+        ct = braelist[*ep++] - bbeg;
+        if(ecmp(bbeg, lp, ct)) {
+            lp += ct;
+            continue;
+        }
+        return(0);
+
+    case CBACK|STAR:
+        bbeg = braslist[*ep];
+        if (braelist[*ep]==0)
+            return(0);
+        ct = braelist[*ep++] - bbeg;
+        curlp = lp;
+        while(ecmp(bbeg, lp, ct))
+            lp += ct;
+        while(lp >= curlp) {
+            if(advance(lp, ep)) return(1);
+            lp -= ct;
+        }
+        return(0);
+
+
+    case CDOT|STAR:
+        curlp = lp;
+        while (*lp++);
+        goto star;
+
+    case CCHR|STAR:
+        curlp = lp;
+        while (*lp++ == *ep);
+        ep++;
+        goto star;
+
+    case CCL|STAR:
+        curlp = lp;
+        do {
+            c = *lp++ & 0177;
+        } while(ep[c>>3] & bittab[c & 07]);
+        ep += 16;
+        goto star;
+
+    star:
+        if(--lp == curlp) {
+            continue;
+        }
+
+        if(*ep == CCHR) {
+            c = ep[1];
+            do {
+                if(*lp != c)
+                    continue;
+                if(advance(lp, ep))
+                    return(1);
+            } while(lp-- > curlp);
+            return(0);
+        }
+
+        do {
+            if (advance(lp, ep))
+                return(1);
+        } while (lp-- > curlp);
+        return(0);
+
+    case CBRC:
+        if (lp == expbuf)
+            continue;
+#define uletter(c)  (isalpha(c) || (c) == '_')
+        if (uletter(*lp) || isdigit(*lp))
+            if (!uletter(lp[-1]) && !isdigit(lp[-1]))
+                continue;
+        return (0);
+
+    case CLET:
+        if (!uletter(*lp) && !isdigit(*lp))
+            continue;
+        return (0);
+
+    default:
+        errexit("grep RE botch\n", (char *)NULL);
+    }
+}
+
+void
+succeed(f)
+char *f;
+{
+    nsucc = 1;
+    if (sflag)
+        return;
+    if (cflag) {
+        tln++;
+        return;
+    }
+    if (lflag) {
+        printf("%s\n", f);
+        fflush(stdout);
+        fseek(stdin, 0l, 2);
+        return;
+    }
+    if (nfile > 1 && hflag)
+        printf("%s:", f);
+    if (bflag)
+        printf("%u:", blkno);
+    if (nflag)
+        printf("%ld:", lnum);
+    printf("%s\n", linebuf);
+    fflush(stdout);
+}
+
+int
+ecmp(a, b, count)
+char    *a, *b;
+int count;
+{
+    register int cc = count;
+    while(cc--)
+        if(*a++ != *b++)    return(0);
+    return(1);
+}
+
+void
+errexit(s, f)
+char *s, *f;
+{
+    fprintf(stderr, s, f);
+    exit(2);
+}
+
+/*
+ * The CP/M-86 CCP folds the command tail to upper case, so pattern letters
+ * match lower case by default. '%' toggles the case of the rest of the word
+ * (letters, digits and '_'), any other character resets the toggle, and
+ * "\%" is a literal '%'.
+ */
+void
+casefold(astr)
+char *astr;
+{
+    register char *p, *s;
+    register int c;
+    int up;
+
+    up = 0;
+    for (s = cfbuf, p = astr; *p; ) {
+        if (s >= &cfbuf[ESIZE-2])
+            errexit("grep: pattern too long\n", (char *)NULL);
+        c = *p++;
+        if (c == '\\') {
+            if (*p == '%')
+                *s++ = *p++;
+            else {
+                *s++ = c;
+                if (*p)
+                    *s++ = *p++;
+            }
+            up = 0;
+            continue;
+        }
+        if (c == '%') {
+            up = !up;
+            continue;
+        }
+        if (c >= 'A' && c <= 'Z')
+            *s++ = up ? c : c + ('a' - 'A');
+        else if (c >= 'a' && c <= 'z')
+            *s++ = up ? c - ('a' - 'A') : c;
+        else if ((c >= '0' && c <= '9') || c == '_')
+            *s++ = c;
+        else {
+            *s++ = c;
+            up = 0;
+        }
+    }
+    *s = '\0';
+}
+
+void
+usage(rc)
+int rc;
+{
+    fprintf(stderr, "grep - print lines matching a pattern\n");
+    fprintf(stderr, "usage: grep [-bchilnsvwy] [-e] pattern [file ...]\n\n");
+    fprintf(stderr, "-b  show the block number of each match\n");
+    fprintf(stderr, "-c  print only a count of matching lines\n");
+    fprintf(stderr, "-h  never prefix output lines with the file name\n");
+    fprintf(stderr, "-i  ignore case (same as -y)\n");
+    fprintf(stderr, "-l  print only the names of files that match\n");
+    fprintf(stderr, "-n  prefix each line with its line number\n");
+    fprintf(stderr, "-s  print nothing, only set the exit status\n");
+    fprintf(stderr, "-v  print the lines that do NOT match\n");
+    fprintf(stderr, "-w  match only whole words\n");
+    fprintf(stderr, "-e  the next argument is the pattern\n");
+    fprintf(stderr, "-?  this help\n\n");
+    fprintf(stderr, "Pattern: ^ $ . * [set] [^set] \\< \\> \\(..\\) \\1-\\9\n");
+    fprintf(stderr, "Case:    letters match lower case, %% toggles the case of\n");
+    fprintf(stderr, "         the rest of the word, any other character resets:\n");
+    fprintf(stderr, "         %%AAA-BBB is AAA-bbb, %%AAA_BBB1C is AAA_BBB1C,\n");
+    fprintf(stderr, "         %%AAA_BBB1%%C is AAA_BBB1c, \\%% is a literal %%\n");
+    fprintf(stderr, "Status:  0 matched, 1 no match, 2 error\n");
+    exit(rc);
+}
