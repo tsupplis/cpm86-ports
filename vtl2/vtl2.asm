@@ -76,6 +76,7 @@ begin:	LXI	H,prgm		; Initialize SV for next byte of
 	LHLD	BDOS+1		; Stack must be up before strng is called
 	MVI	L,0
 	SPHL
+	CALL	scrini		; Open the script before anything polls the console
 	XRA	A		; Initialize delimiter
 	LXI	H,banner
 	CALL	strng
