@@ -73,6 +73,12 @@ begin:	LXI	H,prgm		; Initialize SV for next byte of
 	LXI	D,0FC00H
 	DAD	D		; Subtract space for stack
 	SHLD	asterix		; Store in SV for memory size in bytes
+	LHLD	BDOS+1		; Stack must be up before strng is called
+	MVI	L,0
+	SPHL
+	XRA	A		; Initialize delimiter
+	LXI	H,banner
+	CALL	strng
 
 start:	LHLD	BDOS+1		; Get end of TPA
 	MVI	L,0		; Clear lower part
@@ -884,6 +890,8 @@ prlf:	MVI	A,lf		; Line Feed
 	RET
 
 ;--------------------------------
+
+banner:	DB	'VTL2 Interpreter 1.0', 00H
 
 okm:	DB	cr, lf
 	DB	'OK', 00H
