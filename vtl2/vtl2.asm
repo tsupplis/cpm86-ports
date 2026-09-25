@@ -52,7 +52,6 @@ BDOS	EQU	0005H
 CONSTAT	EQU	0BH		; Console status
 CONIN	EQU	01H		; Console input
 CONOUT	EQU	02H		; Console output
-DIRCON	EQU	06H		; Direct console I/O, no echo
 SETDMA	EQU	26		; Set DMA address
 OPEN	EQU	15		; Open file
 READ	EQU	20		; Read sequential record
@@ -478,7 +477,11 @@ outmsg: MOV	A,M		; Get char from memory
 
 ; Check for Control-C.
 
-contC:	CALL	polcat		; Poll character at terminal?
+contC:	LDA	scriptflg	; While a script plays, the console is not our stream
+	ORA	A
+	RNZ
+
+	CALL	polcat		; Poll character at terminal?
 
 	RNC			; None available: Return
 
@@ -487,7 +490,8 @@ contC:	CALL	polcat		; Poll character at terminal?
 	CPI	ctrlC		; Is it Control-C?
 	JZ	start		; Yes: Return to interpreter
 
-	JMP	inch		; No: Get char
+	STA	pushed		; No: hand it to the next input request
+	RET
 
 ;--------------------------------
 ; Evaluate expressions between parentheses.
@@ -865,20 +869,11 @@ inln2:	CALL	getchr		; Input another char (console or script)
 	LXI	H,linbuf	; Why?
 	LDA	askcon		; Console input echoed the CR, so it needs the LF
 	ORA	A
-	JNZ	inln9
+	JNZ	prlf
 	LDA	scriptflg	; Script input has no echoed CR to complete,
 	ORA	A
 	RNZ			;   so the LF would leave a blank line
-
-; The terminal echoed the CR. If it sent CR/LF, eat the LF unechoed,
-; otherwise supply the LF ourselves.
-
-inln9:	CALL	polcat
-	JNC	prlf
-	CALL	rawin
-	CPI	lf
-	RZ
-	JMP	prlf
+	JMP	prlf		; It was CR: add LF
 
 ;--------------------------------
 ; A bare LF already moved the cursor down, so no CR/LF is added here.
@@ -945,16 +940,6 @@ inch:	PUSH	H
 	ANI	7FH
 	JMP	done
 
-	; return the next character in A without echoing it
-rawin:	PUSH	H
-	PUSH	D
-	PUSH	B
-	MVI	E,0FFH
-	MVI	C,DIRCON
-	CALL	BDOS
-	ANI	7FH
-	JMP	done
-
 	; Output character in A, optionally clearing highest bit
 ascii:	ANI	7FH
 outch:	PUSH	H
@@ -979,7 +964,15 @@ done:	POP	B
 getchr:	PUSH	H
 	PUSH	D
 	PUSH	B
-	LDA	askcon
+	LDA	pushed		; A char held back by the Ctrl-C poll?
+	ORA	A
+	JZ	getnew
+	MOV	B,A
+	XRA	A
+	STA	pushed
+	MOV	A,B
+	JMP	getdon
+getnew:	LDA	askcon
 	ORA	A
 	JNZ	getcon
 	LDA	scriptflg
@@ -1039,6 +1032,7 @@ scrini:	LDA	scrdid		; Already initialized once?
 	STA	scrdid
 	MVI	A,0
 	STA	scriptflg
+	STA	pushed		; Drop anything the banner's Ctrl-C poll grabbed
 	STA	scriptptr
 	STA	scriptlen
 	LDA	0080H		; Command tail length (0 = no argument given)
@@ -1117,6 +1111,7 @@ scriptlen:	DB	0
 scrdid:	DB	0
 skipok:	DB	0
 askcon:	DB	0
+pushed:	DB	0
 
 scrbuf:	DS	128
 decbuf:	DS	4+1

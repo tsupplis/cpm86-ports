@@ -51,6 +51,7 @@ want() {
 		done
 		report "$out" "$ok" "$script" "$target"
 	done
+	ANSWERS=
 }
 
 # reject <script> <pattern>    the pattern must not appear
