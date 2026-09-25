@@ -835,9 +835,10 @@ inln2:	CALL	getchr		; Input another char (console or script)
 
 	MOV	M,A
 	CPI	backs		; Backspace to erase a char?
-	JZ	inln5		; Yes: Check if we erased everything
+	JZ	inln3		; Yes: Rub the char off the screen
 	CPI	rubout		; Terminals usually send DEL for Backspace
-	JZ	inln5
+	JZ	inln3
+	NOP
 
 ; No: Check if the user had ended inputting a line.
 
@@ -853,6 +854,15 @@ inln2:	CALL	getchr		; Input another char (console or script)
 	ORA	A
 	RNZ			;   so the LF would leave a blank line
 	JMP	prlf		; It was CR: add LF
+
+;--------------------------------
+; Wipe the erased char off the screen, then go check if the line is gone.
+
+inln3:	MVI	A,' '
+	CALL	outch
+	MVI	A,backs
+	CALL	outch
+	JMP	inln5
 
 ;--------------------------------
 
@@ -1029,6 +1039,11 @@ screof:	MVI	A,0
 	STA	scriptptr
 	STA	scriptlen
 	RET
+
+; convp indexes this block with an 8-bit add and drops the carry, so vars
+; must start on a page boundary for offsets 0..126 to stay in range.
+
+	ORG	0800H
 
 vars:	DS	62		; @, A - Z
 number:	DS	4
