@@ -32,12 +32,19 @@ report() {
 }
 
 # want <script> <pattern>...   every pattern must appear in the output
+# ANSWERS, if set, is typed at the console prompts.
 want() {
 	script=$1
 	shift
 	for target in com cmd; do
+		if [ -n "$ANSWERS" ]; then
+			printf '%b' "$ANSWERS" > answers.tmp
+			input=answers.tmp
+		else
+			input=/dev/null
+		fi
 		out=$(timeout $TIMEOUT $(emulator_for $target) "$script" \
-			< /dev/null 2>&1 | tr -d '\r')
+			< $input 2>&1 | tr -d '\r')
 		ok=yes
 		for pattern in "$@"; do
 			printf '%s\n' "$out" | grep -qF "$pattern" || ok=no
@@ -65,18 +72,18 @@ for binary in vtl2.com vtl2.cmd; do
 done
 
 echo "== examples =="
-want ex0.vtl 'THE AVERAGE IS 6'
-want ex1.vtl 'ENTER THREE VALUES' 'THE AVERAGE IS 6'
+want ex0.vtl 'The average is 6'
+ANSWERS='5\r\n6\r\n7\r\n' want ex1.vtl 'Enter three values' 'The average is 6'
 want ex2.vtl '0 1 1 2 3 5 8 13 21 34 55 89'
-want ex3.vtl 'HOW MANY TERMS' '0 1 1 2 3 5 8 13 21 34'
+ANSWERS='10\r\n' want ex3.vtl 'How many terms' '0 1 1 2 3 5 8 13 21 34'
 
 # ex4 has no #=1, so it must load the program and print nothing.
 echo "== load only =="
-reject ex4.vtl 'THE AVERAGE IS'
+reject ex4.vtl 'The average is'
 
 # 99, two rubouts, 5 leaves B=5; the leading rubouts must be ignored.
 echo "== rubout =="
-trap 'rm -f rubout.tmp' EXIT INT TERM
+trap 'rm -f rubout.tmp answers.tmp' EXIT INT TERM
 printf '\177\17710 B=99\177\1775\r\n20 ?=B\r\n30 ?=""\r\n#=1\r\n>=\r\n' > rubout.tmp
 want rubout.tmp '5'
 printf '\010\01010 B=99\010\0105\r\n20 ?=B\r\n30 ?=""\r\n#=1\r\n>=\r\n' > rubout.tmp
@@ -98,7 +105,8 @@ for target in com cmd; do
 	out=$(timeout $TIMEOUT $(emulator_for $target) ex0.vtl < /dev/null 2>&1 |
 		tr -d '\r')
 	ok=yes
-	[ "$(printf '%s\n' "$out" | sed -n '1p')" = 'THE AVERAGE IS 6' ] || ok=no
+	[ "$(printf '%s\n' "$out" | sed -n '1p')" = 'VTL2 Interpreter 1.0' ] || ok=no
+	[ "$(printf '%s\n' "$out" | sed -n '2p')" = 'The average is 6' ] || ok=no
 	report "$out" "$ok" 'ex0.vtl' "$target"
 done
 

@@ -52,6 +52,7 @@ BDOS	EQU	0005H
 CONSTAT	EQU	0BH		; Console status
 CONIN	EQU	01H		; Console input
 CONOUT	EQU	02H		; Console output
+DIRCON	EQU	06H		; Direct console I/O, no echo
 SETDMA	EQU	26		; Set DMA address
 OPEN	EQU	15		; Open file
 READ	EQU	20		; Read sequential record
@@ -680,7 +681,11 @@ getval: CALL	cvbin		; Convert to binary number
 ; Yes: ?
 
 	SHLD	valvar		; Save value of variable?
+	MVI	A,1		; A loaded script supplies the program, not the answers
+	STA	askcon
 	CALL	inln
+	XRA	A
+	STA	askcon
 
 	CALL	eval		; Evaluate expression
 
@@ -848,6 +853,8 @@ inln2:	CALL	getchr		; Input another char (console or script)
 
 ; No: Check if the user had ended inputting a line.
 
+	CPI	lf		; A bare LF ends a line too
+	JZ	inln8
 	CPI	cr
 	JC	inln2		; No: Get another char
 
@@ -856,10 +863,34 @@ inln2:	CALL	getchr		; Input another char (console or script)
 	XRA	A		; Mark end of line with a 00H
 	MOV	M,A
 	LXI	H,linbuf	; Why?
+	LDA	askcon		; Console input echoed the CR, so it needs the LF
+	ORA	A
+	JNZ	inln9
 	LDA	scriptflg	; Script input has no echoed CR to complete,
 	ORA	A
 	RNZ			;   so the LF would leave a blank line
-	JMP	prlf		; It was CR: add LF
+
+; The terminal echoed the CR. If it sent CR/LF, eat the LF unechoed,
+; otherwise supply the LF ourselves.
+
+inln9:	CALL	polcat
+	JNC	prlf
+	CALL	rawin
+	CPI	lf
+	RZ
+	JMP	prlf
+
+;--------------------------------
+; A bare LF already moved the cursor down, so no CR/LF is added here.
+; An LF on an empty line is just the tail of a CR/LF pair: discard it.
+
+inln8:	MOV	A,L
+	CPI	linbuf AND 0FFH
+	JZ	inln2
+	XRA	A
+	MOV	M,A
+	LXI	H,linbuf
+	RET
 
 ;--------------------------------
 ; Wipe the erased char off the screen, then go check if the line is gone.
@@ -914,6 +945,16 @@ inch:	PUSH	H
 	ANI	7FH
 	JMP	done
 
+	; return the next character in A without echoing it
+rawin:	PUSH	H
+	PUSH	D
+	PUSH	B
+	MVI	E,0FFH
+	MVI	C,DIRCON
+	CALL	BDOS
+	ANI	7FH
+	JMP	done
+
 	; Output character in A, optionally clearing highest bit
 ascii:	ANI	7FH
 outch:	PUSH	H
@@ -938,6 +979,9 @@ done:	POP	B
 getchr:	PUSH	H
 	PUSH	D
 	PUSH	B
+	LDA	askcon
+	ORA	A
+	JNZ	getcon
 	LDA	scriptflg
 	ORA	A
 	JZ	getcon
@@ -1072,6 +1116,7 @@ scriptptr:	DB	0
 scriptlen:	DB	0
 scrdid:	DB	0
 skipok:	DB	0
+askcon:	DB	0
 
 scrbuf:	DS	128
 decbuf:	DS	4+1
