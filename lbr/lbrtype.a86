@@ -1,0 +1,560 @@
+;******************************************************************************
+;
+;	PROGRAM:	LTYPE86.A86
+;	VERSION:	1.04
+;	DATE:		11 October 1984
+;	AUTHOR:		Charlie Godet-Ceraolo
+;
+;	DESCRIPTION:	This is a version of LTYPE for CP/M86 systems.
+;			It displays the contents of a (normal or squeezed)
+;			text file in a LBR on the console.
+;			It accepts LBR name on the command line, with
+;			or without LBR extension. The Library filename
+;			must be followed by an unambiguous filespec.
+;			Entering nothing on the command line will display
+;			a brief summary of the above.
+;
+;	USE:	ASM86  LTYPE86 $PZSZ
+;		GENCMD LTYPE86 DATA[M200]
+;
+;*******************************************************************************
+;
+Release		EQU	1
+Version		EQU	04
+FALSE		EQU	0
+TRUE		EQU	NOT FALSE
+;
+;	cpm86 equates
+;
+CpmEof		EQU	1AH
+Buf_Size	EQU	128
+ConIn		EQU	1
+ConOut		EQU	2	; write console character
+ConStat		EQU	11	; console Status
+OpenF		EQU	15	; open file
+ReadRandom	EQU	33	; read random record function
+;
+;	LU Dir entry equates and Offsets
+;
+Entry_Length	EQU	32
+Active		EQU	00H
+UnUsed		EQU	0FFH
+Deleted		EQU	0FEH
+Status		EQU	 0
+FName		EQU	 1
+Extension	EQU	 9
+Index		EQU	12
+Count		EQU	14
+CRC		EQU	16
+Tree_Size	EQU	257		;max chars in Huffman code
+;
+;	Ascii equates
+;
+TAB		EQU	09H
+CR		EQU	0DH
+LF		EQU	0AH
+SPACE		EQU	' '
+Ascii_Zero	EQU	'0'
+EOS		EQU	0H
+;
+; CP/M86's BasePage
+;
+		DSEG
+;
+BASEPAGE	EQU	$
+		RB	5CH
+FCB		EQU	$	; default fcb
+FCBDN		RB	1
+FCBFN		RB	8
+FCBFT		RB	3
+FCBEX		RB	1
+FCBS1		RB	1
+FCBS2		RB	1
+FCBRC		RB	1
+FCB2		EQU	$	; second fcb
+FCBD0		RB	16
+FCBCR		RB	1
+FCBRNO		RW	1
+FCBR2		RB	1
+BUFF		EQU	$
+		RB	80H	; default buffer
+;
+		CSEG
+;
+;	Set up local stack
+;
+LTYPE:
+		MOV	DX,DS
+		MOV	SS,DX
+		MOV	SP,Offset LOCAL_STACK
+		CLD			; direction flg for increment
+;
+		MOV	SI,Offset SignOn
+		CALL	MsgOut
+;
+;	check for command line, display usage if none
+;
+		MOV	BX,Offset BUFF
+		MOV	AL,[BX]
+		OR	AL,AL		; zero means no command
+		JNZ	cmdok		; we got one, proceed
+;
+		MOV	SI,Offset UseMsg
+		JMP	Error_Exit
+;
+;	check for Extension, add LBR if none
+;
+cmdok:
+		MOV	AL,FCBFT
+		CMP	AL,SPACE
+		JNZ	extok
+;
+		MOV	SI,Offset LIBEXT
+		MOV	CX,3
+		MOV	DI,Offset FCBFT
+		REP	MOVSB
+;
+;	check for search request
+;
+extok:
+		MOV	CX,11			; bytes to move
+		MOV	DI,Offset Search_String	; destination
+		MOV	SI,Offset FCB2+1	; assume fcb2
+		MOV	AL,[SI]
+		CMP	AL,SPACE		; anything there?
+		JNZ	gotaname		; yes, move it
+;
+		MOV	SI,Offset UseMsg	; no, remind em how
+		JMP	Error_Exit
+gotaname:
+		REP	MOVSB			; move it
+;
+;	try to open the file, exit with message if none
+;
+		CALL	Open_File
+		CMP	AL,255
+		JNZ	OPENOK
+;
+		MOV	SI,Offset NoOpenMsg
+		JMP	Error_Exit
+;
+;	file found and opened, get dir info
+;
+OPENOK:
+		XOR	AX,AX		; initialize variables
+		MOV	FCBRNO,AX	; set for first record
+		MOV	FCBR2,AL	; zero msb
+		CALL	CrLf
+;
+		CALL	Read_Sector	; Get first sector
+		OR	AL,AL
+		JZ	readok		; if non-zero, we're at eof
+;
+		MOV	SI,Offset EofMsg	; premature end of file
+		JMP	Error_Exit
+;
+readok:
+		MOV	BX,Offset BUFF	; point to first entry
+		MOV	AX,Count[BX]	; get dir size in sectors
+		MOV	CL,2
+		SHL	AX,CL		; sectors * 4 = # of entries to do
+		DEC	AX		; allow for dir header
+		JNZ	not_empty
+;
+		MOV	SI,Offset EmptyMsg	; no files in library
+		JMP	Error_Exit
+;
+not_empty:
+		MOV	Entries_To_Do,AX
+		ADD	BX,Entry_Length	; point to next entry
+		MOV	CX,3		; allow for dir header
+;
+;	look for a matching entry
+;
+Search_Loop:
+		MOV	AL,Status[BX]
+		CMP	AL,UnUsed	; first unused entry?
+		JZ	Not_Found		; yes, we're done
+;
+		CMP	AL,Active	; active entry?
+		JNZ	skipit		; no, don't process it
+;
+		LEA	DI,FName[BX]	; point to name
+		CALL	Compare		; does it match?
+		JC	skipit		; carry = no match
+		MOV	DX,Index[BX]	; found it
+		MOV	FCBRNO,DX	; position file to start
+		JMP	TYPESQ		; now display it
+skipit:
+		DEC	Entries_To_Do	; have we read em all?
+		JZ	Not_Found		; yes, leave
+		ADD	BX,Entry_Length	; no, point to next entry
+		LOOP	Search_Loop	; and continue processing
+;
+		CALL	Read_Sector	; Get another sector
+		OR	AL,AL		; Eof?
+		JNZ	Not_Found		; Yes, leave
+		MOV	BX,Offset BUFF	; no, reset buffer pointer
+		MOV	CX,4		; and entries per buffer
+		JMPS	Search_Loop	; and process this sector
+Not_Found:
+		MOV	SI,Offset NoFileMsg
+Error_Exit:
+		CALL	MsgOut
+;
+;	back to CP/M86, the easy way
+;
+Finis:
+		MOV	CL,0
+		MOV	DX,0
+		INT	224
+;
+TYPESQ:
+		MOV	BX,(Offset BUFF)
+		MOV	Buf_Ptr,BX
+
+		XOR	AX,AX
+		MOV	Squeezed,AL
+		MOV	Repeat_Count,AL
+		MOV	Buf_Counter,AX
+;
+		MOV	BX,Offset Search_String
+		CMP	Byte Ptr 9[BX],'Q'
+		JE	read_sq
+		JMP	Type_Loop
+;
+read_sq:
+		CALL	Read_Byte
+		CMP	AL,076H
+		JZ	check_two
+		JMP	Type_Loop
+check_two:
+		CALL	Read_Byte
+		CMP	AL,0FFH
+		JZ	read_header
+		JMP	Type_Loop
+
+;	The "squeezed" marker is followed by a two-byte checksum,
+;	which is the simple sum of all the one-byte characters in
+;	the source file, carried as a two byte sum modulo 2**16.
+
+read_header:
+		CALL	Read_Word	;skip over checksum
+;
+read_name:
+		CALL	Read_Byte	; null-terminated ascii string
+		OR	AL,AL
+		JZ	get_tree_size
+		CALL	Char_Out
+		JMPS	read_name
+;
+;	Load code dictionary. First word is length. followed by a
+;	series of word pairs. For each bit in the code, select the first
+;	or second (1) element. If the pair is positive, it's the table entry
+;	(code + 4*Index) at which to continue with the next bit. If it's
+;	negative, it is the complement of the ASCII character (lsb).
+;
+get_tree_size:
+		CALL	CrLf
+		CALL	Read_Word
+		CMP	BX,Tree_Size
+		JBE	load_tree
+;
+		MOV	DX,(Offset NoRoomMsg)	; no room
+		JMP	Error_Exit
+;
+load_tree:
+		ADD	BX,BX
+		ADD	BX,BX
+		MOV	CX,BX
+		MOV	DI,(Offset Code_Tree)
+move_em:
+		CALL	Read_Byte
+		STOSB
+		LOOP	move_em
+;
+		CALL	CrLf
+		MOV	BX,(Offset Rot_Counter)	
+		MOV	(byte ptr [BX]),1
+		MOV	BX,(Offset Squeezed)
+		MOV	(byte ptr [BX]),TRUE
+;
+Type_Loop:
+		CALL	Get_Char		;byte from input stream
+		CMP	AL,CpmEof		; end of file?
+		JE	exit			; yes, leave
+		CALL	Char_Out		; else display it
+		JMPS	Type_Loop		; and back for more
+exit:
+		JMP	Finis
+;
+;			SUBROUTINES
+;
+;	Compare filenames
+;	on entry DI points to the filename to match with Search_String
+;	all registers saved. Returns Carry clear if match, else carry set
+;
+Compare:
+		PUSH	CX
+		PUSH	SI
+		PUSH	DI
+		MOV	SI,Offset Search_String	; source
+		MOV	CX,11			; number of bytes to Compare
+;
+		REPE	CMPSB
+		JNE	nomatch
+		CLC				; if we got this far
+cmpexit:
+		POP	DI
+		POP	SI
+		POP	CX
+		RET
+nomatch:
+		STC				; no match, set carry
+		JMPS	cmpexit			; it's a match, clear carry
+;
+;	Decode next character.
+;
+Decode:
+		MOV	BX,(Offset Code_Tree)
+decode1:
+		CALL	Read_Bit		; get next bit
+		JNC	its_one			; skip for 1, stay for 0
+;
+		INC	BX
+		INC	BX
+its_one:
+		MOV	DX,Word Ptr [BX]
+		MOV	AL,DH
+		CMP	AL,0FEH			;FEFF means [end]
+		JNE	continue
+;
+		STC				;flag [end] with carry bit
+		RET
+;
+continue:
+		OR	AL,AL
+		JNS	new_offset		; plus = new offset
+;
+		MOV	AL,DL			; minus = complemented char
+		NOT	AL
+		CLC
+		RET
+;
+new_offset:
+		MOV	BX,(Offset Code_Tree)
+		ADD	BX,DX			; Calculate <code>+4*<Offset>.
+		ADD	BX,DX
+		ADD	BX,DX
+		ADD	BX,DX
+		JMP	decode1			; and decode it
+;
+;	Read one bit at a time.
+;
+Read_Bit:
+		PUSH	BX
+		MOV	BX,(Offset Rot_Counter)	;bit rotation counter
+		DEC	(byte ptr [BX])
+		JNZ	more
+;
+		MOV	(byte ptr [BX]),8	; else get another
+		CALL	Read_Byte
+		MOV	Rot_Byte,AL
+more:
+		MOV	AL,Rot_Byte
+		RCR	AL,1
+		MOV	Rot_Byte,AL
+		POP	BX
+		RET
+;
+;	Get the next byte, from the input buffer for normal files
+;	or decoded from the input stream for squeezed files.
+;
+Get_Char:
+		MOV	AL,Squeezed		; if a squeezed file
+		CMP	AL,TRUE
+		JE	do_sq			; process it
+		JMP	Read_Byte		; else just get a byte
+do_sq:
+		CMP	Repeat_Count,0
+		JE	sq1
+;
+		DEC	Repeat_Count
+		MOV	AL,Last_Char
+		RET
+sq1:
+		CALL	Decode
+		JNC	not_eof
+;
+		MOV	AL,CpmEof
+		RET
+not_eof:
+		CMP	AL,090H
+		JE	sq2
+;
+		MOV	Last_Char,AL
+		RET
+sq2:
+		CALL	Decode
+		OR	AL,AL
+		JNZ	sq3
+;
+		MOV	AL,090H
+		RET
+sq3:
+		DEC	AL
+		DEC	AL
+		MOV	Repeat_Count,AL
+		MOV	AL,Last_Char
+		RET
+;
+Open_File:
+		XOR	AL,AL
+		MOV	FCBCR,AL
+		MOV	FCBEX,AL
+		MOV	FCBRC,AL
+		MOV	DX,Offset FCB
+		MOV	CL,OpenF
+		CALL	BDOS
+		RET
+;
+;	Read one byte, refill buffer as needed.
+;
+Read_Byte:
+		PUSH	BX
+		MOV	BX,Buf_Counter
+		OR	BX,BX
+		JNZ	no_read
+;
+		CALL	Read_Sector
+		MOV	BX,(Offset BUFF)
+		MOV	Buf_Ptr,BX
+		MOV	BX,Buf_Size
+no_read:
+		DEC	BX
+		MOV	Buf_Counter,BX
+		MOV	BX,Buf_Ptr
+		MOV	AL,[BX]
+		INC	BX
+		MOV	Buf_Ptr,BX
+		POP	BX
+		RET
+;
+Read_Word:
+		CALL	Read_Byte
+		MOV	BL,AL
+		CALL	Read_Byte
+		MOV	BH,AL
+		RET
+;
+Read_Sector:
+		PUSH	BX
+		PUSH	DX
+		PUSH	CX
+		MOV	DX,Offset FCB
+		MOV	CL,ReadRandom
+		CALL	BDOS
+		INC	FCBRNO		; set for next record
+		POP	CX
+		POP	DX
+		POP	BX
+		RET
+;
+;	Print null-terminated string pointed to by SI, saves all
+;
+MsgOut:
+		PUSH	AX
+		PUSH	SI
+msgloop:
+		LODSB			; get a character
+		OR	AL,AL		; machine zero?
+		JZ	msgexit		; yes, exit
+		CALL	Char_Out	; print it
+		JMPS	msgloop		; get another
+msgexit:
+		POP	SI
+		POP	AX
+		RET
+;
+CrLf:
+		PUSH	AX
+		MOV	AL,CR
+		CALL	Char_Out
+		MOV	AL,LF
+		CALL	Char_Out
+		POP	AX
+		RET
+;
+;	Send character in accumulator to console, check for abort
+;
+Char_Out:
+		PUSH	AX
+		PUSH	BX
+		PUSH	DX
+		PUSH	CX
+		MOV	CL,ConOut
+		MOV	DL,AL
+		AND	AL,7FH		; strip hi-bit (ws files)
+		CALL	BDOS
+		MOV	CL,Constat	; check for abort
+		CALL	BDOS
+		OR	AL,AL		; key pressed?
+		JNZ	User_Abort
+		POP	CX
+		POP	DX
+		POP	BX
+		POP	AX
+		RET
+;
+User_Abort:
+		MOV	CL,ConIn	; be tidy, read the char
+		CALL	BDOS
+		JMP	exit		; and leave
+;
+BDOS:
+		PUSH	ES
+		INT	224
+		POP	ES
+		RET
+;
+		DSEG	$
+;
+;	initialized data
+;
+		DB	'(c) 1984 Charlie Godet-Ceraolo'
+SignOn		DB	'LTYPE86 v'
+		DB	Release + Ascii_Zero,'.'
+		DB	(Version/10) + Ascii_Zero
+		DB	(Version MOD 10) + Ascii_Zero
+		DB	CR,LF,EOS
+UseMsg		DB	CR,LF
+		DB	TAB,'USAGE: LTYPE86 LibName[.LBR] FileName',CR,LF
+		DB	TAB,'Pressing any key aborts program',CR,LF
+		DB	CR,LF,EOS
+NoOpenMsg		DB	'Library not found',CR,LF,EOS
+EofMsg		DB	'Premature End of File',CR,LF,EOS
+EmptyMsg	DB	'Library is empty',CR,LF,EOS
+NoFileMsg	DB	'File not in Library',CR,LF,EOS
+NoRoomMsg	DB	'No room for Huffman tree',CR,LF,EOS
+LIBEXT		DB	'LBR'
+;
+;	uninitialized data
+;
+Search_String	RS	11		; for fcb2 filename
+Last_Char	RB	1		; last character read
+Rot_Counter	RB	1		; rotating bit counter
+Rot_Byte	RB	1		; rotating byte
+Squeezed	RB	1		; un/squeezed flag
+Repeat_Count	RB	1		; repeat factor
+	IF (Offset $ - Offset BASEPAGE) MOD 2 NE 0
+		RB	0		; make sure all is even
+	ENDIF
+Entries_To_Do	RW	1		; how many so far
+Buf_Counter	RW	1		; byte counter - input buffer
+Buf_Ptr		RW	1		; byte pointer - input buffer
+		RB	100		; 100 bytes for stack
+LOCAL_STACK	EQU	$
+Code_Tree	RB	Tree_Size * 4	; Huffman decoding tree
+;
+		END
+

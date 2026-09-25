@@ -1,0 +1,1278 @@
+;---------------------------------------------------------------------
+; V20 CP/M-80 EMULATOR FOR CP/M-86
+;---------------------------------------------------------------------
+;
+; TITLE		- VCPM.A86
+; DATE		- 05-JUNE-2000
+; AUTHOR	- STEPHEN HUNT
+; E-MAIL	- stephen.hunt@iname.com
+;
+;---------------------------------------------------------------------
+;
+; NOTES		- VCPM allows execution of CP/M-80 programs on a
+;		  CP/M-86 system with an NEC V20 or V30 processor.
+;
+; UPDATE	- Version 1.0 - 18-MAY-88
+;		  Very basic.  All 8080 BIOS routines simply return
+;		  from emulation.
+;
+;		- Version 1.1 - 11-June-88
+;		  Fixed problem with 8080 stack pointer being corrupted
+;		  by saving BP throughout 8086 BDOS calls.
+;
+;		- Version 1.2 (8080 Code Version 1.1) - 23-JUNE-88 
+;		  Added proper parsing of the command line. Previously
+;		  only copied FCB2 to the 8080 FCB1.
+;		  Added 8080 BIOS support (excluding disk routines).
+;		  Default DMA address now set prior to entering 8080
+;		  mode, rather than when in 8080 mode.
+;
+;		- Version 1.3 (8080 Code Version 1.2) - 12-JULY-88
+;		  Added support for disk related BIOS calls, if running
+;		  under CP/M-86 BDOS version 2.x.  For other versions
+;		  (i.e. could be MP/M-86 or CCP/M-86) we force graceful
+;		  termination of 8080 mode.
+;
+;		- Version 1.4 (8080 Code Version 1.3) - 08-AUG-88
+;		  Increased the size of the 8080 TPA (approx 62.724k)
+;		  by moving the temporary 8080 initialisation code so
+;		  that it is over written by the 8086 BIOS call table
+;		  and the drive allocation table.
+;
+;		- Version 1.5 - 06-NOV-88
+;		  Aborts if the .CPM file is either zero records long
+;		  or would overlap the 8080 BIOS.
+;---------------------------------------------------------------------
+;
+; to create VCPM.CMD :-
+;
+;	ASM86 VCPM $PZSZ
+;
+;	GENCMD VCPM EXTRA[M1000]
+;
+; The GENCMD option 'EXTRA[M1000]' MUST be included in order to allocate
+; 64k of memory to the ES segment. Omitting this option will probabaly
+; crash the system when trying to run a CP/M-80 program.
+;---------------------------------------------------------------------
+;
+;	VCPM80 Memory Map:			Address:
+;	------------------			--------
+;
+;
+;	+-------------------------------+	CS:0000h
+;	!         Code Segment:         !
+;	!                               !
+;	!   Setup + Load 8080 routine   !
+;	!        8086 Bdos Traps        !
+;	!        8086 Bios Traps        !
+;	+-------------------------------+	CS:035Fh
+;	+-------------------------------+	DS:0000h
+;	!         Data Segment:         !
+;	!                               !
+;	!   Startup + Error Messages    !
+;	!     8080 Bdos + Bios Code     !
+;	!                               !
+;	+-------------------------------+	DS:036Fh
+;	+-------------------------------+	ES:0000h
+;	!         Extra Segment:        !
+;	!                               !
+;	!                               !
+;	\                               \
+;	/     64K 8080 Code Segment     /
+;	\                               \
+;	!         (see Bellow)          !
+;	!                               !
+;	!                               !
+;	+-------------------------------+	ES:FFFFh
+;	
+;
+;
+;	64K CP/M-80 Emulation Memory Map:	Address:
+;	--------------------------------	--------
+;
+;
+;	+-------------------------------+	0000h
+;	!                               !
+;	!          Base Page            !
+;	!                               !
+;	!                               !
+;	+-------------------------------+	0100h
+;	!                               !
+;	!                               !
+;	!                               !
+;	!            Program            !
+;	!               +               !
+;	\             Data              \
+;	/                               /
+;	\         62.724K T.P.A         \
+;	!                               !
+;	!                               !
+;	!                               !
+;	+-------------------------------+	FBE6h
+;	!          Bdos Trap +          !
+;	!     8086 Status Flag Check    !
+;	+-------------------------------+	FBFEh
+;	!     8086 Status Flag Byte     !	FBFFh
+;	+-------------------------------+	FC00h
+;	!        Bios Jump Table        !
+;	!               +               !
+;	!         Bios Routines         !
+;	+----------------+--------------+	FC83h
+;	!                !  8086 Bios   !
+;	!   Temporary    !  Call Table  !
+;	! Initialisation +--------------+	FC88h
+;	!      Code      !              !
+;	!                !              !
+;	+----------------+              !	FCA1h
+;	!                               !
+;	!        Drive Allocation       !
+;	!             Table             !
+;	!                               !
+;	!                               !
+;	+-------------------------------+	FE88h
+;	!        Drive Parameter        !
+;	!             Table             !
+;	+-------------------------------+	FE98h
+;	!         Disk Parameter        !
+;	!             Header            !
+;	+-------------------------------+	FEA8h
+;	!         Disk Parameter        !
+;	!             Block             !
+;	+-------------------------------+	FEB7h
+;	!                               !
+;	!            Reserved           !
+;	!                               !
+;	!                               !
+;	+-------------------------------+	FFAFh
+;	!                               !
+;	!   64 Level Stack (128 Bytes)  !
+;	!                               !
+;	+-------------------------------+	FFFFh
+;
+;	V20 Register Mapping
+;	--------------------
+;	8086	8080
+;	----	----
+;	 ES	8080 Segment
+;	 BX	 HL
+;	 DX	 DE
+;	 CX	 BC
+;	 BP	 SP
+;	 BH	 H
+;	 BL	 L
+;	 DH	 D
+;	 DL	 E
+;	 CH	 B
+;	 CL	 C
+;	 AL	 A
+;
+;---------------------------------------------------------------------
+
+ver		equ	15		; current version
+
+c_rawio		equ	6
+s_iobyte	equ	7
+c_writestr	equ	9
+s_bdosver	equ	12
+f_open		equ	15
+f_close		equ	16
+f_read		equ	20
+drv_get		equ	25
+f_dmaoff	equ	26
+s_bios		equ	50
+f_dmaseg	equ	51
+
+cpm		equ	224		; system call interrupt
+
+cr		equ	0dh		; carriage return
+lf		equ	0ah		; line feed
+
+;---------------------------------------------------------------------
+
+intemul		equ	080h		; enter (8080) emulation interrupt
+intbdos		equ	081h		; interrupt native (8086) bdos
+intbios		equ	082h		; interrupt native (8086) bios
+
+intemuladr	equ	(intemul *4)	; emulation interrupt address
+intemulseg	equ	(intemul *4) +2	;	segment
+
+intbdosadr	equ	(intbdos *4)	; interrupt native bdos address
+intbdosseg	equ	(intbdos *4) +2	;	segment
+
+intbiosadr	equ	(intbios *4)	; interrupt native bdos address
+intbiosseg	equ	(intbios *4) +2	;	segment
+
+;---------------------------------------------------------------------
+
+iobyte		equ	03h
+defdrv		equ	04h
+
+statcode	equ	0fbffh
+
+bioscode	equ	0fc83h
+bioscx		equ	bioscode +1
+biosdx		equ	bioscode +3
+
+alloc_tbl	equ	0fc88h
+param_tbl	equ	0fe88h
+
+disk_parm_head	equ	0fe98h
+disk_parm_block	equ	0fea8h
+
+;---------------------------------------------------------------------
+
+dma		equ	080h		; default dma offset
+
+CodeMacro	AAD10			; modified AAD instruction
+	db	0d5h
+	db	010h
+EndM
+
+CodeMacro	BRKEM	interrupt:db	; branch to emulation interrupt
+	db	0fh
+	db	0ffh
+	db	interrupt
+EndM
+
+;---------------------------------------------------------------------
+; code segment
+;---------------------------------------------------------------------
+
+	cseg
+	org	0000h
+
+;---------------------------------------------------------------------
+; jump past my message. It's in case someone types the .CMD file.
+;---------------------------------------------------------------------
+
+	jmps	start
+
+	db	'VCPM NEC-V20 CP/M-80 Emulator for CP/M-86  '
+	db	'Version '
+	db	ver/10+'0','.',ver mod 10+'0'
+	db	'(C) 06-NOV-88 Stephen Hunt'
+
+	db	01ah
+
+;---------------------------------------------------------------------
+; tell 'em what we are
+;---------------------------------------------------------------------
+
+start:
+;
+	mov	dx,offset startmsg
+	call	print_string
+
+	mov	cl,s_bdosver
+	call	bdos			; get cpm version
+	and	al,0f0h
+	mov	cpmver,al		; and save it
+
+;---------------------------------------------------------------------
+; test for NEC V20/30 processor
+;---------------------------------------------------------------------
+
+test_processor:
+;
+	mov	ax,0f0fh		; set ax to 0F0Fh
+
+	aad10				; 8088 will merge 0F0Fh to 00FFh
+					; where as the V20 will not
+
+	cmp	al,0ffh			; 8088 processor?
+	jnz	parse_comline		; no - it must be a V20
+
+	mov	dx,offset err_processor
+	jmp	error_exit
+
+;---------------------------------------------------------------------
+; parse command line
+;---------------------------------------------------------------------
+
+parse_comline:
+;
+	mov	bx,dma+1
+	call	lead_blank		; check through leading blanks
+	jnz	parse_comline1		; continue if comline not empty
+
+	mov	dx,offset err_command
+	jmp	error_exit		; exit with error message
+
+parse_comline1:
+;
+	mov	dx,offset fcb0
+	call	filename		; parse program filename
+	or	ax,ax			; any errors/wildcards
+	jz	parse_comline2
+
+	mov	dx,offset err_filename
+	jmp	error_exit		; exit with error mesage
+
+parse_comline2:
+;
+	mov	comline_next,si		; store address of next part of comline
+	dec	comline_next		; correct next offset address
+	mov	bx,si
+	call	lead_blank		; check through leading blanks
+	jz	clear_eseg		; jump if parsing complete
+
+parse_comline3:
+;
+	mov	dx,offset fcb1
+	call	filename		; parse fcb1
+
+	mov	bx,si
+	call	lead_blank		; check through leading blanks
+	jz	clear_eseg		; jump if parsing complete
+
+parse_comline4:
+;
+	mov	dx,offset fcb2
+	call	filename		; parse fcb2
+
+;---------------------------------------------------------------------
+; clear the 64k of ESEG memory (fill with 0's)
+;---------------------------------------------------------------------
+
+clear_eseg:
+;
+	xor	di,di			; point to start of eseg
+	xor	ax,ax
+	mov	cx,0ffffh /2
+	cld
+	rep	stosw			; fill eseg with chr ax
+
+;---------------------------------------------------------------------
+; copy parsed file control blocks to 8080 base page
+;---------------------------------------------------------------------
+
+copy_fcbs:
+;
+	mov	si,offset fcb1
+	mov	di,05ch
+	mov	cx,0ch
+	rep	movsb			; copy fcb1 to 8080 fcb1
+
+	mov	si,offset fcb2
+	mov	di,06ch
+	mov	cx,0ch
+	rep	movsb			; copy fcb2 to 8080 fcb2
+
+;---------------------------------------------------------------------
+; copy command line to 8080 command line (in default 8080 dma buffer)
+;---------------------------------------------------------------------
+
+copy_comline:
+;
+	mov	si,comline_next
+	mov	bx,dma
+	mov	di,bx
+	inc	di
+	mov	es:byte ptr 0[bx],0
+
+copy_comline1:
+;
+	lodsb				; get byte from 8086 dma buffer
+	stosb				; store in 8080 dma buffer
+	or	al,al
+	jz	prog_ext_cpm
+	inc	es:byte ptr 0[bx]
+	jmps	copy_comline1
+
+;---------------------------------------------------------------------
+; open '.CPM' file
+;---------------------------------------------------------------------
+
+prog_ext_cpm:
+;
+	mov	byte ptr fcb0 +09h,'C'
+	mov	byte ptr fcb0 +0ah,'P'
+	mov	byte ptr fcb0 +0bh,'M'
+
+open_prog_cpm:
+;
+	mov	dx,offset fcb0
+	mov	cl,f_open
+	call	bdos			; open program.CPM file
+	inc	al			; file opened ok?
+	jnz	set_dma_segment		; yes -continue
+
+	jmp	prog_ext_com
+
+;---------------------------------------------------------------------
+; open '.CPM' file
+;---------------------------------------------------------------------
+
+prog_ext_com:
+;
+	mov	byte ptr fcb0 +09h,'C'
+	mov	byte ptr fcb0 +0ah,'P'
+	mov	byte ptr fcb0 +0bh,'M'
+
+open_prog_com:
+;
+	mov	dx,offset fcb0
+	mov	cl,f_open
+	call	bdos			; open program.CPM file
+	inc	al			; file opened ok?
+	jnz	set_dma_segment		; yes -continue
+
+	mov	dx,offset err_open
+	jmp	error_exit
+
+;---------------------------------------------------------------------
+; set dma segment = ESEG
+;---------------------------------------------------------------------
+
+set_dma_segment:
+;
+	mov	dx,es
+	mov	cl,f_dmaseg
+	call	bdos			; set dma segment to 8080 segment
+
+;---------------------------------------------------------------------
+; read program file into ESEG from offset 0100h
+;---------------------------------------------------------------------
+
+read_prog:
+;
+	mov	currec0,0		; init sequential record number
+	mov	dx,0100h		; dma offset - load address
+
+read_prog_loop:
+;
+	push	dx			; save dma offset
+	mov	cl,f_dmaoff		; set dma offset
+	call	bdos
+	mov	dx,offset fcb0
+	mov	cl,f_read		; read sequentially
+	call	bdos
+	pop	dx			; restore dma offset
+	or	al,al			; eof or read errors?
+	jnz	close_file		; close file if eof or errors
+	add	dx,080h			; bump dma offset by 80h
+	cmp	dx,0fb00h		; (read upto fb80h)
+	jbe	read_prog_loop		; loop if prog not too big
+
+	mov	dx,offset err_big	; program too big
+	jmps	com_size_error
+
+close_file:
+;
+	push	dx			; save last dma offset
+	mov	dx,offset fcb0
+	mov	cl,f_close
+	call	bdos
+	pop	dx			; restore last dma offset
+	cmp	dx,0100h		; was anything loaded
+	ja	copy_code
+	mov	dx,offset err_small	; program too small
+
+com_size_error:
+;
+	push	dx
+	mov	dx,offset err_size
+	call	print_string		; print part of size message
+	pop	dx
+	jmp	error_exit		; exit with error
+
+;---------------------------------------------------------------------
+; copy V20/8080 code to ESEG
+;---------------------------------------------------------------------
+
+copy_code:
+;
+	mov	si,offset v20code	; ds:si
+	mov	di,0fbe6h		; es:di
+	mov	cx,vcode_size
+	rep	movsb			; copy 8080 code to 8080 segment
+
+;---------------------------------------------------------------------
+; set up iobyte + default drive
+;---------------------------------------------------------------------
+
+set_defaults:
+;
+	mov	di,iobyte
+
+	mov	cl,s_iobyte
+	call	bdos			; get i/o byte
+	stosb				; and store in 8080 segment
+
+	mov	cl,drv_get
+	call	bdos			; get default drive
+	stosb				; and store in 8080 segment
+
+;---------------------------------------------------------------------
+; set up special interrupts
+;---------------------------------------------------------------------
+
+set_ints:
+;
+	push	ds			; save ds
+	xor	ax,ax
+	mov	ds,ax			; ds = 0
+
+	mov	.intemuladr,0fc83h	; setup int 80h (call 8080 @ 0FC83h)
+	mov	ax,es
+	mov	.intemulseg,ax
+
+	mov	.intbdosadr,offset bdostrap	; setup int 81h (bdos routine)
+	mov	ax,cs
+	mov	.intbdosseg,ax
+
+	mov	.intbiosadr,offset biostrap	; setup int 82h (bios routine)
+	mov	.intbiosseg,ax
+
+	pop	ds			; restore ds
+
+;---------------------------------------------------------------------
+; reset dma offset to 080h (ready for cpm-80 programs use)
+;---------------------------------------------------------------------
+
+	mov	dx,080h
+	mov	cl,f_dmaoff
+	call	bdos
+
+;---------------------------------------------------------------------
+; break to emulation mode (ds must point to 8080 code segment)
+;---------------------------------------------------------------------
+
+execute_cpm80:
+;
+	push	ds			; save ds
+	mov	ax,es
+	mov	ds,ax			; ds= 8080 code segment
+	sti				; interrupts must be on !
+
+	brkem	intemul			; emulation interrupt
+
+	mov	al,byte ptr .statcode	; get 8086 status flag
+	pop	ds			; restore ds
+
+	or	al,al			; did we force 8080 exit?
+	jz	execute_terminate	; no - jump
+
+	mov	dx,offset err_bios	; must have been a bios disk call
+	call	print_string
+
+execute_terminate:
+;
+	mov	dx,offset exit80	; tell 'em we've finished
+	jmp	error_exit
+
+;---------------------------------------------------------------------
+; bdos trap
+;---------------------------------------------------------------------
+
+bdostrap:
+;
+	sti				; re-enable interrupts
+	push	bp
+	push	es
+	push	ds
+	cmp	cl,06h			; direct console i/o ?
+	jz	bdostrap_06h
+	cmp	cl,0bh			; get console status ?
+	jz	bdostrap_0bh
+	cmp	cl,01bh			; get allocation address ?
+	jz	bdostrap_01bh
+	cmp	cl,01fh			; get parameters address ?
+	jz	bdostrap_01fh
+
+bdos_8086:
+;
+	int	cpm			; perform bdos interrupt
+
+bdosret:
+;
+	pop	ds
+	pop	es
+	pop	bp
+	iret
+
+bdostrap_06h:
+;
+	cmp	dl,0fdh			; direct console i/o
+	jnz	bdos_8086		; wait for key press ?
+
+bdostrap_wait:				; MPM-II style !
+;
+	mov	cl,06h
+	mov	dl,0ffh			; console input
+	int	cpm
+	or	al,al			; anything entered ?
+	jz	bdostrap_wait		; no - try again
+	jmps	bdosret
+
+bdostrap_0bh:
+;
+	int	cpm			; get console status
+	or	al,al
+	jz	bdosret			; 0 = no chr ready
+	mov	al,0ffh			; cpm-86 returns 01 for ready
+					; change to 0ffh for cpm-80
+	jmps	bdosret
+
+bdostrap_01bh:				; get allocation address
+;
+	mov	di,alloc_tbl		; allocation table
+	mov	ax,0100h		; max length 200h bytes
+	jmps	bdostrap_get
+
+bdostrap_01fh:				; get parameters address
+;
+	mov	di,param_tbl		; parameter table
+	mov	ax,08h			; max length 10h bytes
+
+bdostrap_get:
+;
+	push	di			; save destination offset
+	push	ax			; save count
+	push	es			; save destination segment
+	int	cpm
+	mov	ax,es
+	mov	ds,ax			; ds = table source seg
+	pop	es			; es = table dest seg
+	pop	cx			; cx = table length
+	pop	di			; di = dest offset
+	mov	si,bx			; si = source offset
+	mov	bx,di			; bx = dest offset (for return (in hl))
+	rep	movsw
+	xor	al,al			; al = 0 (for return)
+	jmps	bdosret
+	
+;---------------------------------------------------------------------
+; bios trap
+;---------------------------------------------------------------------
+	
+biostrap:
+;
+	sti				; re-enable interrupts
+	mov	byte ptr .bioscode,al
+	mov	word ptr .bioscx,cx
+	mov	word ptr .biosdx,dx
+	mov	dx,offset bioscode
+	mov	cl,s_bios
+	cmp	al,07h
+	jb	biostrap_int		; allow non disk bios calls
+	cmp	al,0eh
+	ja	biostrap_int		; allow non disk bios calls
+
+	cmp	byte ptr cpmver,020h	; cpm-86 version 2.x ?
+	jz	biostrap_select		; yes - allow disk bios call
+
+	mov	byte ptr .statcode,01h	; indicate bios call not allowed
+	jmps	biostrap_iret		; 8086 status flag set, so return
+
+biostrap_select:
+;
+	cmp	al,09h			; disk select ?
+	jz	biostrap_seldsk
+
+biostrap_int:
+;
+	push	bp
+	push	es
+	int	cpm
+	pop	es
+	pop	bp
+
+biostrap_iret:
+;
+	iret				; ret far from interrupt
+
+biostrap_seldsk:
+;
+	push	ds
+	push	bp
+	push	es
+
+	int	cpm
+
+	or	bx,bx			; invalid disk select ?
+	jnz	biostrap_seldsk1
+
+	pop	es
+	pop	bp
+	pop	ds
+	jmps	biostrap_iret		; return
+
+biostrap_seldsk1:
+;
+	mov	ax,es
+	mov	ds,ax			; ds = dph + dpb source seg
+	pop	es			; es = dph + dpb dest seg
+
+	mov	si,bx			; si = dph source offset
+	mov	di,disk_parm_head	; di = dph dest offset
+	mov	cx,08h
+	rep	movsw			; copy dph to 8080 dph
+
+	mov	si,0ah[bx]		; si = dpb source offset
+	mov	di,disk_parm_block	; di = dpb dest offset
+	mov	cx,0fh
+	rep	movsb			; copy dpb to 8080 dpb
+
+	mov	bx,disk_parm_head	; bx = dph offset for return (in hl)
+
+	pop	bp			; restore 8080 stack pointer
+	pop	ds
+
+	mov	0ah[bx],disk_parm_block	; amend dph to point to 8080 dpb
+
+	jmps	biostrap_iret		; return
+
+;---------------------------------------------------------------------
+; error exit - print string then exit
+;---------------------------------------------------------------------
+
+error_exit:
+;
+	call	print_string
+	xor	cl,cl
+	xor	dl,dl
+	jmp	bdos
+
+;---------------------------------------------------------------------
+; print string
+;---------------------------------------------------------------------
+
+print_string:
+;
+	mov	cl,c_writestr
+	;jmp	bdos
+
+;---------------------------------------------------------------------
+; bdos interrupt, es is preserved
+;---------------------------------------------------------------------
+
+bdos:
+;
+	push	es
+	int	cpm
+	pop	es
+	ret
+
+;---------------------------------------------------------------------
+; search through leading blanks
+;---------------------------------------------------------------------
+
+lead_blank:
+;
+	cmp	byte ptr 0[bx],0	; end of comline?
+	jz	lead_blank1
+	cmp	byte ptr 0[bx],' '	; leading blank?
+	jnz	lead_blank2
+	inc	bx
+	jmps	lead_blank
+
+lead_blank1:
+	xor	al,al			; set zf flag
+	ret
+
+lead_blank2:
+	or	al,0ffh			; reset zf flag
+	ret
+
+;---------------------------------------------------------------------
+; parses filename string to file control block
+;---------------------------------------------------------------------
+;  entry  : ds:bx = offset of buffer holding filename strings
+;         : ds:dx = offset of FCB to be initialised
+;---------------------------------------------------------------------
+;  exit   : ds:bx = offset of buffer holding filename strings
+;         : ds:dx = offset of initialised FCB
+;         : ds:si = offset of end of last character of filename + 1
+;         :    al = 0 = no error
+;         :         1 = drive reference error
+;         :         2 = filename error
+;         :         3 = file extension error
+;         ;    ah = 0 = no wildcard characters
+;         ;         1 = wildcard characters
+;---------------------------------------------------------------------
+
+filename:
+;
+; initialise new filename (FCB + 1) with spaces
+
+	push	es			; save es
+	cld
+	mov	si,bx			; si=offset filename string
+	mov	di,dx			; di=offset FCB
+	mov	ax,ds
+	mov	es,ax			; make es=ds
+	xor	ax,ax			; zero ax (clear ah for final return)
+	stosb				; init FCB drive reference
+
+	mov	al,020h			; space characrter
+	mov	cx,0bh
+	rep	stosb			; fill filename & type with spaces
+
+	mov	di,dx			; reset di to FCB offset
+
+;---------------------------------------------------------------------
+
+fscan_drive:
+;
+;scan for drive reference
+
+	cmp	byte ptr 1[bx],':'
+	jz	fscan_drive_ref		; colon = drive reference
+	inc	di			; point di to FCB name field
+	jmp	fscan_name		; jump to name scan
+
+fscan_drive_ref:
+;	
+	lodsb
+	cmp	al,'Z'			; could be lower case
+	jle	fscan_drive_cont
+	and	al,05fh			; make upper case
+
+fscan_drive_cont:
+;
+	cmp	al,'A'
+	jl	fscan_drive_error
+	cmp	al,'P'
+	jg	fscan_drive_error
+	sub	al,040h			; make range 1 - 15
+	stosb				; put drive ref in FCB
+	inc	si			; point si past colon
+	jmps	fscan_name
+
+fscan_drive_error:
+;
+	mov	al,01h			; drive error
+	jmp	fscan_return
+
+;---------------------------------------------------------------------
+
+fscan_name:
+;
+;scan filename
+	
+	mov	cx,08h
+
+fscan_name_loop:
+;
+	lodsb				; get character
+	or	al,al			;end of filename ?
+	jz	fscan_name_exit
+	cmp	al,' '			; end of filename ?
+	jz	fscan_name_exit
+	cmp	al,'.'			; end of filename ?
+	jz	fscan_name_end
+	cmp	al,'?'			; single wild card ?
+	jnz	fscan_name_cont
+	mov	ah,01h			; indicate wild characters
+
+fscan_name_cont:
+;
+	cmp	al,'*'			; wild card ?
+	jz	fscan_name_wild
+	call	fcheck			; validate character
+	jc	fscan_name_error	; invalid if carry set
+	stosb				; store in fcb
+	loop	fscan_name_loop
+	jmps	fscan_name_finished
+
+fscan_name_exit:
+;
+	cmp	cx,08h			; any characters processed?
+	jz	fscan_name_error
+	jmp	fscan_complete
+
+fscan_name_finished:
+;
+	lodsb				; get termination character
+	or	al,al			; end of filename ?
+	jz	fscan_complete
+	cmp	al,' '			; end of filename ?
+	jz	fscan_complete
+	cmp	al,'.'			; end of filename ?
+	jz	fscan_name_end
+	jmps	fscan_name_error	; error if any other character
+
+
+fscan_name_end:
+;
+	cmp	cx,08h			; any characters processed ?
+	jl	fscan_type
+
+fscan_name_error:
+;
+	mov	al,02h			; filename error
+	jmp	fscan_return
+
+fscan_name_wild:
+;
+	mov	al,'?'
+	rep	stosb			; fill remainder of filename
+	mov	ah,01h			; indicate wild characters
+	lodsb				; get next character
+	or	al,al			; end of filename ?
+	jz	fscan_complete
+	cmp	al,' '			; end of filename ?
+	jz	fscan_complete
+	cmp	al,'.'			; filename - filetype seperator
+	jnz	fscan_name_error
+
+;---------------------------------------------------------------------
+
+fscan_type:
+;
+; scan filetype
+
+	mov	cx,03h
+	mov	di,dx
+	add	di,09h
+
+fscan_type_loop:
+;
+	lodsb				; get character
+	or	al,al			; end of filetype ?
+	jz	fscan_complete
+	cmp	al,' '			; end of filetype ?
+	jz	fscan_complete
+	cmp	al,'.'			; no more '.' allowed
+	jz	fscan_type_error
+	cmp	al,'?'			; single wild card ?
+	jnz	fscan_type_cont
+	mov	ah,01h			; indicate wild characters
+
+fscan_type_cont:
+;
+	cmp	al,'*'
+	jz	fscan_type_wild
+	call	fcheck			; validate character
+	jc	fscan_type_error	; invalid if carry set
+	stosb				; store in fcb
+	loop	fscan_type_loop
+	jmps	fscan_type_term
+
+fscan_type_wild:
+;
+	mov	al,'?'
+	rep	stosb			; fill remainder of filetype
+	mov	ah,01h			; indicate wild characters
+
+fscan_type_term:
+;
+	lodsb				; check termination character
+	or	al,al			; end of filetype ?
+	jz	fscan_complete
+	cmp	al,' '			; end of filetype ?
+	jz	fscan_complete
+
+fscan_type_error:
+;
+	mov	al,03h			; filetype error
+	jmp	fscan_return
+
+;---------------------------------------------------------------------
+
+fscan_complete:
+;
+	xor	al,al			; no error
+
+fscan_return:
+;
+	pop	es			; restore es
+	ret
+
+
+;---------------------------------------------------------------------
+; Check character in al is legal filename character
+;---------------------------------------------------------------------
+;  entry  : al=character
+;  exit   : al=character
+;         : carry set     = invalid filename character
+;         : carry not set = valid filename character
+;---------------------------------------------------------------------
+
+fcheck:
+;
+	push	bx
+	push	cx			; save registers
+
+	cmp	al,'Z'			; could be lower case
+	jle	fcheck_upper
+	and	al,05fh			; make upper case
+
+fcheck_upper:
+;
+	cmp	al,' '			; less than space?
+	jl	fcheck_error
+	cmp	al,'Z'			; greater than 'Z'?
+	jg	fcheck_error
+	mov	cx,06h			; number of elements in chr_tbl
+	mov	bx,offset fcheck_tbl
+
+fcheck_loop:
+;
+	cmp	al,[bx]
+	jz	fcheck_error
+	inc	bx
+	loop	fcheck_loop
+	clc				; clear carry (character valid)
+	jmps	fcheck_return
+
+fcheck_error:
+;
+	stc	     			; set carry (character invalid)
+
+fcheck_return:
+;
+	pop	cx
+	pop	bx			; restore segment registers
+	ret
+
+;---------------------------------------------------------------------
+; data required in code segment
+;---------------------------------------------------------------------
+
+cpmver	db	0			; cpm version flag for bios calls
+
+;---------------------------------------------------------------------
+; data segment
+;---------------------------------------------------------------------
+
+	dseg
+
+	org	05ch
+
+
+fcb0	db	0,'           ',0,0,0,0,0,0
+	db	0,0,0,0,0,0,0,0,0,0,0,0,0,0
+currec0	db	0				; current record (sequential)
+ranrec0	dw	0				; random record (random)
+ranovf0	db	0				; random record overflow
+;
+
+	org	0100h
+
+
+startmsg	db	'$'
+		;db	'---------------------------------------------',cr,lf
+		;db	'VCPM NEC-V20 64K CP/M-80 Emulator for CP/M-86',cr,lf
+		;db	'Version '
+		;db	ver/10+'0','.',ver mod 10+'0'
+		;db	'     (C) 06-NOV-88    Stephen Hunt',cr,lf
+		;db	'---------------------------------------------',cr,lf
+
+err_processor	db	'VCPM: Requires NEC-V20 processor!',cr,lf,'$'
+err_command	db	'VCPM: No command tail',cr,lf,'$'
+err_filename	db	cr,lf,'VCPM: Invalid filename',cr,lf,'$'
+err_open	db	'VCPM: Unable to find .CPM file',cr,lf,'$'
+err_size	db	cr,lf,'.CPM file too $'
+err_big		db	'large !',cr,lf,'$'
+err_small	db	'small !',cr,lf,'$'
+err_bios	db	'VCPM: Unsupported BIOS call',cr,lf,'$'
+exit80		db	'$' ;'VCPM: CP/M-80 emulation terminated',cr,lf,'$'
+
+fcb1	db	0,'           '			; blank fcb1
+fcb2	db	0,'           '			; blank fcb2
+
+comline_next	dw	0
+
+fcheck_tbl	db	',:;<=>'		; invalid character table
+
+
+v20code:
+vcode_start		equ	offset $
+
+;---------------------------------------------------------------------
+;	V20BIOS 1.3 for CP/M 2.2 8080 emulation
+;
+;	Copyright (C) 08-AUG-88 Stephen Hunt
+;---------------------------------------------------------------------
+;---------------------------------------------------------------------
+;	8080 bdos trap routine
+;---------------------------------------------------------------------
+
+;org	0fbe6h			; so that BIOS starts at 0fc00h
+bdos80:
+;
+db	0C3h,0EDh,0FBh	;jmp	callbdos
+db	00h		;nop
+db	00h		;nop
+db	00h		;nop
+db	00h		;nop
+
+callbdos:
+;
+db	079h		;mov	a,c
+db	0B7h		;ora	a
+db	0CAh,03h,0FCh	;jz	wboote		; terminate if bdos function 0
+db	0EDh,0EDh,081h	;calln	intbdos		; call native 8086 bdos
+
+teststat:
+;
+db	0F5h		;push	psw		; save register a and flags
+db	03Ah,0FFh,0FBh	;lda	statcode	; get 8086 return code in register a
+db	0B7h		;ora	a		; return code 0?
+db	0C2h,03h,0FCh	;jnz	wboote		; no - terminate emulation
+db	0F1h		;pop	psw		; restore register a and flags
+
+db	0C9h		;ret
+
+
+;statcode				; return status code (at FBFF)
+db	0				; zero     = ok
+					; non zero = terminate emulation
+
+;---------------------------------------------------------------------
+;	8080 bios jump vector for individual subroutines
+;---------------------------------------------------------------------
+
+db	0C3h,033h,0FCh 	;jmp	boot		; 00 cold start
+wboote:
+db	0C3h,033h,0FCh 	;jmp	wboot		; 01 warm start
+db	0C3h,035h,0FCh 	;jmp	const		; 02 console status
+db	0C3h,03Ah,0FCh 	;jmp	conin		; 03 console character in
+db	0C3h,03Fh,0FCh 	;jmp	conout		; 04 console character out
+db	0C3h,044h,0FCh 	;jmp	llist		; 05 list character out
+db	0C3h,049h,0FCh 	;jmp	punch		; 06 punch character out
+db	0C3h,04Eh,0FCh 	;jmp	reader		; 07 reader character out
+db	0C3h,053h,0FCh 	;jmp	home		; 08 move head to home position
+db	0C3h,058h,0FCh 	;jmp	seldsk		; 09 select disk
+db	0C3h,05Dh,0FCh 	;jmp	settrk		; 0a set track number
+db	0C3h,062h,0FCh 	;jmp	setsec		; 0b set sector number
+db	0C3h,067h,0FCh 	;jmp	setdma		; 0c set dma address
+db	0C3h,06Ch,0FCh 	;jmp	read		; 0d read disk
+db	0C3h,071h,0FCh 	;jmp	write		; 0e write disk
+db	0C3h,076h,0FCh 	;jmp	listst		; 0f return list status
+db	0C3h,07Bh,0FCh 	;jmp	sectran		; 10 sector translate
+
+;---------------------------------------------------------------------
+;	individual subroutines to perform each bios function
+;---------------------------------------------------------------------
+
+;
+boot:	; boot & wboot both perform the same function
+;
+wboot:
+;
+db	0EDh,0FDh	;retem
+
+const:	; console status, return 0ffh if character ready, 00h if not
+;
+db	03Eh,02h      	;mvi	a,02h
+db	0C3h,07Dh,0FCh 	;jmp	callbios
+
+conin:	; console character into register a
+;
+db	03Eh,03h      	;mvi	a,03h
+db	0C3h,07Dh,0FCh 	;jmp	callbios
+
+conout: ; console character output from register c
+;
+db	03Eh,04h      	;mvi	a,04h
+db	0C3h,07Dh,0FCh 	;jmp	callbios
+
+llist:	; list character from register c
+;
+db	03Eh,05h      	;mvi	a,05h
+db	0C3h,07Dh,0FCh 	;jmp	callbios
+
+punch:	; punch character from register c
+;
+db	03Eh,06h      	;mvi	a,06h
+db	0C3h,07Dh,0FCh 	;jmp	callbios
+
+reader: ; read character into register a from reader device
+;
+db	03Eh,07h      	;mvi	a,07h
+db	0C3h,07Dh,0FCh 	;jmp	callbios
+
+home:	; move to the track 00 position of current drive
+;
+db	03Eh,08h      	;mvi	a,08h
+db	0C3h,07Dh,0FCh 	;jmp	callbios
+
+seldsk:	; select disk given by register C
+;
+db	03Eh,09h      	;mvi	a,09h
+db	0C3h,07Dh,0FCh 	;jmp	callbios
+
+settrk:	; set track given by register c
+;
+db	03Eh,0Ah      	;mvi	a,0ah
+db	0C3h,07Dh,0FCh 	;jmp	callbios
+
+setsec:	; set sector given by register c
+;
+db	03Eh,0Bh      	;mvi	a,0bh
+db	0C3h,07Dh,0FCh 	;jmp	callbios
+
+setdma:	; set dma address given by registers b and c
+;
+db	03Eh,0Ch      	;mvi	a,0ch
+db	0C3h,07Dh,0FCh	;jmp	callbios
+
+read:	; perform read operation
+;
+db	03Eh,0Dh      	;mvi	a,0dh
+db	0C3h,07Dh,0FCh 	;jmp	callbios
+
+write:	; perform a write operation
+;
+db	03Eh,0Eh      	;mvi	a,0eh
+db	0C3h,07Dh,0FCh 	;jmp	callbios
+
+listst:	; return list status (0 if not ready, 1 if ready)
+;
+db	03Eh,0Fh      	;mvi	a,0fh
+db	0C3h,07Dh,0FCh 	;jmp	callbios
+
+sectran:
+	; translate the sector given by BC using the
+	; translate table given by DE
+;
+db	03Eh,010h      	;mvi	a,010h
+;			;jmp	callbios
+
+callbios:
+; execute 8086 bios routines
+;
+db	0EDh,0EDh,082h	;calln	intbios
+db	0C3h,0F5h,0FBh	;jmp	teststat	; test return status and
+						; return if ok
+
+;---------------------------------------------------------------------
+;	8080 bios initialisation routine
+;---------------------------------------------------------------------
+
+;	initialisation code stored in buffer memory (FC83 - FFFF)
+;	set parameters and go to 0100h
+go100:
+db	03Eh,0C3h	;mvi	a,0c3h		; c3 is a jmp instruction
+db	032h,00h,00h	;sta	0		; for jmp to wboot
+db	021h,03h,0FCh	;lxi	h,wboote	; wboot entry point
+db	022h,01h,00h	;shld	1		; set address field for jmp at 0
+
+db	032h,05h,00h	;sta	5		; for jmp to bdos
+db	021h,0E6h,0FBh	;lxi	h,bdos80	; bdos entry point
+db	022h,06h,00h	;shld	6		; address field of jump at 5 to bdos
+
+db	031h,0FFh,0FFh	;lxi	sp,0ffffh	; set stack to top of 64k
+
+db	021h,03h,0FCh	;lxi	h,wboote	; hl points to wboote offset
+db	0E5h		;push	h		; push return address onto stack
+
+db	0C3h,00h,01h	;jmp	0100h		; go to 0100h
+
+;---------------------------------------------------------------------
+;	end of NEC-V20 CP/M 2.2 8080 emulation bios
+;---------------------------------------------------------------------
+
+
+vcode_size		equ	offset $ - vcode_start
+
+
+
+;---------------------------------------------------------------------
+; end of VCPM.A86
+;---------------------------------------------------------------------
+
+			end

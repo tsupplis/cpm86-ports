@@ -1,0 +1,1723 @@
+
+;	------------------------------------------------------------
+;	Machine language translator - 8080 code to 8086 code
+;
+;		 80X86 - Copyright  (C)  1984
+;		Universidad Autonoma de Puebla
+;
+;	[Harold V. McIntosh, 28 August 1984]
+;	------------------------------------------------------------
+;
+BDOS	EQU	224
+	ORG	5CH
+FC80	RB	0
+;FC80	equ	5CH			;.ASM FCB
+TSIZ	EQU	80H
+SZ86	EQU	80H			;size of .A86 buffer
+SZ80	EQU	80H			;size of .ASM file buffer
+	ORG	80H
+BU80	RB	0
+;BU80	equ	80H			;.ASM buffer
+CSIZ	EQU	257			;max chars in Huffman code
+;
+;	Nongraphic characters
+;
+HT	EQU	9
+LF	EQU	0AH
+CR	EQU	0DH
+;
+;	-------------
+	ORG	0100H
+;	-------------
+;
+BEGN:	MOV	AL,FC80+1		;.ASM FCB
+	CMP	AL,' '
+	JNZ	NTUT
+	MOV	DX,(Offset TUTO)
+FERM:	CALL	MSSG
+EXIT:	MOV	DL,0
+	MOV	CL,0
+	INT	BDOS
+;
+NTUT:	MOV	BX,(Offset BU86)	;.A86 buffer
+	MOV	PT86,BX			;pointer to .A86 buffer
+	MOV	BX,(Offset BU80)	;.ASM buffer
+	MOV	PT80,BX			;.ASM file index
+;
+	MOV	CX,33			;33 00's
+	MOV	BX,(Offset FC86)	;.A86 FCB
+	CALL	FIUC			;block fill
+;
+	MOV	CH,8
+	MOV	DX,(Offset FC80+1)
+	MOV	BX,(Offset FC86+1)
+	CALL	MIUC
+	MOV	(Byte Ptr [BX]),'A'
+	INC	BX
+	MOV	(Byte Ptr [BX]),'8'
+	INC	BX
+	MOV	(Byte Ptr [BX]),'6'
+;
+	XOR	AL,AL
+	MOV	FC80+32,AL		;.ASM FCB
+	MOV	DENS,AL			;z/nz = un/squeezed
+	MOV	MULT,AL			;repeat factor
+	MOV	WAYT,AL			;z/nz = character not/waiting
+;
+	MOV	DX,(Offset FC80)	;.ASM FCB
+	MOV	CL,15			;(0F) open file
+	INT	BDOS
+	INC	AL
+	JNZ	OPEF
+	MOV	DX,(Offset NFIL)	;'requested file not found'
+	JMP	FERM			;final (error) message
+;
+OPEF:	MOV	BX,0
+	MOV	CO80,BX
+	MOV	BX,(Offset CO86)	;capacity of .A86 buffer
+	MOV	(Byte Ptr [BX]),SZ86+1	;size of .A86 buffer
+	MOV	AL,FC80+10
+	CMP	AL,'Q'
+	JNZ	NSQZ
+;
+COTA:	CALL	RBYT			;fetch one byte from input stream
+	CMP	AL,76H
+	JNZ	NSQZ
+	CALL	RBYT			;fetch one byte from input stream
+	CMP	AL,0FFH
+	JNZ	NSQZ
+;
+;	The "squeezed" marker is followed by a two-byte checksum,
+;	which is the simple sum of all the one-byte characters in
+;	the source file, carried as a two byte sum modulo 2**16.
+;
+RCHK:	CALL	RWOR			;fetch two bytes from input stream
+	MOV	CKSM,BX			;checksum
+;
+;	Unsqueezed file name. It is an ASCII sequence, may be lower
+;	case if SQ.COM received it in response to a prompt, ending
+;	with a zero byte.
+;
+LUUP:	CALL	RBYT			;fetch one byte from input stream
+	CALL	CONA
+	OR	AL,AL
+	JNZ	LUUP
+;
+;	Load code dictionary. It is preceded by its two-byte length,
+;	and consists of a series of pairs of two-byte addresses. For
+;	each bit in the code, select the first element (0) or the
+;	second (1) element of the pair. If the pair is positive, it
+;	is the table entry (code + 4*index) at which to continue with
+;	the next bit. If the pair is negative, it is the complement
+;	of the coded ASCII character (low order byte except for [end]).
+;
+LDIC:	CALL	RWOR			;fetch two bytes from input stream
+	MOV	CX,(Offset CSIZ)
+	MOV	AL,CL
+	SUB	AL,BL
+	MOV	AL,CH
+	SBB	AL,BH
+	JNC	LDII
+	MOV	DX,(Offset NTAB)	;'insufficient dictionary space'
+	JMP	FERM			;final (error) message
+;
+LDII:	ADD	BX,BX
+	ADD	BX,BX
+	MOV	CL,BL
+	MOV	CH,BH
+	MOV	DX,(Offset CODE)	;decoding table
+LUUQ:	CALL	RBYT			;fetch one byte from input stream
+	MOV	SI,DX
+	MOV	[SI],AL
+	INC	DX
+	DEC	CX
+	MOV	AL,CL
+	OR	AL,CH
+	JNZ	LUUQ
+;
+	CALL	CRLF			;type CR,LF
+	MOV	BX,(Offset ROCO)
+	MOV	(Byte Ptr [BX]),1
+	MOV	BX,(Offset DENS)	;z/nz = un/squeezed
+	MOV	(Byte Ptr [BX]),0FFH
+;
+NSQZ:	MOV	BX,(Offset LIBU)
+	MOV	LIPT,BX
+;
+	MOV	CL,26			;(1A) set DMA address
+	MOV	DX,(Offset BU86)	;.A86 buffer
+	INT	BDOS
+;
+	MOV	DX,(Offset FC86)	;.A86 FCB
+	MOV	CL,17			;(11) search for file
+	INT	BDOS
+	INC	AL
+	JZ	NEXI
+	MOV	DX,(Offset YEXI)	;'file already exists'
+	JMP	FERM			;final (error) message
+;
+NEXI:	MOV	DX,(Offset FC86)	;.A86 FCB
+	MOV	CL,22			;(16) create file
+	INT	BDOS
+	CMP	AL,0FFH
+	MOV	DX,(Offset NODI)	;'no more directory'
+	JNZ	L_1
+	JMP	FERM			;final (error) message
+;
+L_1:	CALL	CBUZ			;clear output buffer to zeroes
+;
+;	%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%
+;
+RUNRUN:	CALL	INCH			;byte from input stream
+	CALL	WRIL			;byte to line buffer
+	CMP	AL,CR
+	JZ	RUNRUN
+	CMP	AL,LF
+	JZ	RUNRUN
+	CMP	AL,1AH
+	JNZ	L_2
+	JMP	CLOF
+;
+L_2:	CMP	AL,';'
+	JNZ	NOSC
+;
+YESC:	CALL	INCH			;byte from input stream
+	CALL	WRIL			;byte to line buffer
+	CMP	AL,LF
+	JZ	RUNRUN
+	JMP	YESC
+;
+NOSC:	CMP	AL,HT
+	JZ	YEHT
+	CMP	AL,' '
+	JNZ	NOHT
+;
+YEHT:	CALL	ANCH
+	CMP	AL,HT
+	JZ	GOHT
+	CMP	AL,' '
+	JZ	GOHT
+	CALL	ASSM
+	JMP	RUNRUN
+;
+GOHT:	CALL	WRIL			;byte to line buffer
+	JMP	YEHT
+;
+NOHT:	CALL	INCH			;byte from input stream
+	CALL	WRIL			;byte to line buffer
+	CMP	AL,':'
+	JZ	YEHT
+	CALL	SEPA			;z = separator
+	JZ	YEHT
+	JMP	NOHT
+;
+;	%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%
+;
+;	Decode next character
+;
+DNCH:	MOV	BX,(Offset CODE)	;decoding table
+DNCR:	CALL	RBIT			;read next bit
+	JNC	DNCS			;skip for 1, stay for 0
+	INC	BX
+	INC	BX
+DNCS:	MOV	DL,[BX]			;get next offset
+	INC	BX
+	MOV	DH,[BX]
+	MOV	AL,DH
+	CMP	AL,0FEH			;FEFF means [end]
+	JZ	DNCT
+	OR	AL,AL
+	JNS	DNCU			;p means new offset
+	MOV	AL,DL			;m means complemented char
+	NOT	AL
+	STC
+	CMC
+	RET
+;
+DNCT:	STC				;flag [end] with carry bit
+	RET
+;
+;	Calculate <code>+4*<offset>
+;
+DNCU:	MOV	BX,(Offset CODE)	;decoding table
+	ADD	BX,DX
+	ADD	BX,DX
+	ADD	BX,DX
+	ADD	BX,DX
+	JMP	DNCR
+;
+;	Type CR, LF
+;
+CRLF:	MOV	AL,CR
+	CALL	CONA			;type character at console
+	MOV	AL,LF
+	JMP	CONA			;type character at console
+;
+;	Send .A86 text to line buffer and accumulate checksum
+;
+WRIL:	PUSH	BX
+	PUSH	DX
+	PUSH	CX
+	LAHF
+	XCHG	AH,AL
+	PUSH	AX
+	XCHG	AH,AL
+	MOV	CH,AL
+	MOV	AL,DENS			;z/nz = un/squeezed
+	OR	AL,AL
+	JZ	WRIN
+	MOV	BX,(Offset CKSM)	;checksum
+	MOV	AL,[BX]
+	SUB	AL,CH
+	MOV	[BX],AL
+	INC	BX
+	MOV	AL,[BX]
+	SBB	AL,0
+	MOV	[BX],AL
+WRIN:	MOV	AL,CH
+	CALL	PULI
+	POP	AX
+	XCHG	AH,AL
+	SAHF
+	POP	CX
+	POP	DX
+	POP	BX
+	RET
+;
+;	Insert character into line buffer. When the terminating LF is
+;	deposited, some final editing takes place before sending the
+;	line to the .A86 file on the disk.
+;
+PULI:	MOV	BX,LIPT
+	MOV	[BX],AL
+	INC	BX
+	MOV	LIPT,BX
+	CMP	AL,LF
+	JNZ	NOLI
+	CALL	PUFF
+;
+NOLI:	RET				;line has overrun buffer
+;
+PUFF:	MOV	BX,(Offset RE02)
+	MOV	PULA,BX			;label pointer
+	MOV	PUCO,BX			;instruction pointer
+	MOV	PURG,BX			;argument pointer
+	MOV	PUSC,BX			;comment pointer
+;
+;	Look for label
+;
+	MOV	BX,(Offset LIBU)
+	MOV	AL,[BX]
+	CALL	ELIN
+	JZ	PUEL
+	CALL	SEPA
+	JZ	PUGG
+	MOV	PULA,BX			;label pointer
+	CALL	PABS
+PUGG:	CALL	PAWS
+	CALL	ELIN
+	JZ	PUEL
+	MOV	PUCO,BX			;instruction pointer
+	CALL	PABS
+	CALL	PAWS
+	CALL	ELIN
+	JZ	PUEL
+	MOV	PURG,BX			;argument pointer
+PUII:	CALL	PABS
+	CALL	PAWS
+PUEL:	CMP	AL,';'
+	JZ	PUJJ
+	CALL	ELIN
+	JZ	PUXX
+	JMP	PUII
+;
+PUJJ:	MOV	PUSC,BX			;comment pointer
+;
+;	Look for special cases
+;
+PUXX:	MOV	BX,PUCO			;instruction pointer
+	MOV	DX,(Offset SC00)	;'db'
+	CALL	CIUZ
+	JNZ	PUXA
+PUAY:	MOV	BX,(Offset LIBU)
+PUAX:	MOV	AL,[BX]
+	CALL	SEPA
+	JNZ	L_3
+	JMP	PUZY
+;
+L_3:	INC	BX
+	CMP	AL,':'
+	JNZ	L_4
+	JMP	PUZY
+;
+L_4:	CALL	CONA
+	CALL	WBYT
+	JMP	PUAX
+;
+PUXA:	MOV	BX,PUCO			;instruction pointer
+	MOV	DX,(Offset SC01)	;'dw'
+	CALL	CIUZ
+	JZ	PUAY
+	MOV	BX,PUCO			;instruction pointer
+	MOV	DX,(Offset SC02)	;'rb'
+	CALL	CIUZ
+	JZ	PUAY
+	MOV	BX,PUCO			;instruction pointer
+	MOV	DX,(Offset SC03)	;'rw'
+	CALL	CIUZ
+	JZ	PUAY
+	MOV	BX,PUCO			;instruction pointer
+	MOV	DX,(Offset SC04)	;'call'
+	CALL	CIUZ
+	JNZ	PUXE
+	MOV	BX,PURG			;argument pointer
+	MOV	DX,(Offset SC06)	;'X0005'
+	CALL	CIUZ
+	JZ	PUXB
+	MOV	BX,PURG			;argument pointer
+	MOV	DX,(Offset SC07)	;'0005H'
+	CALL	CIUZ
+	JZ	PUXB
+	MOV	BX,PURG			;argument pointer
+	MOV	DX,(Offset SC08)	;'BDOS'
+	CALL	CIUZ
+	JNZ	PUZZ
+;
+PUXB:	MOV	BX,(Offset LIBU)
+	CALL	WFLD
+	MOV	BX,(Offset RE00)	;'int bdos'
+	CALL	WXPR
+	MOV	BX,PUSC			;comment pointer
+	JMP	PUZY
+;
+PUXE:	MOV	BX,PUCO			;instruction pointer
+	MOV	DX,(Offset SC05)	;'jmp'
+	CALL	CIUZ
+	JNZ	PUXF
+	MOV	BX,PURG			;argument pointer
+	MOV	DX,(Offset SC06)	;'X0005'
+	CALL	CIUZ
+	JZ	PUXC
+	MOV	BX,PURG			;argument pointer
+	MOV	DX,(Offset SC07)	;'0005H'
+	CALL	CIUZ
+	JZ	PUXC
+	MOV	BX,PURG			;argument pointer
+	MOV	DX,(Offset SC08)	;'BDOS'
+	CALL	CIUZ
+	JNZ	PUZZ
+;
+PUXC:	MOV	BX,(Offset LIBU)
+	CALL	WFLD
+	MOV	BX,(Offset RE01)	;'int bdos . ret'
+	CALL	WXPR
+	MOV	BX,PUSC			;comment pointer
+	JMP	PUZY
+;
+PUXF:	JMP	PUZZ
+;
+PUZZ:	MOV	BX,(Offset LIBU)
+PUZY:	MOV	LIPT,BX
+PURR:	MOV	BX,LIPT
+	MOV	AL,[BX]
+	INC	BX
+	MOV	LIPT,BX
+	CALL	CONA
+	CALL	WBYT
+	CMP	AL,LF
+	JNZ	PURR
+;
+PUWW:	MOV	BX,(Offset LIBU)
+	MOV	LIPT,BX
+	RET
+;
+;	Check for special cases - z means match.
+;	(DE) defines special case, (HL) is the code, which
+;	must be followed by a separator to give a match.
+;
+CIUZ:	MOV	SI,DX
+	MOV	AL,[SI]
+	OR	AL,AL
+	JZ	CIUU
+	CMP	AL,[BX]
+	JZ	L_5
+	RET
+;
+L_5:	INC	DX
+	INC	BX
+	JMP	CIUZ
+;
+CIUU:	MOV	AL,[BX]
+	JMP	SEPA
+;
+SC00	DB	'db',0
+SC01	DB	'dw',0
+SC02	DB	'rb',0
+SC03	DB	'rw',0
+SC04	DB	'call',0
+SC05	DB	'jmp',0
+SC06	DB	'X0005',0
+SC07	DB	'0005H',0
+SC08	DB	'BDOS',0
+;
+RE00	DB	'int bdos',HT
+RE01	DB	'int bdos ! ret',HT
+RE02	DB	CR,LF
+;
+;	Pass over white space
+;
+PAWS:	INC	BX
+	MOV	AL,[BX]
+	CMP	AL,HT
+	JZ	PAWS
+	CMP	AL,' '
+	JZ	PAWS
+	RET
+;
+;	Pass over black space
+;
+PABS:	INC	BX
+	MOV	AL,[BX]
+	CMP	AL,HT
+	JNZ	L_6
+	RET
+;
+L_6:	CMP	AL,' '
+	JNZ	L_7
+	RET
+;
+L_7:	CMP	AL,';'
+	JNZ	L_8
+	RET
+;
+L_8:	CMP	AL,CR
+	JNZ	L_9
+	RET
+;
+L_9:	CMP	AL,LF
+	JNZ	PABS
+	RET
+;
+;	End-of-line characters
+;
+ELIN:	CMP	AL,';'
+	JNZ	L_10
+	RET
+;
+L_10:	CMP	AL,CR
+	JNZ	L_11
+	RET
+;
+L_11:	CMP	AL,LF
+	RET
+;
+;	Upper case fold
+;
+UCFO:	CMP	AL,'a'
+	JNC	L_12
+	RET
+;
+L_12:	CMP	AL,'{'
+	JC	L_13
+	RET
+;
+L_13:	AND	AL,5FH
+	RET
+;
+;	Lower case fold
+;
+LCIN:	CALL	INCH			;byte from input stream
+LCFO:	CMP	AL,'A'
+	JNC	L_14
+	RET
+;
+L_14:	CMP	AL,'['
+	JC	L_15
+	RET
+;
+L_15:	OR	AL,20H
+	RET
+;
+;	Send character in accumulator to console
+;
+CONA:	PUSH	BX
+	PUSH	DX
+	PUSH	CX
+	LAHF
+	XCHG	AH,AL
+	PUSH	AX
+	XCHG	AH,AL
+	MOV	CL,2			;(02) char to console
+	MOV	DL,AL
+	INT	BDOS
+	POP	AX
+	XCHG	AH,AL
+	SAHF
+	POP	CX
+	POP	DX
+	POP	BX
+	RET
+;
+;	Write a field
+;
+WFLD:	MOV	AL,[BX]
+	INC	BX
+	CALL	CONA
+	CALL	WBYT
+	CALL	SEPA
+	JNZ	WFLD
+	RET
+;
+WXPR:	MOV	AL,[BX]
+	INC	BX
+	CALL	CONA
+	CALL	WBYT
+	CMP	AL,HT
+	JNZ	WXPR
+	RET
+;
+;	Send message to the console
+;
+MSSG:	MOV	CL,9			;(09) print buffer
+	INT	BDOS
+	RET
+;
+OURG:	MOV	AL,[BX]
+	OR	AL,AL
+	JNZ	L_16
+	RET
+;
+L_16:	CALL	WRIL			;byte to line buffer
+	INC	BX
+	JMP	OURG			;phrase to output stream
+;
+;	Verify the checksum
+;
+CHEK:	MOV	BX,CKSM			;checksum
+	MOV	AL,BH
+	OR	AL,BL
+	JZ	CLOF			;close the file
+;
+	MOV	CL,19			;(13) delete file
+	MOV	DX,(Offset FC86)	;.A86 FCB
+	INT	BDOS
+;
+	MOV	DX,(Offset CHNO)	;'Checksum failure.'
+	CALL	FERM			;final (error) message
+;
+;	Close .A86 file
+;
+CLOF:	MOV	AL,CO86			;occupancy of .A86 buffer
+	CMP	AL,SZ86			;size of .A86 buffer
+	JZ	L_17
+	CALL	WRDI
+;
+L_17:	MOV	CL,16			;(10) close file
+	MOV	DX,(Offset FC86)	;.A86 FCB
+	INT	BDOS
+	CMP	AL,0FFH
+	MOV	DX,(Offset NCLO)	;'cannot close file'
+	JNZ	L_18
+	JMP	FERM			;final (error) message
+;
+L_18:	JMP	EXIT
+;
+;	Read one bit at a time
+;
+RBIT:	PUSH	BX
+	MOV	BX,(Offset ROCO)	;bit rotation counter
+	DEC	(Byte Ptr [BX])
+	JNZ	RBIU
+	MOV	(Byte Ptr [BX]),8
+	CALL	RBYT			;fetch one byte from input stream
+	MOV	ROBY,AL			;rotating byte
+;
+RBIU:	MOV	AL,ROBY			;rotating byte
+	RCR	AL,1
+	MOV	ROBY,AL			;rotating byte
+	POP	BX
+	RET
+;
+;	Read one word
+;
+RWOR:	CALL	RBYT			;fetch one byte from input stream
+	LAHF
+	XCHG	AH,AL
+	PUSH	AX
+	XCHG	AH,AL
+	CALL	RBYT			;fetch one byte from input stream
+	POP	BX
+	MOV	BL,BH
+	MOV	BH,AL
+	RET
+;
+;	Fetch the next byte. The input buffer will be refreshed if it
+;	is necessary. For normal files, one byte will be extracted from
+;	the input buffer; for squeezed files, one byte will be decoded
+;	from the incoming bit stream and subtracted from the checksum.
+;
+INCH:	MOV	BX,(Offset WAYT)	;z/nz = character not/waiting
+	MOV	AL,[BX]
+	OR	AL,AL
+	JZ	GECH
+	MOV	AL,WACH			;waiting character
+	MOV	(Byte Ptr [BX]),0
+	RET
+;
+ANCH:	MOV	AL,0FFH
+	MOV	WAYT,AL			;z/nz = character not/waiting
+	CALL	GECH
+	MOV	WACH,AL			;waiting character
+	RET
+;
+GECH:	MOV	AL,DENS			;z/nz = un/squeezed
+	OR	AL,AL
+	JZ	RBYT			;fetch one byte
+	MOV	AL,MULT			;repeat factor
+	OR	AL,AL
+	JZ	GUSQ
+	DEC	AL
+	MOV	MULT,AL			;repeat factor
+	MOV	AL,LACH
+	RET
+;
+GUSQ:	CALL	DNCH
+	JNC	GUSS
+	MOV	AL,1AH
+	RET
+;
+GUSS:	CMP	AL,090H
+	JZ	GUSU
+	MOV	LACH,AL
+	RET
+;
+GUSU:	CALL	DNCH
+	OR	AL,AL
+	JNZ	GUSV
+	MOV	AL,90H
+	RET
+;
+GUSV:	DEC	AL
+	DEC	AL
+	MOV	MULT,AL			;repeat factor
+	MOV	AL,LACH
+	RET
+;
+;	Read one byte, refill buffer as needed
+;
+RBYT:	PUSH	BX
+	MOV	BX,CO80			;byte counter - input buffer
+	MOV	AL,BL
+	OR	AL,BH
+	JNZ	RBYU
+	CALL	RDSK
+	MOV	BX,(Offset BU80)	;.ASM buffer
+	MOV	PT80,BX			;byte pointer - input buffer
+	MOV	BX,(Offset SZ80)	;size of .ASM file buffer
+;
+RBYU:	DEC	BX
+	MOV	CO80,BX			;byte counter - input buffer
+	MOV	BX,PT80			;byte pointer - input buffer
+	MOV	AL,[BX]
+	INC	BX
+	MOV	PT80,BX			;byte pointer - input buffer
+	POP	BX
+	RET
+;
+;	Insert byte in .A86 buffer
+;
+WBYT:	LAHF
+	XCHG	AH,AL
+	PUSH	AX
+	XCHG	AH,AL
+	PUSH	BX
+	MOV	BX,(Offset CO86)	;occupancy of .A86 buffer
+	DEC	(Byte Ptr [BX])
+	JNZ	WBYY
+	MOV	(Byte Ptr [BX]),SZ86	;size of .A86 buffer
+	LAHF
+	XCHG	AH,AL
+	PUSH	AX
+	XCHG	AH,AL
+	MOV	BX,(Offset BU86)	;.A86 buffer
+	MOV	PT86,BX			;pointer to .A86 buffer
+	CALL	WRDI
+	CALL	CBUZ			;clear output buffer to zeroes
+	POP	AX
+	XCHG	AH,AL
+	SAHF
+;
+WBYY:	MOV	BX,PT86			;pointer to .A86 buffer
+	MOV	[BX],AL
+	INC	BX
+	MOV	PT86,BX			;pointer to .A86 buffer
+	POP	BX
+	POP	AX
+	XCHG	AH,AL
+	SAHF
+	RET
+;
+;	Send BU86 to disk
+;
+WRDI:	MOV	CL,26			;(1A) set DMA address
+	MOV	DX,(Offset BU86)	;.A86 buffer
+	INT	BDOS
+;
+	MOV	CL,21			;(15) write one record
+	MOV	DX,(Offset FC86)	;.A86 DCB
+	INT	BDOS
+	CMP	AL,0
+	MOV	DX,(Offset WERR)	;'disk write'
+	JZ	L_19
+	JMP	FERM			;final (error) message
+;
+L_19:	RET
+;
+RDSK:	PUSH	BX
+	PUSH	DX
+	PUSH	CX
+;
+	MOV	CL,26			;(1A) set DMA address
+	MOV	DX,(Offset BU80)	;.ASM buffer
+	INT	BDOS
+;
+	MOV	CL,20			;(14) read one record
+	MOV	DX,(Offset FC80)	;.ASM FCB
+	INT	BDOS
+;
+	POP	CX
+	POP	DX
+	POP	BX
+	RET
+;
+;	Fill BU86 with zeroes
+;
+CBUZ:	XOR	AL,AL
+	MOV	CH,1			;one sector in buffer
+	MOV	BX,(Offset BU86)	;.A86 buffer
+CBUY:	MOV	CL,TSIZ			;record size
+CBUX:	MOV	[BX],AL
+	INC	BX
+	DEC	CL
+	JNZ	CBUX
+	DEC	CH
+	JNZ	CBUY
+	RET
+;
+;	Block fill with C B's starting at (HL)
+;
+FIUC:	MOV	[BX],CH
+	INC	BX
+	DEC	CL
+	JNZ	FIUC			;block fill
+	RET
+;
+MIUC:	MOV	SI,DX
+	MOV	AL,[SI]
+	MOV	[BX],AL
+	INC	BX
+	INC	DX
+	DEC	CH
+	JNZ	MIUC
+	RET
+;
+;	Assemble the 8080 source code
+;
+ASSM:	CALL	ALFA
+	JMP	OPCO
+;
+;	Read an alpha field by ignoring leading separators,
+;	storing letters in registers C,D,E, and terminating
+;	reading when a separator is again encountered.	All
+;	fields are held to three letters, so that the only
+;	letters in a chain that are stored are the first,
+;	second, and last.
+;
+ALFA:	MOV	DX,(Offset 2020H)
+ALA:	CALL	LCIN
+	CALL	SEPA			;z = separator
+	JZ	ALA
+	MOV	CL,AL
+	CALL	LCIN
+	CALL	SEPA			;z = separator
+	JNZ	L_20
+	RET
+;
+L_20:	MOV	DH,AL
+ALB:	CALL	LCIN
+	CALL	SEPA			;z = separator
+	JNZ	L_21
+	RET
+;
+L_21:	MOV	DL,AL
+	JMP	ALB
+;
+;	Read an alpha field with the intention of keeping only
+;	the last letter in the field.  Otherwise the same rules
+;	apply as in the subroutine alfa: leading separators
+;	are ignored, trailing separators terminate.
+;
+BETA:	CALL	LCIN
+	CALL	SEPA			;z = separator
+	JZ	BETA
+;
+BET:	MOV	CH,AL
+	CALL	LCIN
+	CALL	SEPA			;z = separator
+	JNZ	BET
+	MOV	SEPR,AL
+	MOV	AL,CH
+	RET
+;
+;	Test for separators or delimiters.  The character to be
+;	tested is in the accumulator, where it remains.  A zero
+;	flag means it was a separator.
+;
+SEPA:	CMP	AL,' '
+	JNZ	L_22
+	RET
+;
+L_22:	CMP	AL,','
+	JNZ	L_23
+	RET
+;
+L_23:	CMP	AL,HT
+	JNZ	L_24
+	RET
+;
+L_24:	CMP	AL,CR
+	JNZ	L_25
+	RET
+;
+L_25:	CMP	AL,LF
+	RET
+;
+;	Locate the operation codes.  A simple linear search is
+;	made of some sixty mnemonics, grouping them mostly in
+;	sets of eight because their position within an octet
+;	translates directly into a source or destination field
+;	in the 2-3-3 decomposition of INTEL 8080 opcodes.
+;
+OPCO:	MOV	CH,12
+	MOV	BX,(Offset T4)		;Quadrant 0 with minor modifications
+	CALL	MNEM
+	JS	L_26
+	JMP	Q0
+;
+L_26:	MOV	CH,1
+	MOV	BX,(Offset T0)		;Quadrant 1: interregister movements
+	CALL	MNEM
+	JS	L_27
+	JMP	Q1
+;
+L_27:	MOV	CH,8
+	MOV	BX,(Offset T1)		;Quadrant 3: arithmetic-logical
+	CALL	MNEM
+	JS	L_28
+	JMP	Q2
+;
+L_28:	MOV	CH,8
+	MOV	BX,(Offset T2)		;Quadrant 2, column 6: immediate
+	CALL	MNEM
+	JS	L_29
+	JMP	B6
+;
+L_29:	MOV	CH,9
+	MOV	BX,(Offset T4_1)	;All the one-byte sporadic opcodes
+	CALL	MNEM
+	JS	L_30
+	JMP	ESES
+;
+L_30:	MOV	CH,2
+	MOV	BX,(Offset T4_2)	;All the two-byte sporadic opcodes
+	CALL	MNEM
+	JS	L_31
+	JMP	TT
+;
+L_31:	MOV	CH,4
+	MOV	BX,(Offset T4_3)	;All the three byte sporadic opcodes
+	CALL	MNEM
+	JS	L_32
+	JMP	UU
+;
+L_32:	MOV	CH,2
+	MOV	BX,(Offset T5)
+	CALL	MNEM
+	JS	L_33
+	JMP	VV
+;
+L_33:	MOV	CH,8
+	MOV	BX,(Offset T3)		;Quadrant 0, column 7: accumulator
+	CALL	MNEM
+	JS	L_34
+	JMP	A7
+;
+L_34:	MOV	AL,CL
+	CMP	AL,'r'
+	JNZ	L_35
+	JMP	B0			;Quadrant 3, column 0: returns
+;
+L_35:	CMP	AL,'j'
+	JNZ	L_36
+	JMP	B2			;Quadrant 3, column 2: jumps
+;
+L_36:	CMP	AL,'c'
+	JNZ	L_37
+	JMP	B4			;Quadrant 3, column 4: calls
+;
+L_37:	MOV	CH,6
+	MOV	BX,(Offset T7)		;Assembler directives
+	CALL	MNEM
+	JS	L_38
+	JMP	QD
+;
+L_38:	JMP	NONE			;error - unrecognizable code
+;
+Q0:	CALL	JUTA
+;
+	DW	A0			;pop  pair
+	DW	A3			;lxi  pair,addr
+	DW	A2			;stax pair  - beware - only b, d legal
+	DW	A1			;inx  pair
+	DW	A4			;inr  register
+	DW	A4			;dcr  register
+	DW	A4			;mvi  register,data
+	DW	B7			;rst  digit in opcode
+	DW	A0			;push pair
+	DW	A0			;dad  pair
+	DW	A2			;ldax pair  - beware - only b, d legal
+	DW	A1			;dcx  pair
+;
+A0:	LAHF
+	XCHG	AH,AL
+	PUSH	AX
+	XCHG	AH,AL
+	CALL	BETA
+	CMP	AL,'w'
+	JZ	A0_1
+	POP	CX
+	LAHF
+	XCHG	AH,AL
+	PUSH	AX
+	XCHG	AH,AL
+	MOV	AL,CH
+	MOV	DX,(Offset QZ86)
+	CALL	META			;locate numbered phrase
+	CALL	OURG			;phrase to output stream
+	POP	AX
+	XCHG	AH,AL
+	SAHF
+	CALL	PAIR			;identify register pair
+	MOV	AL,[BX]
+	CALL	WRIL			;byte to line buffer
+	INC	BX
+	MOV	AL,[BX]
+	CALL	WRIL			;byte to line buffer
+	JMP	REST			;comment to output stream
+;
+A0_1:	POP	AX
+	XCHG	AH,AL
+	SAHF
+	OR	AL,AL
+	JZ	A0_2
+	MOV	BX,(Offset QZ86_C)
+	JMP	A0_3
+A0_2:	MOV	BX,(Offset QZ86_D)
+A0_3:	CALL	OURG			;phrase to output stream
+	JMP	REST			;comment to output stream
+;
+A1:	MOV	DX,(Offset QZ86)
+	CALL	META			;locate numbered phrase
+	CALL	OURG			;phrase to output stream
+	PUSH	BX
+	CALL	BETA
+	CALL	PAIR			;identify register pair
+	MOV	AL,[BX]
+	CALL	WRIL			;byte to line buffer
+	INC	BX
+	MOV	AL,[BX]
+	CALL	WRIL			;byte to line buffer
+	POP	BX
+	INC	BX
+	CALL	OURG			;phrase to output stream
+	JMP	REST			;comment to output stream
+;
+A2:	MOV	DX,(Offset QZ86)
+	CALL	META			;locate numbered phrase
+	CALL	OURG			;phrase to output stream
+	PUSH	BX
+	CALL	BETA
+	CALL	PAIR			;identify register pair
+	PUSH	BX
+	MOV	AL,[BX]
+	CALL	WRIL			;byte to line buffer
+	INC	BX
+	MOV	AL,[BX]
+	CALL	WRIL			;byte to line buffer
+	POP	BX
+	POP	SI
+	PUSH	BX
+	MOV	BX,SI
+	INC	BX
+	CALL	OURG			;phrase to output stream
+	POP	SI
+	PUSH	BX
+	MOV	BX,SI
+	MOV	AL,[BX]
+	CALL	WRIL			;byte to line buffer
+	INC	BX
+	MOV	AL,[BX]
+	CALL	WRIL			;byte to line buffer
+	POP	BX
+	INC	BX
+	CALL	OURG			;phrase to output stream
+	JMP	RESU			;rest of line to output
+;
+A3:	MOV	DX,(Offset QZ86)
+	CALL	META			;locate numbered phrase
+	CALL	OURG			;phrase to output stream
+	PUSH	BX
+	CALL	BETA
+	CALL	PAIR			;identify register pair
+	MOV	AL,[BX]
+	CALL	WRIL			;byte to line buffer
+	INC	BX
+	MOV	AL,[BX]
+	CALL	WRIL			;byte to line buffer
+	POP	BX
+	INC	BX
+	CALL	OURG			;phrase to output stream
+	PUSH	BX
+	CALL	ADDQ			;read address field
+	POP	BX
+	INC	BX
+	CALL	OURG			;phrase to output stream
+	JMP	RESU			;rest of line to output
+;
+A4:	MOV	DX,(Offset QZ86)
+	CALL	META			;locate numbered phrase
+	CALL	OURG			;phrase to output stream
+	CALL	SREG
+	MOV	AL,SEPR
+	CALL	WRIL			;byte to line buffer
+	JMP	RESU			;rest of line to output
+;
+A7:	MOV	DX,(Offset AC86)
+	CALL	META			;locate numbered phrase
+	CALL	OURG			;phrase to output stream
+	JMP	REST			;comment to output stream
+;
+Q1:	MOV	BX,(Offset MO86)
+	CALL	OURG			;phrase to output stream
+	CALL	RREG			;identify register
+	MOV	AL,','
+	CALL	WRIL			;byte to line buffer
+	CALL	RREG			;identify register
+	JMP	REST			;comment to output stream
+;
+Q2:	MOV	BL,AL
+	MOV	BH,0
+	ADD	BX,BX
+	ADD	BX,BX
+	ADD	BX,BX
+	MOV	DX,(Offset IM86)
+	ADD	BX,DX
+	CALL	OURG			;phrase to output stream
+	CALL	RREG			;identify register
+	JMP	RESU			;rest of line to output
+;
+ESES:	MOV	DX,(Offset NB86)
+	CALL	META			;locate numbered phrase
+	CALL	OURG			;phrase to output stream
+	JMP	REST			;comment to output stream
+;
+TT:	MOV	DX,(Offset WB86)
+	CALL	META			;locate numbered phrase
+	CALL	OURG			;phrase to output stream
+	JMP	RESU			;rest of line to output
+;
+UU:	MOV	DX,(Offset HB86)
+	CALL	META			;locate numbered phrase
+	CALL	OURG			;phrase to output stream
+	JMP	RESU			;rest of line to output
+;
+VV:	MOV	DX,(Offset IB86)
+	CALL	META			;locate numbered phrase
+	CALL	OURG			;phrase to output stream
+	PUSH	BX
+	CALL	ADDQ			;read address field
+	POP	BX
+	INC	BX
+	CALL	OURG			;phrase to output stream
+	JMP	REST			;comment to output stream
+;
+B0:	CALL	BB
+	MOV	BX,(Offset CR86)
+	CALL	OURG			;phrase to output stream
+	JMP	DEDE
+;
+B2:	CALL	BB
+	MOV	BX,(Offset CJ86)
+	CALL	OURG			;phrase to output stream
+	CALL	ADDQ			;read address field
+	JMP	DEDE
+;
+B4:	CALL	BB
+	MOV	BX,(Offset CC86)
+	CALL	OURG			;phrase to output stream
+	CALL	ADDQ			;read address field
+	JMP	DEDE
+;
+BB:	MOV	CL,' '
+	MOV	CH,8
+	MOV	BX,(Offset T6)
+	CALL	MNEM
+	JNS	L_39
+	JMP	NONE			;error - unrecognizable code
+;
+L_39:	MOV	BL,AL
+	MOV	DL,AL
+	MOV	BH,0
+	MOV	DH,0
+	ADD	BX,BX
+	ADD	BX,BX
+	ADD	BX,DX
+	MOV	DX,(Offset CN86)
+	ADD	BX,DX
+	CALL	OURG			;phrase to output stream
+	CALL	INCR			;increment gensym
+	MOV	BX,(Offset GSYM)	;gensym #
+	CALL	OURG			;phrase to output stream
+	MOV	BX,(Offset EXCL)
+	JMP	OURG			;phrase to output stream
+;
+DEDE:	MOV	BX,(Offset EXCL)
+	CALL	OURG			;phrase to output stream
+	MOV	BX,(Offset GSYM)	;gensym #
+	CALL	OURG			;phrase to output stream
+	MOV	AL,':'
+	CALL	WRIL			;byte to line buffer
+	JMP	REST			;comment to output stream
+;
+B6:	MOV	BL,AL
+	MOV	BH,0
+	ADD	BX,BX
+	ADD	BX,BX
+	ADD	BX,BX
+	MOV	DX,(Offset IM86)
+	ADD	BX,DX
+	CALL	OURG			;phrase to output stream
+	JMP	RESU			;rest of line to output
+;
+B7:	MOV	BX,(Offset QZ86_7)
+	CALL	OURG			;phrase to output stream
+	JMP	RESU			;rest of line to output
+;
+QD:	CALL	JUTA
+	DW	D0			;data byte
+	DW	D1			;data word
+	DW	D2			;data space
+	DW	D3			;equivalence
+	DW	D4			;origin
+	DW	D5			;end
+;
+D0:	MOV	BX,(Offset DB86)
+	CALL	OURG			;phrase to output stream
+	JMP	RESU			;rest of line to output
+;
+D1:	MOV	BX,(Offset DW86)
+	CALL	OURG			;phrase to output stream
+	JMP	RESU			;rest of line to output
+;
+D2:	CALL	INCH			;byte from input stream
+	CMP	AL,HT
+	JZ	D2
+	CMP	AL,' '
+	JZ	D2
+	CMP	AL,'2'
+	JZ	D2_0
+	LAHF
+	XCHG	AH,AL
+	PUSH	AX
+	XCHG	AH,AL
+	MOV	BX,(Offset RB86)
+	CALL	OURG			;phrase to output stream
+	POP	AX
+	XCHG	AH,AL
+	SAHF
+	CALL	WRIL			;byte to line buffer
+	JMP	RESU			;rest of line to output
+;
+D2_0:	CALL	INCH			;byte from input stream
+	CALL	SEPA			;z = separator
+	JZ	D2_1
+	LAHF
+	XCHG	AH,AL
+	PUSH	AX
+	XCHG	AH,AL
+	MOV	BX,(Offset RB86)
+	CALL	OURG			;phrase to output stream
+	MOV	AL,'2'
+	CALL	WRIL			;byte to line buffer
+	POP	AX
+	XCHG	AH,AL
+	SAHF
+	CALL	WRIL			;byte to line buffer
+	JMP	RESU			;rest of line to output
+;
+D2_1:	MOV	BX,(Offset RW86)
+	CALL	OURG			;phrase to output stream
+	JMP	RESU			;rest of line to output
+;
+D3:	MOV	BX,(Offset EQ86)
+	CALL	OURG			;phrase to output stream
+	JMP	REST			;comment to output stream
+;
+D4:	MOV	BX,(Offset OR86)
+	CALL	OURG			;phrase to output stream
+	JMP	REST			;comment to output stream
+;
+D5:	MOV	BX,(Offset EN86)
+	CALL	OURG			;phrase to output stream
+	CALL	REST			;comment to output stream
+	JMP	CLOF
+;
+;	The only errors recognized are unintelligible registers
+;	or mnemonics
+;
+NONE:	MOV	BX,(Offset ER86)
+	CALL	OURG			;phrase to output stream
+	JMP	REST			;comment to output stream
+;
+;	Finish out a line
+;	  rest for comments
+;	  resu for parameters
+;
+REST:	CALL	INCH			;byte from input stream
+	CMP	AL,HT
+	JZ	REST			;comment to output stream
+	CMP	AL,' '
+	JZ	REST			;comment to output stream
+	CMP	AL,CR
+	JZ	REST			;comment to output stream
+	CMP	AL,LF
+	JNZ	RESS
+	MOV	AL,CR
+	CALL	WRIL			;byte to line buffer
+	MOV	AL,LF
+	JMP	WRIL			;byte to line buffer
+;
+RESS:	LAHF
+	XCHG	AH,AL
+	PUSH	AX
+	XCHG	AH,AL
+	MOV	AL,HT
+	CALL	WRIL			;byte to line buffer
+	POP	AX
+	XCHG	AH,AL
+	SAHF
+	CALL	WRIL			;byte to line buffer
+RESU:	CALL	INCH			;byte from input stream
+	CMP	AL,CR
+	JZ	RESU			;rest of line to output
+	CMP	AL,LF
+	JZ	RESV
+	CALL	WRIL			;byte to line buffer
+	JMP	RESU			;rest of line to output
+;
+RESV:	MOV	AL,CR
+	CALL	WRIL			;byte to line buffer
+	MOV	AL,LF
+	JMP	WRIL			;byte to line buffer
+;
+;	Read an address or other two-byte field
+;
+ADDQ:	CALL	INCH			;byte from input stream
+	CMP	AL,HT
+	JZ	ADDQ			;read address field
+	CMP	AL,' '
+	JZ	ADDQ			;read address field
+ADDR:	CALL	WRIL			;byte to line buffer
+	CALL	INCH			;byte from input stream
+	CALL	SEPA			;z = separator
+	JNZ	ADDR
+	RET
+;
+;	Increment gensym counter
+;
+INCR:	MOV	BX,(Offset GSYM+3)
+INCS:	MOV	AL,[BX]
+	OR	AL,30H
+	INC	AL
+	MOV	[BX],AL
+	CMP	AL,':'
+	JZ	L_40
+	RET
+;
+L_40:	MOV	(Byte Ptr [BX]),'0'
+	DEC	BX
+	JMP	INCS
+;
+;	Find the address of the nth message, when DE points to the
+;	message address table and A is the number of the message.
+;
+META:	MOV	BL,AL
+	MOV	BH,0
+	ADD	BX,BX
+	ADD	BX,DX
+	MOV	DL,[BX]
+	INC	BX
+	MOV	DH,[BX]
+	XCHG	DX,BX
+	RET
+;
+;	Jump to the nth address in the table following the call
+;	to juta, where n is located in the accumulator.  The
+;	value of the accumulator is conserved in register c.
+;
+JUTA:	POP	BX
+	MOV	CL,AL
+	ADD	AL,AL
+	ADD	AL,BL
+	MOV	BL,AL
+	MOV	AL,BH
+	ADC	AL,0
+	MOV	BH,AL
+	MOV	AL,CL
+	MOV	DL,[BX]
+	INC	BX
+	MOV	DH,[BX]
+	XCHG	DX,BX
+	JMP	BX
+;
+;	Find numerical equivalents for register designations.
+;	Source registers are reported at their true value, but
+;	destination registers are multiplied by eight to have
+;	their value positioned correctly for its field.
+;
+RREG:	CALL	BETA
+	MOV	CH,8
+	MOV	BX,(Offset TR)
+	CALL	REGI			;identify register
+	JNS	L_41
+	JMP	NONE			;error - unrecognizable code
+;
+L_41:	MOV	BX,(Offset RGEM)
+	CMP	AL,6
+	JNZ	L_42
+	JMP	OURG			;phrase to output stream
+;
+L_42:	MOV	BX,(Offset RG86)
+	MOV	DL,AL
+	MOV	DH,0
+	ADD	BX,DX
+	ADD	BX,DX
+	ADD	BX,DX
+	JMP	OURG			;phrase to output stream
+;
+SREG:	CALL	BETA
+	MOV	CH,8
+	MOV	BX,(Offset TR)
+	CALL	REGI			;identify register
+	JNS	L_43
+	JMP	NONE			;error - unrecognizable code
+;
+L_43:	MOV	BX,(Offset RGEN)
+	CMP	AL,6
+	JNZ	L_44
+	JMP	OURG			;phrase to output stream
+;
+L_44:	MOV	BX,(Offset RG86)
+	MOV	DL,AL
+	MOV	DH,0
+	ADD	BX,DX
+	ADD	BX,DX
+	ADD	BX,DX
+	JMP	OURG			;phrase to output stream
+;
+;	Find numerical equivalents for register pair symbols.
+;	They always left-pack their destination field.
+;
+PAIR:	MOV	CH,5
+	MOV	BX,(Offset TP)
+	CALL	REGI			;identify register
+	JNS	L_45
+	JMP	NONE			;error - unrecognizable code
+;
+L_45:	MOV	BL,AL
+	MOV	BH,0
+	ADD	BX,BX
+	MOV	DX,(Offset PA86)
+	ADD	BX,DX
+	RET
+;
+;	Search a list of bytes whose origin is contained in
+;	in HL to find the one, if any, which matches the
+;	accumulator.  The length of the list in is B on entry;
+;	on exit A contains either the position or FF if no
+;	match was found.
+;
+REGI:	DEC	BX
+	CMP	AL,[BX]
+	JZ	REG
+	DEC	CH
+	JNZ	REGI			;identify register
+REG:	XOR	AL,AL
+	DEC	CH
+	OR	AL,CH
+	RET
+;
+;	Search a table of three-letter mnemonics to find the
+;	code contained in registers C,D,E.  Enter with the
+;	table origin in pair HL, the table size N in the
+;	accumulator.  On exit the accumulator will contain
+;	either the position, ranging between 0 and N-1, of
+;	the item in the table, or else FF(hex) if it was not
+;	found.
+;
+MNEM:	DEC	BX
+	MOV	AL,[BX]
+	CMP	AL,DL
+	JNZ	MNB
+	DEC	BX
+	MOV	AL,[BX]
+	CMP	AL,DH
+	JNZ	MNC
+	DEC	BX
+	MOV	AL,[BX]
+	SUB	AL,CL
+	JNZ	MND
+;
+MNA:	DEC	CH
+	OR	AL,CH
+	RET
+;
+MNB:	DEC	BX
+MNC:	DEC	BX
+MND:	DEC	CH
+	JNZ	MNEM
+	JMP	MNA
+;
+;	Table of mnemonics grouped by octets and dodecuplets
+;
+	DB	'bcdehlma'
+TR	DB	'bdhpw'
+TP	DB	'mov'
+T0	DB	'add','adc','sub','sbb'
+	DB	'ana','xra','ora','cmp'
+T1	DB	'adi','aci','sui','sbi'
+	DB	'ani','xri','ori','cpi'
+T2	DB	'rlc','rrc','ral','rar'
+	DB	'daa','cma','stc','cmc'
+T3	DB	'pop','lxi','stx','inx'
+	DB	'inr','dcr','mvi','rst'
+	DB	'puh','dad','ldx','dcx'
+T4	DB	'nop','ret','pcl','spl'
+	DB	'xtl','xcg','di ','ei '
+	DB	'hlt'
+T4_1	DB	'out','in '
+T4_2	DB	'jmp','cal','lda','lhd'
+T4_3	DB	'sta','shd'
+T5	DB	' nz',' z ',' nc',' c '
+	DB	' po',' pe',' p ',' m '
+T6	DB	'db ','dw ','ds ','equ','org','end'
+T7	RB	0
+;
+RG86	DB	'ch',0
+	DB	'cl',0
+	DB	'dh',0
+	DB	'dl',0
+	DB	'bh',0
+	DB	'bl',0
+	DB	'..',0
+	DB	'al',0
+RGEM	DB	'[bx]',0
+RGEN	DB	'(byte ptr [bx])',0
+;
+PA86	DB	'cx'
+	DB	'dx'
+	DB	'bx'
+	DB	'sp'
+	DB	'ax'
+;
+QZ86	DW	QZ86_0
+	DW	QZ86_1
+	DW	QZ86_2
+	DW	QZ86_3
+	DW	QZ86_4
+	DW	QZ86_5
+	DW	QZ86_6
+	DW	QZ86_7
+	DW	QZ86_8
+	DW	QZ86_9
+	DW	QZ86_A
+	DW	QZ86_B
+;
+QZ86_0	DB	'pop',HT,0
+QZ86_1	DB	'mov',HT,0,',(offset ',0,')',HT,0
+QZ86_2	DB	'xchg ',0,',bx ! mov [bx],al ! xchg ',0,',bx',0
+QZ86_3	DB	'pushf ! inc ',0,' ! popf',HT,0
+QZ86_4	DB	'inc',HT,0
+QZ86_5	DB	'dec',HT,0
+QZ86_6	DB	'mov',HT,0
+QZ86_7	DB	'call',HT,'offset 8*',0
+QZ86_8	DB	'push',HT,0
+QZ86_9	DB	'add',HT,'bx,',0
+QZ86_A	DB	'xchg ',0,',bx ! mov al,[bx] ! xchg ',0,',bx',0
+QZ86_B	DB	'pushf ! dec ',0,' ! popf',HT,0
+;
+QZ86_C	DB	'lahf ! xchg ah,al ! push ax ! xchg ah,al',0
+QZ86_D	DB	'pop ax ! xchg ah,al ! sahf',0
+;
+MO86	DB	'mov',HT,0
+;
+IM86	DB	'add',HT,'al,',0
+	DB	'adc',HT,'al,',0
+	DB	'sub',HT,'al,',0
+	DB	'sbb',HT,'al,',0
+	DB	'and',HT,'al,',0
+	DB	'xor',HT,'al,',0
+	DB	'or',HT,'al,',0,0
+	DB	'cmp',HT,'al,',0
+;
+AC86	DW	AC86_0
+	DW	AC86_1
+	DW	AC86_2
+	DW	AC86_3
+	DW	AC86_4
+	DW	AC86_5
+	DW	AC86_6
+	DW	AC86_7
+;
+AC86_0	DB	'rol',HT,'al,1',0
+AC86_1	DB	'ror',HT,'al,1',0
+AC86_2	DB	'rcl',HT,'al,1',0
+AC86_3	DB	'rcr',HT,'al,1',0
+AC86_4	DB	'daa',0
+AC86_5	DB	'not',HT,'al',0
+AC86_6	DB	'stc',0
+AC86_7	DB	'cmc',0
+;
+NB86	DW	NB86_0
+	DW	NB86_1
+	DW	NB86_2
+	DW	NB86_3
+	DW	NB86_4
+	DW	NB86_5
+	DW	NB86_6
+	DW	NB86_7
+	DW	NB86_8
+;
+NB86_0	DB	'nop',0
+NB86_1	DB	'ret',0
+NB86_2	DB	'jmp',HT,'bx',0
+NB86_3	DB	'mov',HT,'sp,bx',0
+NB86_4	DB	'xchg sp,bp ! xchg bx,[bp] ! xchg sp,bp',0
+NB86_5	DB	'xchg',HT,'dx,bx',0
+NB86_6	DB	'di',0
+NB86_7	DB	'ei',0
+NB86_8	DB	'hlt',0
+;
+WB86	DW	WB86_0
+	DW	WB86_1
+;
+WB86_0	DB	'out',HT,'al,',0
+WB86_1	DB	'in',HT,'al,',0
+;
+HB86	DW	HB86_0
+	DW	HB86_1
+	DW	HB86_2
+	DW	HB86_3
+;
+HB86_0	DB	'jmp',HT,0
+HB86_1	DB	'call',HT,0
+HB86_2	DB	'mov',HT,'al,',0
+HB86_3	DB	'mov',HT,'bx,',0
+;
+IB86	DW	IB86_0
+	DW	IB86_1
+;
+IB86_0	DB	'mov',HT,0,',al',0
+IB86_1	DB	'mov',HT,0,',bx',0
+;
+CN86	DB	'jz ',0,0
+	DB	'jnz ',0
+	DB	'jc ',0,0
+	DB	'jnc ',0
+	DB	'jpe ',0
+	DB	'jpo ',0
+	DB	'js ',0,0
+	DB	'jns ',0
+;
+EXCL	DB	' ! ',0
+;
+CR86	DB	'ret',0
+CJ86	DB	'jmp ',0
+CC86	DB	'call ',0
+;
+DB86	DB	'db',HT,0
+DW86	DB	'dw',HT,0
+RB86	DB	'rb',HT,0
+RW86	DB	'rw',HT,'1',0
+EQ86	DB	'equ',HT,0
+OR86	DB	'org',HT,0
+EN86	DB	'end',0
+;
+ER86	DB	'[-error-]',0
+;
+LOGO	DB	'          80X86/ICUAP',CR,LF
+	DB	'Universidad Autonoma de Puebla',CR,LF
+	DB	'        August 28, 1984',CR,LF,'$'
+;
+TUTO	DB	'80X86 will translate .ASM files for the Intel 8080',CR,LF
+	DB	'into .A86 files for the Intel 8086.',CR,LF
+	DB	CR,LF
+	DB	'          80X86 [X:]FILE[.XXX]',CR,LF
+	DB	CR,LF
+	DB	'will read [X:]FILE[.XXX] to produce [X:]FILE.A86.',CR,LF
+	DB	'All operation codes and the assembler directives',CR,LF
+	DB	'db, dw, ds, equ, org, end will be translated, but',CR,LF
+	DB	'many constructions will have to be transformed by',CR,LF
+	DB	'hand afterwards. These include labels which conflict',CR,LF
+	DB	'with Intel 8086 opcodes or directives, dollar signs',CR,LF
+	DB	'which form part of labels, asolute addresses such as',CR,LF
+	DB	'CP/M''s file control block, and so on. The source',CR,LF
+	DB	'file may be squeezed.',CR,LF
+	DB	'$'
+;
+WERR	DB	CR,LF,'Disk write error.$'
+NFIL	DB	CR,LF,'Requested file not present.$'
+YEXI	DB	CR,LF,'.A86 file already exists.$'
+NTAB	DB	CR,LF,'Insufficient space for dictionary.$'
+NASM	DB	CR,LF,'Not an .ASM file.$'
+CHNO	DB	CR,LF,'Checksum failure.$'
+NOPN	DB	CR,LF,'Can''t open source.$'
+NODI	DB	CR,LF,'Disk or Directory full.$'
+NCLO	DB	CR,LF,'Cannot close file.$'
+;
+GSYM	DB	'G000',0
+;
+FC86	RB	21H			;.A86 FCB
+CO86	RB	1			;occupancy of .A86 buffer
+PT86	RW	1			;pointer to .A86 buffer
+BU86	RB	SZ86			;.A86 buffer
+PULA	RW	1			;label pointer
+PUCO	RW	1			;instruction pointer
+PURG	RW	1			;argument pointer
+PUSC	RW	1			;comment pointer
+LIPT	RW	1			;line pointer
+LIBU	RB	132			;line buffer
+LACH	RB	1			;last character typed
+SEPR	RB	1			;last separator read
+ROCO	RB	1			;rotating bit counter
+ROBY	RB	1			;rotating byte
+DENS	RB	1			;z/nz = un/squeezed
+MULT	RB	1			;repeat factor
+WAYT	RB	1			;z/nz = character not/waiting
+WACH	RB	1			;waiting character
+CO80	RW	1			;byte counter - input buffer
+PT80	RW	1			;byte pointer - input buffer
+CKSM	RW	1			;checksum
+CODE	RB	4*CSIZ			;decoding table
+;
+	END

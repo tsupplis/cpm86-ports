@@ -1,0 +1,478 @@
+;******************************************************************************
+;
+;	PROGRAM:	LDIR86.A86
+;	VERSION:	1.05
+;	DATE:		10 September 1984
+;	AUTHOR:		Charlie Godet-Ceraolo
+;
+;	DESCRIPTION:	This is a version of LDIR for CP/M86 systems.
+;			It displays a directory of a LBR file.  It accepts
+;			the LBR name on the command line, with or without
+;			the LBR extension.  The Library filename can be
+;			followed by a (possibly ambiguous) filespec
+;			to search for in the library.
+;			Entering nothing on the command line will display
+;			a brief summary of the above.
+;
+;	NOTES:
+;		I wrote the program with a view towards simplicity and clarity
+;		rather than speed or compactness.  If you want to modify it,
+;		here are some things to keep in mind:
+;
+;			1. It uses the 8080 Model
+;			2. It depends heavily on ALL the Segment Registers
+;			   pointing to the same area of memory.
+;			3. the ES register is saved across BDOS calls.
+;			4. most routines save all scratch registers except
+;			   those returning values.
+;
+;*******************************************************************************
+;
+;	cpm86 equates
+;
+WCCFC		EQU	02	; write console character
+OPNFC		EQU	15	; open file
+RSRFC		EQU	20	; read sequential record from disk
+;
+;	LU Dir entry equates and offsets
+;
+ENTRYLEN	EQU	32
+ACTIVE		EQU	00H
+UNUSED		EQU	0FFH
+DELETED		EQU	0FEH
+STATUS		EQU	 0
+NAME		EQU	 1
+EXTENSION	EQU	 9
+INDEX		EQU	12
+COUNT		EQU	14
+CRC		EQU	16
+;
+;	Ascii equates
+;
+TAB		EQU	09H
+CR		EQU	0DH
+LF		EQU	0AH
+SPACE		EQU	' '
+ASCII_ZERO	EQU	'0'
+EOS		EQU	0H
+NUM_ACROSS	EQU	3	; three across on a line
+;
+; CP/M86's BasePage
+;
+		RB	5CH
+FCB		EQU	$	; default fcb
+FCBDN		RB	1
+FCBFN		RB	8
+FCBFT		RB	3
+FCBEX		RB	1
+FCBS1		RB	1
+FCBS2		RB	1
+FCBRC		RB	1
+FCB2		EQU	$	; second fcb
+FCBD0		RB	16
+FCBCR		RB	1
+FCBRNO		RB	3
+BUFF		EQU	$
+		RB	80H	; default buffer
+;
+;	Set up local stack
+;
+LDIR:
+		MOV	DX,DS
+		MOV	SS,DX
+		MOV	SP,OFFSET LOCAL_STACK
+		CLD			; direction flg for increment
+;
+;	Print signon message
+;
+		MOV	SI,OFFSET SIGNON
+		CALL	PSTRING
+		CALL	CRLF
+;
+;	check for command line, display usage if none
+;
+		MOV	BX,OFFSET BUFF
+		MOV	AL,[BX]
+		OR	AL,AL		; zero means no command
+		JNZ	cmdok		; we got one, proceed
+;
+;	no command line, show usage and exit
+;
+		CALL	CRLF
+		MOV	SI,OFFSET USEMSG
+		CALL	PSTRING
+		CALL	CRLF
+		JMP	FINIS
+;
+;	check for extension, add LBR if none
+;
+cmdok:
+		MOV	AL,FCBFT
+		CMP	AL,SPACE
+		JNZ	extok
+		MOV	SI,OFFSET LIBEXT
+		MOV	CX,3
+		MOV	DI,OFFSET FCBFT
+		REP	MOVSB
+;
+;	check for search request, use Joker (*.*) if none
+;
+extok:
+		MOV	CX,11			; bytes to move
+		MOV	DI,OFFSET SEARCH_STR	; destination
+		MOV	SI,OFFSET FCB2+1	; assume fcb2
+		MOV	AL,[SI]
+		CMP	AL,SPACE		; anything there?
+		JNZ	gotaname		; yes, move it
+		MOV	SI,OFFSET JOKER		; no, move the joker
+gotaname:
+		REP	MOVSB			; move it
+;
+;	try to open the file
+;
+		CALL	OPEN_FILE
+		CMP	AL,255
+		JNZ	OPENOK
+;
+;	No file, send message and leave
+;
+		MOV	SI,OFFSET OPNMSG
+		CALL	PSTRING
+		JMP	FINIS
+;
+;	file found and opened, get dir info
+;
+OPENOK:
+		XOR	AX,AX		; initialize variables
+		MOV	MAX_ENTRIES,AX
+		MOV	IN_USE,AX
+		MOV	AL,NUM_ACROSS
+		MOV	ENTRIES_PRINTED,AL
+		CALL	CRLF
+;
+		CALL	READ_SECTOR	; Get first sector
+		OR	AL,AL
+		JZ	readok		; if non-zero, we're at eof
+;
+;	premature end of file, send message, and exit
+;
+		MOV	SI,OFFSET EOFMSG
+		CALL	PSTRING
+		JMP	FINIS
+readok:
+		MOV	BX,OFFSET BUFF	; point to first entry
+		MOV	AX,COUNT[BX]	; get dir size in sectors
+		MOV	CL,2
+		SHL	AX,CL		; sectors * 4 = MAX_ENTRIES
+		MOV	MAX_ENTRIES,AX	; save it
+		MOV	ENTRIES_TO_DO,AX	; and our counter
+		INC	IN_USE		; for the dir header
+		DEC	ENTRIES_TO_DO	; likewise
+;
+		ADD	BX,ENTRYLEN	; point to next entry
+		MOV	CX,3		; allow for dir header
+;
+;	Read and analyze entries until eof
+;
+MAIN:
+		MOV	AL,STATUS[BX]
+		CMP	AL,UNUSED	; first unused entry?
+		JZ	FINALE		; yes, we're done
+;
+		CMP	AL,ACTIVE	; active entry?
+		JNZ	skipit		; no, don't process it
+;
+		INC	IN_USE		; yes, bump counter
+		LEA	DI,NAME[BX]	; point to name
+		CALL	COMPARE		; does it match?
+		OR	AL,AL
+		JNZ	skipit		; nope, skip it
+		CALL	DOENTRY		; else display info
+skipit:
+		DEC	ENTRIES_TO_DO	; have we read em all?
+		JZ	FINALE		; yes, leave
+		ADD	BX,ENTRYLEN	; no, point to next entry
+		LOOP	MAIN		; and continue processing
+;
+		CALL	READ_SECTOR	; Get another sector
+		OR	AL,AL		; Eof?
+		JNZ	FINALE		; Yes, leave
+		MOV	BX,OFFSET BUFF	; no, reset buffer pointer
+		MOV	CX,4		; and entries per buffer
+		JMP	MAIN		; and process this sector
+;
+;	display summary information
+;
+FINALE:
+		CALL	CRLF
+		CALL	CRLF
+		MOV	SI,OFFSET MAXMSG
+		CALL	PSTRING
+		MOV	BX,MAX_ENTRIES
+		CALL	DECIMAL_OUT
+		MOV	SI,OFFSET FREEMSG
+		CALL	PSTRING
+		SUB	BX,IN_USE	; free slots = max - in use
+		CALL	DECIMAL_OUT
+		CALL	CRLF
+;
+;	back to CP/M86, the easy way
+;
+FINIS:
+		MOV	CL,0
+		MOV	DX,0
+		INT	224
+;
+;			SUBROUTINES
+;
+;	compare filenames, including wildcards
+;	on entry DI points to the filename to match with Search_str
+;	all registers saved. Returns AL = 0 if a match, else AL = FF
+;
+COMPARE:
+		PUSH	CX
+		PUSH	SI
+		PUSH	DI
+		MOV	SI,OFFSET SEARCH_STR	; source
+		MOV	CX,11			; number of bytes to compare
+cmploop:
+		LODS	SEARCH_STR
+		CMP	AL,'?'
+		JZ	itmatches
+		CMP	AL,[DI]
+		JNZ	nomatch
+itmatches:
+		INC	DI
+		LOOP	cmploop
+		MOV	AL,0			; if we got this far
+		JMP	cmpexit			; it's a match, send 0
+nomatch:
+		MOV	AL,0FFH			; send FF, no match
+cmpexit:
+		POP	DI
+		POP	SI
+		POP	CX
+		RET
+;
+;	process the entry pointed to by BX, all registers saved
+;
+DOENTRY:
+		PUSH	BP		; save scratch registers
+		PUSH	SI
+		PUSH	AX
+		PUSH	CX
+		MOV	BP,BX		; for easier processing
+		LEA	SI,NAME[BP]	; point to the name
+		CALL	PFNAME		; print it
+		MOV	BX,COUNT[BP]	; get the value
+		OR	BX,BX		; is it zero?
+		JZ	print_size	; yes, print it
+		MOV	CL,3
+		SHR	BX,CL		; convert to k
+		JNZ	print_size	; print it, if non-zero
+		INC	BX		; otherwise, make it at least one
+print_size:
+		CALL	DECIMAL_OUT	; print it
+		MOV	AL,'k'
+		CALL	WCC
+		DEC	ENTRIES_PRINTED
+		JNZ	do_separator
+		CALL	CRLF
+		MOV	AL,NUM_ACROSS
+		MOV	ENTRIES_PRINTED,AL
+		JMP	no_sep
+do_separator:
+		MOV	SI,OFFSET SEPARATOR
+		CALL	PSTRING
+no_sep:
+		MOV	BX,BP		; restore caller's pointer
+		POP	CX
+		POP	AX
+		POP	SI		; and scratch registers
+		POP	BP
+		RET
+;
+;	do bdos call, saving ES
+;
+BDOS:
+		PUSH	ES
+		INT	224
+		POP	ES
+		RET
+;
+WCC:
+		PUSH	BX
+		PUSH	DX
+		PUSH	CX
+		MOV	CL,WCCFC
+		MOV	DL,AL
+		CALL	BDOS
+		POP	CX
+		POP	DX
+		POP	BX
+		RET
+;
+PSPACE:
+		PUSH	AX
+		MOV	AL,SPACE
+		CALL	WCC
+		POP	AX
+		RET
+;
+CRLF:
+		PUSH	AX
+		MOV	AL,CR
+		CALL	WCC
+		MOV	AL,LF
+		CALL	WCC
+		POP	AX
+		RET
+;
+OPEN_FILE:
+		XOR	AL,AL
+		MOV	FCBCR,AL
+		MOV	FCBEX,AL
+		MOV	FCBRC,AL
+		MOV	DX,OFFSET FCB
+		MOV	CL,OPNFC
+		CALL	BDOS
+		RET
+;
+READ_SECTOR:
+		PUSH	BX
+		PUSH	DX
+		PUSH	CX
+		MOV	DX,OFFSET FCB
+		MOV	CL,RSRFC
+		CALL	BDOS
+		POP	CX
+		POP	DX
+		POP	BX
+		RET
+;
+;	Print null-terminated string pointed to by SI, saves all
+;
+PSTRING:
+		PUSH	AX
+		PUSH	SI
+pstrloop:
+		LODS	BYTE PTR [SI]	; get a character
+		OR	AL,AL		; machine zero?
+		JZ	pstrexit	; yes, exit
+		CALL	WCC		; print it
+		JMP	pstrloop	; get another
+pstrexit:
+		POP	SI
+		POP	AX
+		RET
+;
+;	Print filename pointed to by SI, all regs saved
+;
+PFNAME:
+		PUSH	AX
+		PUSH	CX
+		PUSH	SI
+		MOV	CX,8		; number of chars in name
+fnameloop:
+		LODS	BYTE PTR [SI]
+		CALL	WCC
+		LOOP	fnameloop
+		MOV	AL,'.'
+		CALL	WCC
+		MOV	CX,3		; number of chars in extension
+extloop:
+		LODS	BYTE PTR [SI]
+		CALL	WCC
+		LOOP	extloop
+		POP	SI
+		POP	CX
+		POP	AX
+		RET
+;
+; Print binary number in BX as Ascii decimal digits,
+; replacing leading zeros by blanks.  All regs saved
+;
+DECIMAL_OUT:
+		PUSH	AX
+		PUSH	BX		; save number
+		PUSH	CX		; and scratch regs
+		PUSH	DX
+		PUSH	SI
+;
+		MOV	SI,0		;  0 = no digit printed yet
+					; FF = digit already printed
+		MOV	CX,10000
+		CALL	PRINT_DIGIT	; 10 thousands
+		MOV	CX,1000
+		CALL	PRINT_DIGIT	; thousands
+		MOV	CX,100
+		CALL	PRINT_DIGIT	; hundreds
+		MOV	CX,10
+		CALL	PRINT_DIGIT	; tens
+		MOV	AL,BL		; units
+		ADD	AL,ASCII_ZERO	; Ascii bias
+		CALL	WCC
+;
+		POP	SI
+		POP	DX		; restore registers
+		POP	CX
+		POP	BX
+		POP	AX
+		RET			; and back.
+;
+;	divide number in bx by power of ten in cx.  Return remainder
+;	in bx, and print quotient in al as an ascii digit.
+;
+PRINT_DIGIT:
+		XOR	DX,DX		; clear high 16-bits
+		MOV	AX,BX		; number into low 16-bits
+		DIV	CX		; divide by word in cx
+		MOV	BX,DX		; return remainder in bx
+		ADD	AL,ASCII_ZERO	; Ascii bias
+;
+;	Check for zero
+;
+		CMP	AL,ASCII_ZERO	; zero or less?
+		JA	nonzero		; no
+		OR 	SI,SI		; yes, check digit printed flag
+		JZ	spacexit	; leading zero --> leading blank
+		CALL	WCC		; print interior zero
+		RET
+spacexit:
+		CALL	PSPACE		; print leading blank
+		RET
+;
+nonzero:
+		MOV	SI,0FFH		; set flag for digit printed
+		CALL	WCC		; print it
+		RET
+;
+;	initialized data area
+;
+SIGNON		DB	'LDIR86 v1.06',EOS
+JOKER		DB	'???????????'			; = '*.*'
+USEMSG		DB	TAB,'USAGE: LDIR86 LibName[.LBR] [afn]',CR,LF
+		DB	TAB,TAB,'afn = ambiguous file name',EOS
+OPNMSG		DB	'Library file not found',EOS
+LIBEXT		DB	'LBR',EOS
+EOFMSG		DB	'Premature End of File',EOS
+SEPARATOR	DB	' | ',EOS
+MAXMSG		DB	'Max Slots:',EOS
+FREEMSG		DB	', Free Slots:',EOS
+;
+;	uninitialized data area
+;
+MAX_ENTRIES	RW	1		; size of dir
+IN_USE		RW	1		; Max - inuse = free
+ENTRIES_TO_DO	RW	1		; how many so far
+ENTRIES_PRINTED	RB	1		; on a line
+SEARCH_STR	RS	11		; for fcb2 fname
+;
+;	stack area
+;
+		RB	100
+LOCAL_STACK	EQU	$
+		DB	0		; so GENCMD will save data area
+;
+		END
+

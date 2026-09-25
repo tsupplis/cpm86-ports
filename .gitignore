@@ -29,3 +29,4 @@ ansi2kr/ansi2kr
 **/.*.swp
 **/.D*
 vtl2/*.a86
+cpm80/samples/**
