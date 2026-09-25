@@ -1,4 +1,4 @@
-SUBDIRS=ansi2kr tinybas lispc yacc vtl2 filer
+SUBDIRS=ansi2kr tinybas lispc yacc vtl2 filer dc grep
 
 all:
 	for d in $(SUBDIRS); do \
