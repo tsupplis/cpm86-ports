@@ -74,9 +74,9 @@ done
 
 echo "== examples =="
 want ex0.vtl 'The average is 6'
-ANSWERS='5\r\n6\r\n7\r\n' want ex1.vtl 'Enter three values' 'The average is 6'
+ANSWERS='5\r6\r7\r' want ex1.vtl 'Enter three values' 'The average is 6'
 want ex2.vtl '0 1 1 2 3 5 8 13 21 34 55 89'
-ANSWERS='10\r\n' want ex3.vtl 'How many terms' '0 1 1 2 3 5 8 13 21 34'
+ANSWERS='10\r' want ex3.vtl 'How many terms' '0 1 1 2 3 5 8 13 21 34'
 
 # ex4 has no #=1, so it must load the program and print nothing.
 echo "== load only =="
