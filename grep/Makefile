@@ -3,6 +3,7 @@ LD=aztec42_link
 CFLAGS=
 CPM_LDFLAGS=-lc86
 DOS_LDFLAGS=-lc
+UPX=pcdev_upx
 
 all: binaries
 
@@ -18,6 +19,7 @@ grep.com: $(OBJS)
 
 grep.cmd: $(OBJS)
 	$(LD) -o $@ $(OBJS) $(CPM_LDFLAGS)
+	$(UPX) $@
 
 test: binaries
 	sh test.sh
