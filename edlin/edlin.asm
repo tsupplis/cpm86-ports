@@ -93,8 +93,10 @@ fcb_fname_words equ     6               ; Drive + name + extension: 12 bytes
 ; Program Segment Prefix (PSP) fields.  These are below the 100h load
 ; address, in the same segment as the code and data (COM program: CS=DS=ES=SS)
 ; ---------------------------------------------------------------------------
-psp_memsize     equ     06h             ; Word: bytes available in the segment (set by DOS,
-                                        ; at most 0FFF0h)
+; CPM86 PORT: psp_memsize (PSP:06h) is NOT available memory under CP/M-86;
+; CP/M-86 stores the code group length there, not the TPA ceiling.
+; Use seg_max (compile-time equate) + CMD header -m 10000 instead.
+;psp_memsize     equ     06h             ; NOT USED under CP/M-86 -- see seg_max
 fcb1            equ     5Ch             ; Default FCB 1 (file named on the command line)
 fcb1_name       equ     fcb1 + 1        ; File name (8 chars, space padded)
 fcb1_ext        equ     fcb1 + 9        ; Extension (3 chars)
@@ -138,6 +140,7 @@ dos_set_dta     equ     bdos_set_dta
 ; ---------------------------------------------------------------------------
 ; Limits and special values
 ; ---------------------------------------------------------------------------
+seg_max         equ     0FFFFh          ; Full 64 KB segment -- booked in CMD header via -m 10000
 last_line       equ     0FFFEh          ; Line number returned for "#"
 all_lines       equ     0FFFFh          ; "Every line" count
 numlim          equ     1999h           ; 6553 = 65535 / 10: next digit would overflow
@@ -150,6 +153,10 @@ list_before     equ     11              ; List: lines shown before the current l
 list_count      equ     23              ; List: default number of lines shown
 
 _start:
+                ; CPM86 PORT ST3: DS=base-page segment on entry; point DS and ES at CS
+                mov     ax, cs
+                mov     ds, ax
+                mov     es, ax
                 jmp     short init
 ; ---------------------------------------------------------------------------
 ; Copyright banner (never displayed by the program, '$' terminated)
@@ -170,6 +177,10 @@ err_exit:
                 jmp     disp_err
 
 init:
+                ; CPM86 PORT ST3: set DMA segment to CS so file I/O lands in our segment
+                mov     cl, bdos_dma_seg        ; BDOS fn 33h = Set DMA Segment
+                mov     dx, cs
+                int     0E0h
                 mov     byte ptr ds:[modflg], 0 ; Not in "end edit" mode
                 mov     sp, offset stack_top
                 cmp82_mem fcb1_name, ' '        ; No file name on the command line?
@@ -244,8 +255,8 @@ init_buf:
                 mov     cl, bdos_set_dta                ; BDOS: set DMA offset to text buffer
                 int     0E0h
                 pop     di
-                mov     cx, ds:[psp_memsize]    ; Bytes available in the segment
-                dec     cx
+                ; CPM86 PORT ST3: use seg_max (compile-time 64 KB) instead of psp_memsize
+                mov     cx, seg_max             ; Full 64 KB segment booked in CMD header
                 mov     word ptr ds:[mem_top], cx ; Last usable address of the buffer
                 test    byte ptr ds:[newfile_flg], 0FFh
                 jnz     short init_vars         ; New file: nothing to read

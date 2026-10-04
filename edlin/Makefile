@@ -12,7 +12,7 @@ all: $(BINARIES)
 
 edlin.cmd: edlin.exe
 	$(EXE2BIN) $< edlin.bin
-	$(BIN2CMD) edlin.bin $@
+	$(BIN2CMD) -m 10000 edlin.bin $@
 	$(CMDINFO) $@
 
 edlin.exe: edlin.obj
