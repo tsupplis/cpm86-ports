@@ -104,21 +104,25 @@ fcb1_newname    equ     fcb1 + fcb_newname ; Rename: new name field (for referen
 fcb1_rr         equ     fcb1 + 33       ; Random record number (dword)
 
 ; ---------------------------------------------------------------------------
-; DOS function numbers (INT 21h, AH), and INT 20h terminates the program
+; CPM86 PORT: DOS INT 21h/20h -> CP/M-86 BDOS INT 0E0h, CL=function
+; Function numbers 01h-1Ah are identical; fn 27h/28h deferred (see ST4).
 ; ---------------------------------------------------------------------------
-dos_kbd_echo    equ     01h             ; Keyboard input with echo
-dos_display     equ     02h             ; Display output (DL)
-dos_print       equ     09h             ; Print '$' terminated string (DS:DX)
-dos_bufin       equ     0Ah             ; Buffered keyboard input (DS:DX)
-dos_open        equ     0Fh             ; Open file (FCB at DS:DX)
-dos_close       equ     10h             ; Close file
-dos_delete      equ     13h             ; Delete file
-dos_create      equ     16h             ; Create file
-dos_rename      equ     17h             ; Rename file
-dos_set_dta     equ     1Ah             ; Set disk transfer address (DS:DX)
-dos_rdblock     equ     27h             ; Random block read (CX records)
-dos_wrblock     equ     28h             ; Random block write (CX records)
-dos_setvec_23   equ     2523h           ; AH = 25h set interrupt vector, AL = 23h (^C)
+bdos_kbd_echo   equ     01h             ; Console input with echo
+bdos_display    equ     02h             ; Console output (DL=char)
+bdos_print      equ     09h             ; Print '$' terminated string (DX=addr)
+bdos_bufin      equ     0Ah             ; Buffered console input (DX=buf)
+bdos_open       equ     0Fh             ; Open file (DX=FCB)
+bdos_close      equ     10h             ; Close file
+bdos_delete     equ     13h             ; Delete file
+bdos_create     equ     16h             ; Create file
+bdos_rename     equ     17h             ; Rename file
+bdos_set_dta    equ     1Ah             ; Set DMA address offset (DX=offset)
+bdos_dma_seg    equ     33h             ; Set DMA segment (DX=segment) -- ST3
+; CPM86 PORT: fn 27h/28h deferred to ST4 (different functions in CP/M-86)
+dos_rdblock     equ     27h             ; DEFERRED ST4: DOS random block read
+dos_wrblock     equ     28h             ; DEFERRED ST4: DOS random block write
+; CPM86 PORT: dos_setvec_23 removed -- no CP/M-86 equivalent for INT 21h AH=25h
+;dos_setvec_23  equ     2523h           ; AH = 25h set interrupt vector, AL = 23h (^C)
 
 ; ---------------------------------------------------------------------------
 ; Limits and special values
@@ -262,9 +266,7 @@ init_vars:
 
 command:
                 mov     sp, offset stack_top    ; Discard anything left on the stack
-                mov     ax, dos_setvec_23       ; DOS: set interrupt vector 23h (^C)
-                mov     dx, offset break_cmd    ; ^C returns to the prompt
-                int     21h
+                ; CPM86 PORT: ^C vector install removed -- no equivalent; ^C triggers warm boot
                 mov     al, '*'                 ; Prompt
                 call    print_char
                 mov     dx, offset combuf       ; DOS: buffered keyboard input
@@ -1287,9 +1289,7 @@ shift_text      endp
 ; ---------------------------------------------------------------------------
 
 insert_cmd      proc near
-                mov     ax, dos_setvec_23       ; DOS: set interrupt vector 23h (^C)
-                mov     dx, offset break_ins    ; ^C must put the text back together
-                int     21h
+                ; CPM86 PORT: ^C vector install removed -- no equivalent; ^C triggers warm boot
                 mov     bx, word ptr ds:[param1]
                 or      bx, bx
                 jnz     short insert_find_pos
@@ -1477,6 +1477,7 @@ print_char      endp
 ; ^C handler (interrupt 23h, set at the command prompt).  DOS enters with
 ; unknown registers: rebuild the segments and stack, then return to the prompt.
 ; ---------------------------------------------------------------------------
+; CPM86 PORT: break_cmd / break_ins are unreachable under CP/M-86
 
 break_cmd:
                 mov     ax, cs
