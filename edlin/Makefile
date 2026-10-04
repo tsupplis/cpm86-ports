@@ -23,6 +23,9 @@ edlin.obj: edlin.asm
 	$(MASM) $(basename $@),$(basename $@)\;
 	[ -f $@ ]
 
+run: edlin.cmd
+	emu2 $< $(FILE)
+
 clean:
 	rm -rf *.h86 *.lst *.sys *.cmd *.hex *.sym *.log *.bin *.exe *.com
 

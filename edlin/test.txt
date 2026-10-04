@@ -1,0 +1,42 @@
+;*-------------------------------------------------------------------------
+;  EDLIN.ASM - IBM Personal Computer line editor ("EDITOR"), version 1.00
+;  Reconstructed from the IDA disassembly of bin/edlin.com, for MASM 1.10
+;  (IBM PC-DOS 1.10 EDLIN.COM).  The assembled image is byte-for-byte
+;  identical to bin/edlin.com.
+;
+;  Build:   make edlin.com
+;           (msmasm edlin -> link edlin -> exe2bin edlin.exe edlin.com)
+;
+;  Usage:   EDLIN [d:]filename
+;           Edits filename; the previous version is kept as filename.BAK.
+;           Edits go to a temporary filename.$$$ that replaces the file on E.
+;
+;  Commands (n, m = line number; "." = current line, "#" = last line):
+;     [n]              Edit line n (default: the line after the current one)
+;     [n][,m]L         List lines (default: 23 lines around the current line)
+;     [n][,m]D         Delete lines
+;     [n]I             Insert lines before line n (end with ^Z or ^Break)
+;     [n][,m][?]Sstr   Search for str, ? asks "O.K.?" for each match
+;     [n][,m][?]Rstr^Zrepl   Replace str by repl, ? asks "O.K.?"
+;     [n]A             Append n lines from the file (fill memory by default)
+;     [n]W             Write n lines to disk (frees memory for A)
+;     E                End edit: save, rename old file to .BAK
+;     Q                Quit edit without saving (asks "Abort edit (Y/N)?")
+;
+;  Memory (COM image, single segment, org 100h):
+;     0000h-00FFh   PSP (FCB1 at 5Ch holds the file given on the command line)
+;     0100h-093Dh   code
+;     093Eh-0A57h   message strings (ends the COM image)
+;     0A58h-0D48h   uninitialised work area: FCB2, variables, line buffers,
+;                   and the stack (see the equates at the end of the file)
+;     0D49h-top     text buffer: the lines of the file, each ending with
+;                   CR LF, followed by a ^Z (stack_top, just before the buffer,
+;                   holds a LF so every line is preceded by one)
+;
+;  Routines take their arguments in registers, as noted at each one.  The
+;  Z flag is often the result code (set = found / yes).
+;
+;  Labels ending in _ret (skip_ret, scan_eof_ret, write_recs_ret, ...) sit on
+;  the RET that ends the routine they are named after.  Other routines branch
+;  to them instead of carrying a RET of their own, as the original does.
+;-------------------------------------------------------------------------
