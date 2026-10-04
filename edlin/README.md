@@ -194,6 +194,7 @@ covers every call site:
 ```asm
 print_char  proc near
     push bx
+    push cx             ; BDOS clobbers CL (used as function number)
     push si
     push di
     push es
@@ -206,6 +207,7 @@ print_char  proc near
     pop  es
     pop  di
     pop  si
+    pop  cx
     pop  bx
     ret
 print_char  endp
@@ -242,6 +244,15 @@ The FCB layout is identical between DOS and CP/M-86:
 ---
 
 ## Known limitations
+
+- **No F-key template recall.**  DOS BUFIN (CON driver) keeps a template of the
+  previous input line; F1 copies it one character at a time, F3 copies the rest,
+  F5 sets a new template.  This is what makes edlin's line editor `[n]` usable
+  on DOS: editing a long line means replaying the old text up to the change and
+  typing the correction.  CP/M-86 BDOS fn 0Ah has no such template — every
+  input starts blank.  The editor still works (all commands function correctly),
+  but re-typing an existing line from scratch is tedious.  This is an inherent
+  CP/M-86 platform limitation, not a porting bug.
 
 - **^C during input** triggers a warm boot, not a graceful return to the `*`
   prompt.  The custom ^C handler (`break_cmd` / `break_ins`) is dead code under

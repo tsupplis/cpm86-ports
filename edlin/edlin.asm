@@ -265,9 +265,14 @@ init_buf:
                 pop     ax
                 shr     ax, cl                  ; AX = ceil(bytes/128) = record count
                 mov     dx, fcb1
-                call    read_block              ; AX=recs, DX=fcb1, DI=buf_start -> CX=bytes placed
-                call    scan_eof                ; CX = bytes up to ^Z, if any
-                add     di, cx                  ; DI = end of the text read
+                call    read_block              ; AX=recs, DX=fcb1, DI=buf_start -> CX=bytes placed, AL=status
+                mov     byte ptr ds:[newfile_flg], al ; CPM86 PORT: AL!=0 = EOF hit; stop append_cmd looping
+                call    scan_eof                ; CX = bytes up to ^Z (including it if found)
+                jnz     short init_no_z         ; ZF=0: no ^Z in data, keep CX as-is
+                dec     cx                      ; ZF=1: ^Z found -- exclude it so endtxt points AT the ^Z
+                mov     byte ptr ds:[newfile_flg], 1 ; ^Z found = definitely end of file
+init_no_z:
+                add     di, cx                  ; DI = address of the ^Z (or end of data)
 
 init_vars:
                 cld
@@ -1587,10 +1592,10 @@ rdblk_eof:
                 pop     bx
                 ret
 rdblk_done:
-                xor     al, al              ; AL = 0: all records read successfully
                 mov     cl, 7
                 shl     ax, cl              ; AX = records_read * 128 = bytes placed
                 mov     cx, ax
+                xor     al, al              ; AL = 0: all records read successfully
                 pop     di
                 pop     bx
                 ret
@@ -1653,8 +1658,9 @@ print_lf        proc near
 print_lf        endp
 
 print_char      proc near
-                ; CPM86 PORT: int 21h AH= -> int 0E0h CL=; also save BX/SI/DI/ES (BDOS clobbers all)
+                ; CPM86 PORT: int 21h AH= -> int 0E0h CL=; also save BX/CX/SI/DI/ES (BDOS clobbers all)
                 push    bx
+                push    cx
                 push    si
                 push    di
                 push    es
@@ -1667,6 +1673,7 @@ print_char      proc near
                 pop     es
                 pop     di
                 pop     si
+                pop     cx
                 pop     bx
                 ret
 print_char      endp
