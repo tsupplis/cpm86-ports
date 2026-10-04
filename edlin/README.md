@@ -254,9 +254,13 @@ The FCB layout is identical between DOS and CP/M-86:
   but re-typing an existing line from scratch is tedious.  This is an inherent
   CP/M-86 platform limitation, not a porting bug.
 
-- **^C during input** triggers a warm boot, not a graceful return to the `*`
-  prompt.  The custom ^C handler (`break_cmd` / `break_ins`) is dead code under
-  CP/M-86.
+- **^C triggers a warm boot, not a graceful abort.**  On DOS, edlin installs a
+  custom `int 23h` handler (`break_cmd` during the command prompt,  `break_ins`
+  during insert mode) that rebuilds the segments and stack and returns cleanly to
+  the `*` prompt.  CP/M-86 has no equivalent of `int 23h` — `^C` during BDOS
+  input causes an immediate warm boot, discarding all unsaved edits and the
+  temporary `.$$$ ` file.  The handler code remains in the binary as dead code.
+  **Always use `E` to save or `Q` to quit; never hit `^C`.**
 - **File size** is limited to the 64 KB segment.  Edlin's `A` (Append) and `W`
   (Write) commands manage this: write lines out with `W`, then read more with
   `A`.
