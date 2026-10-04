@@ -1,11 +1,8 @@
 ;*-------------------------------------------------------------------------
 ;  EDLIN.ASM - IBM Personal Computer line editor ("EDITOR"), version 1.00
 ;
-;  CP/M-86 port (see README.md).  The DOS original is in eddos.asm.
-;
-;  Build:   make edlin.cmd
-;           (masm edlin -> link edlin -> exe2bin edlin.exe edlin.bin ->
-;            bin2cmd -m 10000 edlin.bin edlin.cmd)
+;  Build:   make edlin.com
+;           (msmasm edlin -> link edlin -> exe2bin edlin.exe edlin.com)
 ;
 ;  Usage:   EDLIN [d:]filename
 ;           Edits filename; the previous version is kept as filename.BAK.
@@ -23,13 +20,13 @@
 ;     E                End edit: save, rename old file to .BAK
 ;     Q                Quit edit without saving (asks "Abort edit (Y/N)?")
 ;
-;  Memory (CMD 8080 model: one 64 KB group, CS=DS=ES=SS, org 100h):
-;     0000h-00FFh   base page (FCB1 at 5Ch holds the file given on the command line)
-;     0100h-0ABFh   code
-;     0AC0h-0BD9h   message strings (ends the CMD image)
-;     0BDAh-10A8h   uninitialised work area: FCB2, variables, line buffers,
-;                   record buffers and the stack (see the equates at the end)
-;     10A9h-0FFFFh  text buffer: the lines of the file, each ending with
+;  Memory (COM image, single segment, org 100h):
+;     0000h-00FFh   PSP (FCB1 at 5Ch holds the file given on the command line)
+;     0100h-093Dh   code
+;     093Eh-0A57h   message strings (ends the COM image)
+;     0A58h-0D48h   uninitialised work area: FCB2, variables, line buffers,
+;                   and the stack (see the equates at the end of the file)
+;     0D49h-top     text buffer: the lines of the file, each ending with
 ;                   CR LF, followed by a ^Z (stack_top, just before the buffer,
 ;                   holds a LF so every line is preceded by one)
 ;
@@ -52,18 +49,6 @@ program         segment
 ;              ignored
 ;   cmp82_*:   cmp r/m8,imm8 with opcode 82h, which MASM 1.10 encodes as 80h
 ; ---------------------------------------------------------------------------
-; bdos: CP/M-86 BDOS call.  BDOS clobbers AX, BX, CX, DX, SI, DI, BP and ES (and
-;   may not leave DS alone), unlike DOS int 21h.  This is a single segment
-;   program, so DS and ES are rebuilt from CS after every call; string
-;   instructions (movs/cmps/scas/stos) depend on ES.  AX is left as returned.
-bdos            macro
-                int     0E0h
-                push    cs
-                pop     ds
-                push    cs
-                pop     es
-                endm
-
 jmpn            macro   target
                 db      0E9h
                 dw      target - $ - 2
@@ -105,67 +90,48 @@ fcb_fname_words equ     6               ; Drive + name + extension: 12 bytes
 ; Program Segment Prefix (PSP) fields.  These are below the 100h load
 ; address, in the same segment as the code and data (COM program: CS=DS=ES=SS)
 ; ---------------------------------------------------------------------------
-; CPM86 PORT: psp_memsize (PSP:06h) is NOT available memory under CP/M-86;
-; CP/M-86 stores the code group length there, not the TPA ceiling.
-; Use seg_max (compile-time equate) + CMD header -m 10000 instead.
-;psp_memsize     equ     06h             ; NOT USED under CP/M-86 -- see seg_max
+psp_memsize     equ     06h             ; Word: bytes available in the segment (set by DOS,
+                                        ; at most 0FFF0h)
 fcb1            equ     5Ch             ; Default FCB 1 (file named on the command line)
 fcb1_name       equ     fcb1 + 1        ; File name (8 chars, space padded)
 fcb1_ext        equ     fcb1 + 9        ; Extension (3 chars)
-fcb1_recsiz     equ     fcb1 + 14       ; Record size word (DOS only; CP/M s2 byte, not used)
+fcb1_recsiz     equ     fcb1 + 14       ; Record size word
 fcb1_newname    equ     fcb1 + fcb_newname ; Rename: new name field (for reference: the E command
                                         ; reaches it as [si + fcb_newname] with SI = fcb1)
-fcb1_rr         equ     fcb1 + 33       ; Random record number (CP/M: 3 bytes, 128 byte records)
+fcb1_rr         equ     fcb1 + 33       ; Random record number (dword)
 
 ; ---------------------------------------------------------------------------
-; CPM86 PORT: DOS INT 21h/20h -> CP/M-86 BDOS INT 0E0h, CL=function
-; Function numbers 01h-1Ah are identical.
+; DOS function numbers (INT 21h, AH), and INT 20h terminates the program
 ; ---------------------------------------------------------------------------
-bdos_kbd_echo   equ     01h             ; Console input with echo
-bdos_display    equ     02h             ; Console output (DL=char)
-bdos_print      equ     09h             ; Print '$' terminated string (DX=addr)
-bdos_bufin      equ     0Ah             ; Buffered console input (DX=buf)
-bdos_open       equ     0Fh             ; Open file (DX=FCB)
-bdos_close      equ     10h             ; Close file
-bdos_delete     equ     13h             ; Delete file
-bdos_create     equ     16h             ; Create file
-bdos_rename     equ     17h             ; Rename file
-bdos_set_dta    equ     1Ah             ; Set DMA address offset (DX=offset)
-bdos_dma_seg    equ     33h             ; Set DMA segment (DX=segment)
-; CPM86 PORT ST4: DOS fn 27h/28h (random block read/write, record size 1 =
-; byte granular) do not exist in CP/M-86 (fn 27h/28h are unrelated drive calls).
-; blk_read / blk_write emulate them on top of 128 byte random record I/O.
-bdos_rdrand     equ     21h             ; F_READRAND:  read 1 record at FCB random record
-bdos_wrrand     equ     22h             ; F_WRITERAND: write 1 record at FCB random record
-; CPM86 PORT: dos_setvec_23 removed -- no CP/M-86 equivalent for INT 21h AH=25h
-;dos_setvec_23  equ     2523h           ; AH = 25h set interrupt vector, AL = 23h (^C)
+dos_kbd_echo    equ     01h             ; Keyboard input with echo
+dos_display     equ     02h             ; Display output (DL)
+dos_print       equ     09h             ; Print '$' terminated string (DS:DX)
+dos_bufin       equ     0Ah             ; Buffered keyboard input (DS:DX)
+dos_open        equ     0Fh             ; Open file (FCB at DS:DX)
+dos_close       equ     10h             ; Close file
+dos_delete      equ     13h             ; Delete file
+dos_create      equ     16h             ; Create file
+dos_rename      equ     17h             ; Rename file
+dos_set_dta     equ     1Ah             ; Set disk transfer address (DS:DX)
+dos_rdblock     equ     27h             ; Random block read (CX records)
+dos_wrblock     equ     28h             ; Random block write (CX records)
+dos_setvec_23   equ     2523h           ; AH = 25h set interrupt vector, AL = 23h (^C)
 
 ; ---------------------------------------------------------------------------
 ; Limits and special values
 ; ---------------------------------------------------------------------------
-seg_max         equ     0FFFFh          ; Full 64 KB segment -- booked in CMD header via -m 10000
 last_line       equ     0FFFEh          ; Line number returned for "#"
 all_lines       equ     0FFFFh          ; "Every line" count
 numlim          equ     1999h           ; 6553 = 65535 / 10: next digit would overflow
 combuf_size     equ     128                     ; Command line max length
 strbuf_size     equ     128                     ; Search / replace string max length
 editbuf_max     equ     255                     ; Edited line max length
-stack_size      equ     256                     ; Bytes reserved for the stack
-                                                ; CPM86 PORT: was 40; under DOS int 21h ran
-                                                ; on its own stack, BDOS calls and the
-                                                ; register saves around them use ours
+stack_size      equ     40                      ; Bytes reserved for the stack
 max_linelen     equ     254             ; Longest line allowed after a replace
 list_before     equ     11              ; List: lines shown before the current line
 list_count      equ     23              ; List: default number of lines shown
 
 _start:
-                ; CPM86 PORT ST3: single-segment program (CS=DS=ES=SS); DS and ES already
-                ; point at CS on entry.  Set DS and ES explicitly to CS for safety.
-                mov     ax, cs
-                mov     ds, ax
-                mov     es, ax
-                mov     ss, ax                  ; CPM86 PORT: SS:SP may be the CCP stack
-                mov     sp, offset stack_top    ; on entry; move to ours before any BDOS call
                 jmp     short init
 ; ---------------------------------------------------------------------------
 ; Copyright banner (never displayed by the program, '$' terminated)
@@ -186,12 +152,6 @@ err_exit:
                 jmp     disp_err
 
 init:
-                ; CPM86 PORT ST3: set DMA segment to CS so file I/O lands in our segment
-                mov     cl, bdos_dma_seg        ; BDOS fn 33h = Set DMA Segment
-                mov     dx, cs
-                bdos
-                xor     al, al                  ; CPM86 PORT: fn 33h return value irrelevant;
-                                                ; clear AL so the drive-validity check below works
                 mov     byte ptr ds:[modflg], 0 ; Not in "end edit" mode
                 mov     sp, offset stack_top
                 cmp82_mem fcb1_name, ' '        ; No file name on the command line?
@@ -204,17 +164,15 @@ init:
                 mov     cx, fcb_ext_len
                 repe cmpsb
                 jz      short err_bak
-                ; CPM86 PORT: int 21h AH= -> int 0E0h CL=
-                mov     cl, bdos_open                 ; DOS: open file (FCB)
+                mov     ah, dos_open                 ; DOS: open file (FCB)
                 mov     dx, fcb1
-                bdos ; CPM86 PORT: int 21h -> int 0E0h
+                int     21h
                 mov     byte ptr ds:[newfile_flg], al ; 0 = file found, 0FFh = new file
                 or      al, al
                 jz      short create_tmp
                 mov     dx, offset newfil
-                ; CPM86 PORT: int 21h AH= -> int 0E0h CL=
-                mov     cl, bdos_print                  ; BDOS: print string
-                bdos ; "New file"
+                mov     ah, dos_print                   ; DOS: print string
+                int     21h                     ; "New file"
 
 create_tmp:
                 mov     si, fcb1                ; Copy drive + 8 char name to FCB 2
@@ -224,22 +182,16 @@ create_tmp:
                 mov     si, offset bak          ; ... and give it the extension BAK
                 movsw
                 movsb
-                xor     ax, ax                  ; CPM86 PORT: clear ex/s1/s2/rc/d0-dn/cr/rr
-                mov     cx, 12                  ; (FCB bytes 12-35); the work area is not
-                rep stosw                       ; zeroed by the loader
-                ; CPM86 PORT: int 21h AH= -> int 0E0h CL=
-                mov     cl, bdos_delete                ; BDOS: delete file (FCB), any old .BAK
+                mov     ah, dos_delete                 ; DOS: delete file (FCB), any old .BAK
                 mov     dx, offset fcb2
-                bdos
+                int     21h
                 mov     al, '$'
                 mov     di, offset fcb2_ext     ; Extension becomes "$$$"
                 stosb
                 stosb
                 stosb
-                ; CPM86 PORT: int 21h AH= -> int 0E0h CL=
-                mov     cl, bdos_create                ; BDOS: create the temporary file
-                mov     dx, offset fcb2         ; CPM86 PORT: BDOS does not preserve DX
-                bdos
+                mov     ah, dos_create                 ; DOS: create the temporary file
+                int     21h
                 or      al, al
                 jz      short init_buf
                 mov     dx, offset nodir        ; Directory full
@@ -255,14 +207,19 @@ err_bak:
 
 init_buf:
                 xor     ax, ax
-                mov     word ptr ds:[rd_pos], ax ; CPM86 PORT: read position (byte offset,
-                mov     word ptr ds:[rd_pos + 2], ax ; was FCB 1 random record, record size 1)
-                mov     word ptr ds:[fcb2_rr], ax ; Random record 0 for the new file
+                mov     ds:[fcb1_rr], ax        ; Random record 0 in both FCBs
+                mov     ds:[fcb1_rr + 2], ax
+                mov     word ptr ds:[fcb2_rr], ax
                 mov     word ptr ds:[fcb2_rr + 2], ax
-                mov     word ptr ds:[wr_cnt], ax ; CPM86 PORT: write record buffer empty
-                mov     di, offset buf_start    ; CPM86 PORT: no DTA, blk_read takes DI
-                ; CPM86 PORT ST3: use seg_max (compile-time 64 KB) instead of psp_memsize
-                mov     cx, seg_max             ; Full 64 KB segment booked in CMD header
+                inc     ax                      ; Record size 1: block I/O is by byte
+                mov     ds:[fcb1_recsiz], ax
+                mov     word ptr ds:[fcb2_recsiz], ax
+                mov     dx, offset buf_start
+                mov     di, dx
+                mov     ah, dos_set_dta                 ; DOS: set DTA to the text buffer
+                int     21h
+                mov     cx, ds:[psp_memsize]    ; Bytes available in the segment
+                dec     cx
                 mov     word ptr ds:[mem_top], cx ; Last usable address of the buffer
                 test    byte ptr ds:[newfile_flg], 0FFh
                 jnz     short init_vars         ; New file: nothing to read
@@ -275,14 +232,11 @@ init_buf:
                 mov     dx, cx
                 add     dx, offset buf_start
                 mov     word ptr ds:[buf_3qtr], dx ; 3/4 mark (address)
-                call    blk_read                ; CPM86 PORT: was DOS fn 27h of CX bytes
-                mov     byte ptr ds:[newfile_flg], al ; CPM86 PORT: AL!=0 = EOF hit; stop append_cmd looping
-                call    scan_eof                ; CX = bytes up to ^Z (including it if found)
-                jnz     short init_no_z         ; ZF=0: no ^Z in data, keep CX as-is
-                dec     cx                      ; ZF=1: ^Z found -- exclude it so endtxt points AT the ^Z
-                mov     byte ptr ds:[newfile_flg], 1 ; ^Z found = definitely end of file
-init_no_z:
-                add     di, cx                  ; DI = address of the ^Z (or end of data)
+                mov     dx, fcb1                ; DOS: random block read of CX bytes
+                mov     ah, dos_rdblock
+                int     21h
+                call    scan_eof                ; CX = bytes up to a ^Z, if any
+                add     di, cx                  ; DI = end of the text read
 
 init_vars:
                 cld
@@ -305,13 +259,14 @@ init_vars:
 
 command:
                 mov     sp, offset stack_top    ; Discard anything left on the stack
-                ; CPM86 PORT: ^C vector install removed -- no equivalent; ^C triggers warm boot
+                mov     ax, dos_setvec_23       ; DOS: set interrupt vector 23h (^C)
+                mov     dx, offset break_cmd    ; ^C returns to the prompt
+                int     21h
                 mov     al, '*'                 ; Prompt
                 call    print_char
                 mov     dx, offset combuf       ; DOS: buffered keyboard input
-                ; CPM86 PORT: int 21h AH= -> int 0E0h CL=
-                mov     cl, bdos_bufin
-                bdos
+                mov     ah, dos_bufin
+                int     21h
                 mov     al, lf                  ; The input only echoed a CR
                 call    print_char
                 mov     word ptr ds:[param2], 0
@@ -381,9 +336,8 @@ skip            endp
 
 comerr:
                 mov     dx, offset badcom
-                ; CPM86 PORT: int 21h AH= -> int 0E0h CL=
-                mov     cl, bdos_print                  ; BDOS: print string
-                bdos
+                mov     ah, dos_print                   ; DOS: print string
+                int     21h
                 jmp     command
 
 ; ---------------------------------------------------------------------------
@@ -506,10 +460,14 @@ append_cmd      proc near
 
 append_lp:
                 mov     di, dx                  ; DI = where the new text starts
+                mov     ah, dos_set_dta                 ; DOS: set DTA to the end of the text
+                int     21h
                 mov     cx, word ptr ds:[mem_top]
                 sub     cx, dx                  ; Free memory
                 jz      short append_memerr
-                call    blk_read                ; CPM86 PORT: was DOS fn 27h of CX bytes
+                mov     dx, fcb1                ; DOS: random block read of CX bytes
+                mov     ah, dos_rdblock
+                int     21h
                 mov     byte ptr ds:[newfile_flg], al ; Non zero when the end of the file was hit
                 push    cx                      ; Number of bytes read
                 call    scan_eof
@@ -549,8 +507,8 @@ append_set_end:
                 sub     cx, di
                 xchg    di, word ptr ds:[endtxt]
                 add     di, cx                  ; DI = bytes read but not kept
-                sub     word ptr ds:[rd_pos], di ; Move the file position back so the
-                sbb     word ptr ds:[rd_pos + 2], 0 ; unused bytes are read again later
+                sub     ds:[fcb1_rr], di        ; Move the file position back so the
+                sbb     word ptr ds:[fcb1_rr + 2], 0 ; unused bytes are read again later
                 cmp     bx, dx
                 jnz     short append_test_new   ; Fewer lines than wanted
                 mov     byte ptr ds:[newfile_flg], 0 ; Got all the lines wanted
@@ -558,9 +516,8 @@ append_set_end:
 
 append_eof_msg:
                 mov     dx, offset eofmsg       ; "End of input file"
-                ; CPM86 PORT: AH= -> CL=
-                mov     cl, bdos_print                   ; DOS: print string
-                bdos ; CPM86 PORT: int 21h -> int 0E0h
+                mov     ah, dos_print                   ; DOS: print string
+                int     21h
 
 append_ret:
                 ret
@@ -616,7 +573,11 @@ write_calc_len:
                 mov     dx, offset buf_start
                 sub     cx, dx                  ; CX = bytes to write
                 jz      short append_ret
-                call    blk_write               ; CPM86 PORT: was DOS fn 28h of CX bytes at DX
+                mov     ah, dos_set_dta                 ; DOS: set DTA to the start of the text
+                int     21h
+                mov     dx, offset fcb2         ; DOS: random block write of CX bytes
+                mov     ah, dos_wrblock
+                int     21h
                 or      al, al
                 jnz     short write_dskful_err
                 mov     si, di                  ; Move the remaining text (and its ^Z)
@@ -634,21 +595,15 @@ write_recs_ret:
                 ret
 
 write_dskful_err:
-                ; CPM86 PORT: AH= -> CL=
-                mov     cl, bdos_close          ; BDOS: close the temporary file
-                mov     dx, offset fcb2         ; CPM86 PORT: DOS had left DX = FCB 2
-                bdos
+                mov     ah, dos_close                 ; DOS: close the temporary file
+                int     21h
                 mov     dx, offset dskful
 
-; Display the error message and exit (no return)
+; Display the error message at DX and return to DOS (no return)
 disp_err:
-                ; CPM86 PORT: AH= -> CL=
-                mov     cl, bdos_print          ; BDOS: print string
-                bdos
-                ; CPM86 PORT: int 20h -> BDOS fn 0 (warm boot / return to CCP)
-                xor     cx, cx
-                mov     dl, 0
-                bdos
+                mov     ah, dos_print                   ; DOS: print string
+                int     21h
+                int     20h                     ; DOS: terminate program
 write_recs      endp
 
 ; ---------------------------------------------------------------------------
@@ -1020,9 +975,8 @@ notfound:
 
 ; Display the '$' terminated message at DX and return to the caller
 print_msg:
-                ; CPM86 PORT: AH= -> CL=
-                mov     cl, bdos_print                   ; DOS: print string
-                bdos ; CPM86 PORT: int 21h -> int 0E0h
+                mov     ah, dos_print                   ; DOS: print string
+                int     21h
                 ret
 search_cmd      endp
 
@@ -1050,12 +1004,10 @@ prompt_yesno    proc near
                 test    byte ptr ds:[qflg], 0FFh
                 jz      short set_curlin_ret    ; No ?, ZF is set
                 mov     dx, offset prompt_ok
-                ; CPM86 PORT: AH= -> CL=
-                mov     cl, bdos_print                   ; DOS: print string
-                bdos ; CPM86 PORT: int 21h -> int 0E0h
-                ; CPM86 PORT: AH= -> CL=
-                mov     cl, bdos_kbd_echo       ; BDOS: keyboard input with echo
-                bdos
+                mov     ah, dos_print                   ; DOS: print string
+                int     21h
+                mov     ah, dos_kbd_echo                   ; DOS: keyboard input with echo
+                int     21h
                 push    ax
                 call    print_crlf
                 pop     ax
@@ -1254,12 +1206,9 @@ edit_find_line:
                 mov     si, word ptr ds:[pointer]
                 call    print_line
                 call    shownum
-                ; CPM86 PORT: AH= -> CL=; push SI (BDOS clobbers it, SI=line pointer)
-                push    si
-                mov     cl, bdos_bufin          ; BDOS: buffered keyboard input
+                mov     ah, dos_bufin                 ; DOS: buffered keyboard input
                 mov     dx, offset editbuf
-                bdos
-                pop     si
+                int     21h
                 mov     al, lf
                 call    print_char
                 mov     cl, byte ptr ds:[editbuf_len]
@@ -1318,9 +1267,8 @@ shift_ret:
 ; "Insufficient memory": give up the command (the stack is reset at the prompt)
 memerr:
                 mov     dx, offset memful
-                ; CPM86 PORT: AH= -> CL=
-                mov     cl, bdos_print                   ; DOS: print string
-                bdos ; CPM86 PORT: int 21h -> int 0E0h
+                mov     ah, dos_print                   ; DOS: print string
+                int     21h
                 jmp     command
 shift_text      endp
 
@@ -1336,7 +1284,9 @@ shift_text      endp
 ; ---------------------------------------------------------------------------
 
 insert_cmd      proc near
-                ; CPM86 PORT: ^C vector install removed -- no equivalent; ^C triggers warm boot
+                mov     ax, dos_setvec_23       ; DOS: set interrupt vector 23h (^C)
+                mov     dx, offset break_ins    ; ^C must put the text back together
+                int     21h
                 mov     bx, word ptr ds:[param1]
                 or      bx, bx
                 jnz     short insert_find_pos
@@ -1362,16 +1312,9 @@ insert_lp:
                 mov     word ptr ds:[curlin], bx
                 mov     word ptr ds:[endtxt], bp ; Text seems to end at the gap
                 call    shownum
-                ; CPM86 PORT: AH= -> CL=; push BX/DI/BP (BDOS clobbers all; BX=line#, DI=insert pt, BP=gap end)
-                push    bx
-                push    di
-                push    bp
-                mov     cl, bdos_bufin          ; BDOS: buffered keyboard input
-                mov     dx, offset editbuf
-                bdos
-                pop     bp
-                pop     di
-                pop     bx
+                mov     dx, offset editbuf      ; DOS: buffered keyboard input
+                mov     ah, dos_bufin
+                int     21h
                 call    print_lf
                 mov     si, offset editbuf_text
                 cmp82_si ctrlz                  ; ^Z at the start: finished
@@ -1392,7 +1335,7 @@ insert_lp:
 
 ; TODO: the room check above is wrong in the original program (confirmed
 ; with emu2, see below).  DX = SI + length + 1 where SI is the address in the
-; input buffer (editbuf_text, around 0DA2h), not the destination DI, and BP
+; input buffer (editbuf_text, around 0C20h), not the destination DI, and BP
 ; (the end of the gap) is always at or above buf_start.  The test can
 ; therefore hardly ever fire, so an insert into a nearly full buffer runs past
 ; BP and overwrites the text that was moved to the top of memory.
@@ -1437,29 +1380,19 @@ insert_cmd      endp
 
 quit_cmd        proc near
                 mov     dx, offset abort_prompt
-                ; CPM86 PORT: AH= -> CL=
-                mov     cl, bdos_print                   ; DOS: print string
-                bdos ; CPM86 PORT: int 21h -> int 0E0h
-                ; CPM86 PORT: AH= -> CL=
-                mov     cl, bdos_kbd_echo       ; BDOS: keyboard input with echo
-                bdos
+                mov     ah, dos_print                   ; DOS: print string
+                int     21h
+                mov     ah, dos_kbd_echo                   ; DOS: keyboard input with echo
+                int     21h
                 and     al, upmask              ; Upper case
                 cmp     al, 'Y'
-                jz      short quit_is_y         ; ST4: print_crlf now out of short range
-                jmp     print_crlf              ; No: new line, back to the prompt
-quit_is_y:
+                jnz     short print_crlf        ; No: new line, back to the prompt
                 mov     dx, offset fcb2
-                ; CPM86 PORT: AH= -> CL=
-                mov     cl, bdos_close          ; BDOS: close the temporary file
-                bdos
-                ; CPM86 PORT: AH= -> CL=
-                mov     cl, bdos_delete         ; BDOS: delete it
-                mov     dx, offset fcb2         ; CPM86 PORT: BDOS does not preserve DX
-                bdos
-                ; CPM86 PORT: int 20h -> BDOS fn 0 (warm boot / return to CCP)
-                xor     cx, cx
-                mov     dl, 0
-                bdos
+                mov     ah, dos_close                 ; DOS: close the temporary file
+                int     21h
+                mov     ah, dos_delete                 ; DOS: delete it (DX is unchanged)
+                int     21h
+                int     20h                     ; DOS: terminate program
 quit_cmd        endp
 
 ; ---------------------------------------------------------------------------
@@ -1484,11 +1417,15 @@ exit_cmd        proc near
                 call    write_recs              ; Write all the text in memory
                 test    byte ptr ds:[newfile_flg], 0FFh
                 jz      short exit_all_recs     ; The file is not all copied yet
-                call    blk_wr_eof              ; CPM86 PORT: was DOS fn 28h of the 1 byte ^Z
-                ; CPM86 PORT: AH= -> CL=
-                mov     cl, bdos_close          ; BDOS: close the new file
+                mov     dx, word ptr ds:[endtxt] ; DOS: set DTA to the final ^Z
+                mov     ah, dos_set_dta
+                int     21h
+                mov     cx, 1                   ; DOS: random block write of that 1 byte
                 mov     dx, offset fcb2
-                bdos
+                mov     ah, dos_wrblock
+                int     21h
+                mov     ah, dos_close                 ; DOS: close the new file
+                int     21h
                 mov     si, fcb1                ; Rename the original file to name.BAK:
                 lea     di, [si+fcb_newname]    ; the new name field of FCB 1 gets
                 mov     dx, si                  ; the drive and name,
@@ -1497,186 +1434,16 @@ exit_cmd        proc near
                 mov     si, offset bak          ; and the extension BAK
                 movsw
                 movsb
-                ; CPM86 PORT: AH= -> CL=
-                mov     cl, bdos_rename         ; BDOS: rename file (FCB at DX)
-                bdos
+                mov     ah, dos_rename                 ; DOS: rename file (FCB at DX)
+                int     21h
                 mov     si, fcb1                ; Rename name.$$$ to the original name:
                 mov     di, offset fcb2_newname ; copy drive, name and extension of
                 mov     cx, fcb_fname_words     ; FCB 1 (12 bytes) to the new name
                 rep movsw                       ; field of FCB 2
                 mov     dx, offset fcb2
-                ; CPM86 PORT: AH= -> CL= (AH still holds bdos_rename from above)
-                mov     cl, bdos_rename         ; BDOS: rename $$$ to original name
-                bdos
-                ; CPM86 PORT: int 20h -> BDOS fn 0 (warm boot / return to CCP)
-                xor     cx, cx
-                mov     dl, 0
-                bdos
+                int     21h                     ; DOS: rename file (AH is still 17h)
+                int     20h                     ; DOS: terminate program
 exit_cmd        endp
-
-; ---------------------------------------------------------------------------
-; CPM86 PORT ST4: byte granular file I/O on top of 128 byte BDOS records,
-; standing in for DOS fn 27h / 28h with a record size of 1.
-; ---------------------------------------------------------------------------
-
-; blk_read: read CX bytes of the original file (FCB 1) from byte offset
-; rd_pos to DI.  Returns: CX = bytes read, AL = 0 if all were read, 1 if
-; the end of the file was hit; rd_pos is advanced.  Other registers kept.
-blk_read        proc near
-                push    bx
-                push    dx
-                push    si
-                push    di
-                push    bp
-                cld
-                mov     bp, cx                  ; BP = bytes still wanted
-                xor     bx, bx                  ; BX = bytes read
-blk_read_lp:
-                xor     al, al
-                or      bp, bp
-                jz      short blk_read_done
-                mov     ax, word ptr ds:[rd_pos] ; Record = rd_pos / 128
-                mov     dx, word ptr ds:[rd_pos + 2]
-                shl     ax, 1
-                rcl     dx, 1
-                mov     al, ah
-                mov     ah, dl
-                mov     word ptr ds:[fcb1_rr], ax
-                mov     byte ptr ds:[fcb1_rr + 2], dh
-                push    bx
-                mov     bx, offset rd_buf
-                mov     dx, fcb1
-                mov     cl, bdos_rdrand
-                call    rec_io
-                pop     bx
-                or      al, al
-                mov     al, 1
-                jnz     short blk_read_done     ; Past the end of the file
-                mov     si, word ptr ds:[rd_pos]
-                and     si, 127                 ; Offset in the record
-                mov     cx, 128
-                sub     cx, si                  ; Bytes left in the record
-                cmp     cx, bp
-                jbe     short blk_read_copy
-                mov     cx, bp
-blk_read_copy:
-                add     si, offset rd_buf
-                add     bx, cx
-                sub     bp, cx
-                add     word ptr ds:[rd_pos], cx
-                adc     word ptr ds:[rd_pos + 2], 0
-                rep movsb
-                jmp     short blk_read_lp
-blk_read_done:
-                mov     cx, bx
-                pop     bp
-                pop     di
-                pop     si
-                pop     dx
-                pop     bx
-                ret
-blk_read        endp
-
-; blk_write: append CX bytes at DX to the new file (FCB 2).  Bytes collect
-; in wr_buf, which is written each time it holds a full record.
-; Returns: AL = 0 if all right, non zero if the disk is full.  Other
-; registers kept.
-blk_write       proc near
-                push    bx
-                push    cx
-                push    si
-                push    di
-                cld
-                mov     si, dx
-blk_write_lp:
-                xor     al, al
-                jcxz    short blk_write_done
-                mov     di, word ptr ds:[wr_cnt]
-                mov     bx, 128
-                sub     bx, di                  ; Room left in wr_buf
-                add     di, offset wr_buf
-                cmp     bx, cx
-                jbe     short blk_write_copy
-                mov     bx, cx
-blk_write_copy:
-                sub     cx, bx
-                add     word ptr ds:[wr_cnt], bx
-                xchg    cx, bx
-                rep movsb
-                mov     cx, bx                  ; Bytes still to go
-                cmp     word ptr ds:[wr_cnt], 128
-                jb      short blk_write_done    ; Not full (then CX = 0)
-                call    wr_flush
-                or      al, al
-                jz      short blk_write_lp
-blk_write_done:
-                pop     di
-                pop     si
-                pop     cx
-                pop     bx
-                ret
-blk_write       endp
-
-; blk_wr_eof: end the new file with a ^Z, padding its last record with ^Z
-; (wr_buf is never left full, so there is room for at least one).
-blk_wr_eof      proc near
-                cld
-                mov     di, word ptr ds:[wr_cnt]
-                mov     cx, 128
-                sub     cx, di
-                add     di, offset wr_buf
-                mov     al, ctrlz
-                rep stosb
-blk_wr_eof      endp                            ; Falls into wr_flush
-
-; wr_flush: write wr_buf as the next record of FCB 2.  Returns AL = status.
-; BX, CX, DX, SI, DI, BP kept.
-wr_flush        proc near
-                push    bx
-                push    cx
-                push    dx
-                mov     bx, offset wr_buf
-                mov     dx, offset fcb2
-                mov     cl, bdos_wrrand
-                call    rec_io
-                or      al, al
-                jnz     short wr_flush_ret
-                mov     word ptr ds:[wr_cnt], 0
-                add     word ptr ds:[fcb2_rr], 1
-                adc     byte ptr ds:[fcb2_rr + 2], 0
-wr_flush_ret:
-                pop     dx
-                pop     cx
-                pop     bx
-                ret
-wr_flush        endp
-
-; rec_io: BDOS random record call CL on the FCB at DX with the DMA at BX.
-; Returns AL = BDOS status.  BX, CX, DX, SI, DI, BP kept.
-rec_io          proc near
-                push    bx
-                push    cx
-                push    dx
-                push    si
-                push    di
-                push    bp
-                push    dx
-                push    cx
-                mov     dx, bx
-                mov     cl, bdos_set_dta
-                bdos
-                pop     cx
-                pop     dx
-                bdos
-                pop     bp
-                pop     di
-                pop     si
-                pop     dx
-                pop     cx
-                pop     bx
-                ret
-rec_io          endp
-
 
 ; ---------------------------------------------------------------------------
 ; Console output.  The three entry points fall through into each other.
@@ -1694,24 +1461,12 @@ print_lf        proc near
 print_lf        endp
 
 print_char      proc near
-                ; CPM86 PORT: int 21h AH= -> int 0E0h CL=; save every register BDOS may clobber
-                push    ax
-                push    bx
-                push    cx
                 push    dx
-                push    si
-                push    di
-                push    bp                      ; I command keeps the gap end in BP
-                mov     dl, al                  ; DL = character
-                mov     cl, bdos_display        ; BDOS: console output
-                bdos
-                pop     bp
-                pop     di
-                pop     si
+                xchg    ax, dx                  ; DL = character
+                mov     ah, dos_display                   ; DOS: display output
+                int     21h
+                xchg    ax, dx                  ; Restore AX
                 pop     dx
-                pop     cx
-                pop     bx
-                pop     ax
                 ret
 print_char      endp
 
@@ -1719,7 +1474,6 @@ print_char      endp
 ; ^C handler (interrupt 23h, set at the command prompt).  DOS enters with
 ; unknown registers: rebuild the segments and stack, then return to the prompt.
 ; ---------------------------------------------------------------------------
-; CPM86 PORT: break_cmd / break_ins are unreachable under CP/M-86
 
 break_cmd:
                 mov     ax, cs
@@ -1731,7 +1485,7 @@ break_cmd:
                 jmp     command
 
 ; ---------------------------------------------------------------------------
-; Message strings, '$' terminated for BDOS function 09h.  They start at 0AC0h
+; Message strings, '$' terminated for DOS function 09h.  They start at 093Eh
 ; and "bak" doubles as the BAK extension string.
 ; ---------------------------------------------------------------------------
 
@@ -1751,59 +1505,54 @@ eofmsg          db      "End of input file", cr, lf, "$"
 abort_prompt    db      "Abort edit (Y/N)? $"
 
 ; ===========================================================================
-; Uninitialised work area, past the end of the CMD image (0BDAh and up).
+; Uninitialised work area, past the end of the COM image (0A58h and up).
 ; Nothing here is stored in the file; it is addressed with equates only.
 ; ===========================================================================
 
 
 ; FCB 2: the temporary file filename.$$$ (standard 37 byte FCB layout)
-fcb2            label   byte                    ; 0BDAh
+fcb2            label   byte                    ; 0A58h
 fcb2_ext        equ     fcb2 + 9                ; Extension
-fcb2_recsiz     equ     fcb2 + 14               ; Record size word (DOS only; not used) (0BE8h)
-fcb2_newname    equ     fcb2 + fcb_newname      ; Rename: new name field (0BEAh)
-fcb2_rr         equ     fcb2 + 33               ; Random record number dword (0BFBh)
+fcb2_recsiz     equ     fcb2 + 14               ; Record size word (0A66h)
+fcb2_newname    equ     fcb2 + fcb_newname      ; Rename: new name field (0A68h)
+fcb2_rr         equ     fcb2 + 33               ; Random record number dword (0A79h)
 
 ; Flags
-qflg            equ     fcb2 + 37               ; Byte: "?" typed, confirm each change (0BFFh)
+qflg            equ     fcb2 + 37               ; Byte: "?" typed, confirm each change (0A7Dh)
 newfile_flg     equ     fcb2 + 38               ; Byte: non zero = no more to read from the file,
-                                                ; 0FFh right after the open of a new file (0C00h)
-modflg          equ     fcb2 + 39               ; Byte: 1 once the E command has started (0C01h)
+                                                ; 0FFh right after the open of a new file (0A7Eh)
+modflg          equ     fcb2 + 39               ; Byte: 1 once the E command has started (0A7Fh)
 
 ; Command arguments and search state
-param1          equ     fcb2 + 40               ; Word: first number on the command line (0C02h)
-param2          equ     param1 + 2              ; Word: second number (0C04h)
-srch_len        equ     param2 + 2              ; Word: search string length (0C06h); the line
+param1          equ     fcb2 + 40               ; Word: first number on the command line (0A80h)
+param2          equ     param1 + 2              ; Word: second number (0A82h)
+srch_len        equ     param2 + 2              ; Word: search string length (0A84h); the line
                                                 ; edit also keeps the old line length here
-rplc_len        equ     srch_len + 2            ; Word: replacement string length (0C08h)
-srch_ptr        equ     rplc_len + 2            ; Word: address after the 1st char of the match (0C0Ah)
-srch_lineno     equ     srch_ptr + 2            ; Word: number of the line holding the match (0C0Ch)
-srch_lineptr    equ     srch_lineno + 2         ; Word: address of that line (0C0Eh)
-srch_remaining  equ     srch_lineptr + 2        ; Word: bytes left to search (0C10h)
+rplc_len        equ     srch_len + 2            ; Word: replacement string length (0A86h)
+srch_ptr        equ     rplc_len + 2            ; Word: address after the 1st char of the match (0A88h)
+srch_lineno     equ     srch_ptr + 2            ; Word: number of the line holding the match (0A8Ah)
+srch_lineptr    equ     srch_lineno + 2         ; Word: address of that line (0A8Ch)
+srch_remaining  equ     srch_lineptr + 2        ; Word: bytes left to search (0A8Eh)
 
 ; Text buffer state
-curlin          equ     srch_remaining + 2      ; Word: current line number (0C12h)
-pointer         equ     curlin + 2              ; Word: address of the current line (0C14h)
-buf_1qtr        equ     pointer + 2             ; Word: 1/4 of the buffer size in bytes (0C16h)
-buf_3qtr        equ     buf_1qtr + 2            ; Word: address 3/4 into the buffer (0C18h)
-mem_top         equ     buf_3qtr + 2            ; Word: last usable address (0C1Ah)
-endtxt          equ     mem_top + 2             ; Word: address of the ^Z ending the text (0C1Ch)
+curlin          equ     srch_remaining + 2      ; Word: current line number (0A90h)
+pointer         equ     curlin + 2              ; Word: address of the current line (0A92h)
+buf_1qtr        equ     pointer + 2             ; Word: 1/4 of the buffer size in bytes (0A94h)
+buf_3qtr        equ     buf_1qtr + 2            ; Word: address 3/4 into the buffer (0A96h)
+mem_top         equ     buf_3qtr + 2            ; Word: last usable address (0A98h)
+endtxt          equ     mem_top + 2             ; Word: address of the ^Z ending the text (0A9Ah)
 
 ; Buffers (each DOS buffered input buffer starts with a max length byte and
 ; a count byte)
-combuf          equ     endtxt + 2              ; Command line, 130 bytes (0C1Eh)
-srch_buf        equ     combuf + combuf_size + 2 ; Search string, 128 bytes (0CA0h)
-rplc_buf        equ     srch_buf + strbuf_size  ; Replacement string, 128 bytes (0D20h)
-editbuf         equ     rplc_buf + strbuf_size  ; Line being edited, 258 bytes (0DA0h)
-editbuf_len     equ     editbuf + 1             ; Its length byte (0DA1h)
-editbuf_text    equ     editbuf + 2             ; Its text (0DA2h)
-; CPM86 PORT: state for blk_read / blk_write
-rd_pos          equ     editbuf + editbuf_max + 3 ; Dword: byte offset of the next read (0EA2h)
-wr_cnt          equ     rd_pos + 4              ; Word: bytes waiting in wr_buf (0EA6h)
-rd_buf          equ     wr_cnt + 2              ; 128 bytes: record read from the file (0EA8h)
-wr_buf          equ     rd_buf + 128            ; 128 bytes: record being built (0F28h)
-stack_bot       equ     wr_buf + 128            ; End of the buffers (0FA8h)
-stack_top       equ     stack_bot + stack_size  ; Initial SP, stack grows down (10A8h)
-buf_start       equ     stack_top + 1           ; Text buffer; stack_top holds a LF (10A9h)
+combuf          equ     endtxt + 2              ; Command line, 130 bytes (0A9Ch)
+srch_buf        equ     combuf + combuf_size + 2 ; Search string, 128 bytes (0B1Eh)
+rplc_buf        equ     srch_buf + strbuf_size  ; Replacement string, 128 bytes (0B9Eh)
+editbuf         equ     rplc_buf + strbuf_size  ; Line being edited, 258 bytes (0C1Eh)
+editbuf_len     equ     editbuf + 1             ; Its length byte (0C1Fh)
+editbuf_text    equ     editbuf + 2             ; Its text (0C20h)
+stack_bot       equ     editbuf + editbuf_max + 3 ; End of the buffer (0D20h)
+stack_top       equ     stack_bot + stack_size  ; Initial SP, stack grows down (0D48h)
+buf_start       equ     stack_top + 1           ; Text buffer; stack_top holds a LF (0D49h)
 
 program         ends
                 end     _start
