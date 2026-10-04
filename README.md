@@ -17,6 +17,7 @@ Used as a soak testing and source for https://github.com/tsupplis/cpm86-crossdev
 | vtl2 | VTL-2 interpreter port for CP/M, just for fun using xlt86, serves as a regression test for the translator | MITS VTL-2 source, adapted for CP/M | Public domain / Abandonware |
 | xlisp | Lisp interpreter and runtime | David Betz |Public domain / Abandonware |
 | yacc | YACC-compatible parser generator | RetroBSD / original yacc sources | BSD-style |
+| edlin | YACC-compatible parser generator | RetroBSD / original yacc sources | BSD-style |
 
 ## Repository layout
 

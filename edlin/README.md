@@ -8,7 +8,8 @@ byte-for-byte identical to the original, is in
 The aim is to show that a real DOS 1.x utility can be taken back to CP/M-86
 by changing only what the operating system change breaks: system calls,
 startup, memory sizing, register usage and file I/O. The editing algorithms
-are the original ones, unchanged.
+are the original ones, unchanged. also it is a demonstration of tooling 
+continuity from DOS to C/M-86
 
 The port runs on a real CP/M-86 1.1 (tested in PCE, IBM PC/XT model) and
 under the `cpm86` emulator from
