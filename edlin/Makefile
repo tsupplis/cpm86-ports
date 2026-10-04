@@ -1,3 +1,7 @@
+# edlin: PC-DOS 1.1 EDLIN ported to CP/M-86.
+# The original DOS source (a MASM reconstruction of PC-DOS 1.1 EDLIN.COM) is in
+# https://github.com/tsupplis/pcdos11-hacking
+
 GENCMD=cpm86_gencmd
 BIN2CMD=bin2cmd
 EXE2BIN=pcdev_exe2bin

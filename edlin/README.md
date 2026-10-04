@@ -1,6 +1,9 @@
 # edlin for CP/M-86
 
 A port of **IBM PC-DOS 1.1 EDLIN** to **CP/M-86 1.1**, assembled with MASM.
+The DOS source it starts from, a MASM 1.10 reconstruction of `EDLIN.COM`
+byte-for-byte identical to the original, is in
+[tsupplis/pcdos11-hacking](https://github.com/tsupplis/pcdos11-hacking).
 
 The aim is to show that a real DOS 1.x utility can be taken back to CP/M-86
 by changing only what the operating system change breaks: system calls,
@@ -13,7 +16,6 @@ under the `cpm86` emulator from
 
 | File | What |
 |---|---|
-| [eddos.asm](eddos.asm) | The DOS original: MASM 1.10 reconstruction of PC-DOS 1.1 `EDLIN.COM`, byte-for-byte identical to it. Reference only, not built. |
 | [edlin.asm](edlin.asm) | The CP/M-86 port. Every change carries a `CPM86 PORT` comment. |
 | [Makefile](Makefile) | Builds `edlin.cmd`. |
 | [edlin-cpm86-plan.md](edlin-cpm86-plan.md) | The plan the port was done from. |

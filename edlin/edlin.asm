@@ -1,7 +1,8 @@
 ;*-------------------------------------------------------------------------
 ;  EDLIN.ASM - IBM Personal Computer line editor ("EDITOR"), version 1.00
 ;
-;  CP/M-86 port (see README.md).  The DOS original is in eddos.asm.
+;  CP/M-86 port (see README.md).  The DOS original is in
+;  github.com/tsupplis/pcdos11-hacking.
 ;
 ;  Build:   make edlin.cmd
 ;           (masm edlin -> link edlin -> exe2bin edlin.exe edlin.bin ->
