@@ -861,8 +861,10 @@ B@SIZE2:
         MOV    DX,128                  ; 128-byte record
         ADD    BX,DX                   ;buffer address + record size
         POP    DX
+        JC     B@SIZE4                 ;wrapped past 64k, so beyond top of memory
         CALL   CMPDEHL                 ;compare for all done
         JNB    B@SIZE2                 ;more will fit?
+B@SIZE4:
         DEC    CX                      ;set maximum record count less one
         MOV    AL,CH                   ;memory available for copy?
         OR     AL,CL
