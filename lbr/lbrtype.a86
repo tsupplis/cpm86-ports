@@ -85,8 +85,10 @@ BUFF		EQU	$
 ;
 LTYPE:
 		MOV	DX,DS
+		CLI
 		MOV	SS,DX
 		MOV	SP,Offset LOCAL_STACK
+		STI
 		CLD			; direction flg for increment
 ;
 		MOV	SI,Offset SignOn
@@ -552,7 +554,7 @@ Repeat_Count	RB	1		; repeat factor
 Entries_To_Do	RW	1		; how many so far
 Buf_Counter	RW	1		; byte counter - input buffer
 Buf_Ptr		RW	1		; byte pointer - input buffer
-		RB	100		; 100 bytes for stack
+		RB	256		; 256 bytes for stack
 LOCAL_STACK	EQU	$
 Code_Tree	RB	Tree_Size * 4	; Huffman decoding tree
 ;

@@ -79,8 +79,10 @@ BUFF		EQU	$
 ;
 LDIR:
 		MOV	DX,DS
+		CLI
 		MOV	SS,DX
 		MOV	SP,OFFSET LOCAL_STACK
+		STI
 		CLD			; direction flg for increment
 ;
 ;	Print signon message
@@ -470,7 +472,7 @@ SEARCH_STR	RS	11		; for fcb2 fname
 ;
 ;	stack area
 ;
-		RB	100
+		RB	256
 LOCAL_STACK	EQU	$
 		DB	0		; so GENCMD will save data area
 ;

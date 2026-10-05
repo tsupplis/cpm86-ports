@@ -421,8 +421,10 @@ DIGTAB DB      10,9,8,7,12,11,5,4,3,2,1,0 ;CLOCK DIGIT TABLE
 ; start of program
 FILER:
         MOV    AX,DS
+        CLI
         MOV    SS,AX
         MOV    SP,(Offset STACK)       ;start local stack
+        STI
         MOV    Word Ptr DATA_SEG,AX    ;save data segment
         CALL   IDU                     ;set initial disk/user
         MOV    BX,(Offset BUFENTRY)    ;base address
@@ -3957,7 +3959,8 @@ CMDBUF  RS     0
         DB     32,0                    ;command buffer maximum length, usage, and..
 
 ; uninitialized data
-        RS     100                     ;..storage for buffer and local stack.
+        RS     32                      ;..storage for the command buffer.
+        RS     256                     ;local stack, deepest path ~50 bytes + interrupts
 STACK   RS     0
         RS     2                       ;cp/m's stack pointer stored here
 B@MAX   RS     0

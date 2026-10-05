@@ -260,6 +260,15 @@ EndM
 
 start:
 ;
+;	switch from the CCP stack (96 bytes) to a private stack in the
+;	data group; 8080 traps and interrupts also run on it
+;
+	mov	ax,ds
+	cli
+	mov	ss,ax
+	mov	sp,offset vstack
+	sti
+
 	mov	dx,offset startmsg
 	call	print_string
 
@@ -1268,6 +1277,15 @@ db	0C3h,00h,01h	;jmp	0100h		; go to 0100h
 
 
 vcode_size		equ	offset $ - vcode_start
+
+;---------------------------------------------------------------------
+; private 8086 stack (256 bytes), kept after vcode_size so it is not
+; copied to the 8080 segment; the trailing db makes GENCMD keep it
+;---------------------------------------------------------------------
+
+			rb	256
+vstack			equ	$
+			db	0
 
 
 
