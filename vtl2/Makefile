@@ -9,7 +9,7 @@ TARGET=vtl2
 all: vtl2.cmd vtl2.com
 
 vtl2.cmd: vtl2.h86
-	$(GENCMD) $< 8080
+	$(GENCMD) $< 8080 'CODE[M400,XF00]'
 
 vtl2.h86: vtl2.a86
 	unix2dos vtl2.asm
@@ -23,10 +23,15 @@ vtl2.hex: vtl2.asm
 
 vtl2.a86: vtl2.asm
 	$(XLT86) $(basename $<)
+	# XLT86 translates SPHL to MOV SP,BX only. CP/M-86 starts the program on the CCP
+	# stack, so switch SS to the program's own segment before each SP load.
+	awk '/^[ \t]MOV[ \t]SP,BX/ { printf "\tMOV\tAX,DS\r\n\tCLI\r\n\tMOV\tSS,AX\r\n"; print; printf "\tSTI\r\n"; next } { print }' \
+		$(basename $<).a86 > $(basename $<).a86.tmp
+	mv $(basename $<).a86.tmp $(basename $<).a86
 
 test:
 	sh test.sh
 
 clean:
 	rm -f vtl2.com vtl2.cmd vtl2.hex vtl2.h86 vtl2.prn \
-        vtl2.lst vtl2.sym vtl2.obj vtl2.log vtl2.a86
+        vtl2.lst vtl2.sym vtl2.obj vtl2.log vtl2.a86 vtl2.a86.tmp
