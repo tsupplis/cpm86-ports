@@ -17,6 +17,7 @@ test: cpmtest.img
 cpmtest.img:  all
 	cp cpmbase.img $@
 	for i in */*.cmd;do cpmcp -f ibmpc-514ss $@ $$i 0:;done
+	for i in */*.vtl;do cpmcp -f ibmpc-514ss $@ $$i 0:;done
 	cpmls -F -f ibmpc-514ss $@ '0:*.*'
 
 

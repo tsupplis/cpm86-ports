@@ -1,0 +1,1 @@
+-o tinybas.com common.o errors.o expression.o formatter.o generatec.o interpret.o options.o parser.o statement.o tinybasic.o token.o tokeniser.o -lc
