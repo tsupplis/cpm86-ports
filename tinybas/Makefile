@@ -8,7 +8,8 @@ OBJECTS=tinybasic.o common.o errors.o expression.o formatter.o generatec.o inter
 options.o parser.o statement.o token.o tokeniser.o
 CMDS=tinybas.com tinybas.cmd 
 TOYS=lander.cmd lander.com wumpus.cmd wumpus.com mugwump.cmd mugwump.com \
-	hurkle.cmd hurkle.com tictacto.cmd tictacto.com hammurab.cmd hammurab.com
+	hurkle.cmd hurkle.com tictacto.cmd tictacto.com hammurab.cmd hammurab.com \
+    mandel.cmd mandel.com
 
 binaries: $(CMDS) 
 
