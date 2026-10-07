@@ -3,7 +3,6 @@ LD=aztec42_link
 CFLAGS=
 CPM_LDFLAGS=-lc86
 DOS_LDFLAGS=-lc
-UPX=pcdev_upx
 
 all: binaries
 
@@ -19,7 +18,6 @@ lispc.com: $(OBJS)
 
 lispc.cmd: $(OBJS)
 	$(LD) -o $@ $(OBJS) $(CPM_LDFLAGS)
-	$(UPX) $@
 
 clean:
 	rm -rf *.o *.cmd *.com

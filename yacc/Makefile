@@ -7,7 +7,6 @@ LDFLAGS=-lc86
 LD=aztec42_link
 LINK86=pcdev_linkcmd
 RASM86=pcdev_rasm86
-UPX=pcdev_upx
 
 BINARIES=yacc.cmd
 
@@ -17,7 +16,6 @@ binaries: $(BINARIES)
 
 yacc.cmd: y1.o y2.o y3.o y4.o
 	$(LD) -o $@ $^ $(LDFLAGS)
-	$(UPX) $@
 
 %.o: %.c
 	$(CC) $(CFLAGS) $<

@@ -8,7 +8,6 @@ LD=aztec42_link
 LINK86=pcdev_linkcmd
 RASM86=pcdev_rasm86
 HOST_CFLAGS=-Wno-deprecated-non-prototype
-UPX=pcdev_upx
 
 BINARIES=ansi2kr.cmd
 
@@ -24,7 +23,6 @@ ansi2krn.o: ansi2kr.c
 
 ansi2kr.cmd: ansi2kr.o
 	$(LD) -o $@ $< $(LDFLAGS)
-	$(UPX) $@
 
 %.o: %.c
 	$(ACC) $(CFLAGS) $<
