@@ -17,19 +17,8 @@ Used as a soak testing and source for https://github.com/tsupplis/cpm86-crossdev
 | vtl2 | VTL-2 interpreter port for CP/M, just for fun using xlt86, serves as a regression test for the translator | MITS VTL-2 source, adapted for CP/M | Public domain / Abandonware |
 | xlisp | Lisp interpreter and runtime | David Betz |Public domain / Abandonware |
 | yacc | YACC-compatible parser generator | RetroBSD / original yacc sources | BSD-style |
-| edlin | YACC-compatible parser generator | RetroBSD / original yacc sources | BSD-style |
-
-## Repository layout
-
-- ansi2kr/ — ANSI C conversion utility
-- dc/ — arbitrary precision desk calculator
-- filer/ — VFILER full-screen file manager (8086 assembler)
-- grep/ — regular expression search
-- lispc/ — tiny Lisp interpreter and runtime
-- tinybas/ — Tiny BASIC implementation
-- vtl2/ — VTL-2 source and generated files
-- xlisp/ — XLISP port
-- yacc/ — parser generator sources
+| edlin | Edlin DOS editor port from PC DOS 1.1 | Microsoft sources sources | MIT |
+| sokoban | Small tty game for VT52 | CP/M-80 C sources | Freeware/Copyright |
 
 ## Build notes
 

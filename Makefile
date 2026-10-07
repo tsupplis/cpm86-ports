@@ -18,12 +18,12 @@ test: cpmtest.img
 cpmtest.img:  all
 	cp cpmbase.img $@
 	python3 tools/cpm86twist.py untwist $@ tmp.img
-	cpmls -F -f ibmpc-514ds tmp.img '0:*.*'
-	for i in */*.cmd;do cpmcp -f ibmpc-514ds tmp.img $$i 0:;done
-	for i in */*.vtl;do cpmcp -f ibmpc-514ds tmp.img $$i 0:;done
-	for i in */*.hlp;do cpmcp -f ibmpc-514ds tmp.img $$i 0:;done
-	for i in */*.dat;do cpmcp -f ibmpc-514ds tmp.img $$i 0:;done
-	cpmls -F -f ibmpc-514ds tmp.img '0:*.*'
+	cpmls -F -f cpm86-320 tmp.img 
+	for i in */*.cmd;do cpmcp -f cpm86-320 tmp.img $$i 0:;done
+	for i in */*.vtl;do cpmcp -f cpm86-320 tmp.img $$i 0:;done
+	for i in */*.hlp;do cpmcp -f cpm86-320 tmp.img $$i 0:;done
+	for i in */*.dat;do cpmcp -f cpm86-320 tmp.img $$i 0:;done
+	cpmls -F -f cpm86-320 tmp.img 
 	python3 tools/cpm86twist.py twist tmp.img $@
 	rm -f tmp.img
 
