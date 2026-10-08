@@ -1,6 +1,17 @@
 # CP/M-86 Ports
 
-A small collection of classic software tools adapted or ported for CP/M-86. The repository contains language interpreters, compilers, conversion utilities, and other retro-computing experiments assembled for the CP/M environment.
+A small collection of classic software tools adapted or ported for CP/M-86. The repository contains language interpreters, compilers, conversion utilities, and other retro-computing experiments assembled for the CP/M environment. All are rebuilt some source, and cleansed, and tested and curated progressively. Please do not hesitate to raise issues.
+
+In particular, they cover:
+- file compression
+- library management
+- disk sweepers
+- emulation
+- unix tools
+- development tools
+
+They also expose some practices of cp/m-80 to cp/m-86 translation. 
+
 
 Used as a soak testing and source for https://github.com/tsupplis/cpm86-crossdev ...
 
