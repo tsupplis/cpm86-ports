@@ -45,5 +45,5 @@ orig.a86: orig.asm orig.a86.patch
 	unix2dos -q $@
 
 clean:
-	rm -f orig.a86 orig.a86.tmp orig.a86.orig orig.prn \
-		'orig.$$$$' wash15.cmd wash15.h86 wash15.sym wash15.lst
+	rm -f orig.a86 orig.a86.tmp orig.a86.orig orig.prn orig.cmd \
+		'orig.$$$$' wash15.cmd wash15.h86 wash15.sym wash15.lst 
