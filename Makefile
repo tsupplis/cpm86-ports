@@ -1,5 +1,5 @@
 SUBDIRS=ansi2kr tinybas xlisp yacc vtl2 filer dc grep cpm80 lbr \
-    edlin sokoban fv seemem
+    edlin sokoban fv seemem disk7
 
 all:
 	for d in $(SUBDIRS); do \

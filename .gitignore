@@ -33,6 +33,8 @@ ansi2kr/ansi2kr
 **/.*.swp
 **/.D*
 vtl2/*.a86
+disk77b/disk77b.asm
+disk77b/disk77b.a86
 cpm80/samples/**
 tinybas/lander.c
 tinybas/lander.com
