@@ -1,0 +1,5675 @@
+;----------------------------------------
+; VIEW/AMEND FILES IN BOTH HEXADECIMAL AND ASCII
+;----------------------------------------
+;
+; TITLE		- FV.A86
+; DATE		- 26th March 1989
+; AUTHOR	- Stephen Hunt
+; E-MAIL	- stephen.hunt@iname.com
+;
+;----------------------------------------
+;
+; NOTES		- FileView is a general file utility that allows
+;		  a file to be viewed and amended in either ascii
+;		  or hexadecimal.
+;
+; UPDATE	- Version 2.5 - This is the most stable version.
+;		  Routines/bug fixes/enhancements installed in
+;		  an add-hoc maner since version 1.0.
+;		  Last update: 26-March-89.
+;
+;		- Version 2.6 - Complete rewrite of version 2.5.
+;		  Code is now structured to simplify modifications
+;		  and enhancements. Added support for user numbers
+;		  on cpm media and path names on dos media plus
+;		  passwords.
+;		  Last update: 31-July-90 (revision d).
+;
+;		- version 2.7 - Added support for files with more
+;		  than 65535 records. The default directory for
+;		  dos media is now saved if running under cdos 6.0.
+;		  The search function now includes a case-sensitive
+;		  toggle for ascii searches.
+;		  The filename shown now include the path/user.
+;		  The input_string routine re-written to perform
+;		  full string editing.
+;		  Last update: 23-January-91 (revision e).
+;
+;		- version 2.8 - Routine get_record now turns cursor
+;		  off before displaying the record and on again after.
+;		  Routine input_string modified to handle different
+;		  types of strings (standard, upper case, numeric,
+;		  and hexadecimal). Routine input_hex now redundant
+;		  and therefore removed. Additional flag added to
+;		  input_string routine to suppress the default
+;		  string until ctrl-r pressed (recorver line). Also
+;		  routine init_env modified to disable the effect
+;		  of ctrl-c or ctrl-o during character display. The
+;		  license number is now stored as 3 bcd bytes at
+;		  offset 2 of the code segment (after the jmps
+;		  instruction).
+;		  Last update: 26-June-91 (revision c).
+;
+;		  Handed over to public domain.
+;		  E-mail comments to stephen.hunt@iname.com
+;		  Last updage: 27-April-1998 (revsion d).
+;
+;----------------------------------------
+
+ver	equ	28			; version
+rev	equ	'd'			; revision
+
+true	equ	0ffffh
+false	equ	not true
+
+cdelen	equ	.0h			; code segment length word
+datlen	equ	.6h			; data segment length word
+fcb	equ	.05ch			; default file control block
+dma	equ	.080h			; default dma buffer
+
+ctrl_c	equ	'C' - 40h		; abort
+ctrl_e	equ	'E' - 40h		; up
+ctrl_x	equ	'X' - 40h		; down
+ctrl_s	equ	'S' - 40h		; chr left
+ctrl_d	equ	'D' - 40h		; chr right
+ctrl_a	equ	'A' - 40h		; word left
+ctrl_f	equ	'F' - 40h		; word right
+ctrl_g	equ	'G' - 40h		; delete chr right of cursor
+ctrl_t	equ	'T' - 40h		; delete word right of cursor
+ctrl_y	equ	'Y' - 40h		; delete entire line
+ctrl_r	equ	'R' - 40h		; recover deleted line
+ctrl_v	equ	'V' - 40h		; insert toggle
+ctrl_j	equ	'J' - 40h		; help
+
+bell	equ	7h			; bell
+bac	equ	8h			; back space
+tab	equ	9h			; tab
+eof	equ	1ah			; end of file
+space	equ	20h			; space
+del	equ	7fh			; delete (left of cursor)
+
+nolist
+
+; Include file for CCPM/CDOS and DR-NET System Function Calls
+;
+;					- Auxiliary Device System Calls 
+A_ATTACH	equ	165		; Attach Default Auxiliary Device 
+A_CATTACH	equ	167		; Conditionally Attach Device 
+A_DETACH	equ	166		; Detach Default Auxiliary Device 
+A_GET		equ	169		; Get the Default Auxiliary Device 
+A_READ		equ	  3		; Get a Character from Aux Device 
+A_READBLK	equ	172		; Read a Block from Aux Device 
+A_SET		equ	168		; Set Default Aux Device 
+A_STATIN	equ	  7		; Aux Device Input Status 
+A_STATOUT	equ	  8		; Aux Device Output Status 
+A_WRITE 	equ	  4		; Output a character to Aux Device 
+A_WRITEBLK	equ	173		; Write a Block to Aux Device 
+
+;					- Console Based System Calls 
+C_ASSIGN	equ	149		; Assign Default Console 
+C_ATTACH	equ	146		; Attach Default Virtual Console 
+C_ATTRIB	equ	114		; Return Console Attributes
+C_CATTACH	equ	162		; Conditionally Attach Console 
+C_DELIMIT	equ	110		; Default String Delimiter 
+C_DETACH	equ	147		; Detach Virtual Console 
+C_GET		equ	153		; Get the Virtual Console Number 
+C_MODE		equ	109		; Set the Console mode 
+C_RAWIO 	equ	  6		; Perform Direct I/O 
+C_READ		equ	  1		; Read a character from the console 
+C_READSTR	equ	 10		; Read a string from the console 
+C_SET		equ	148		; Change the Default Console 
+C_STAT		equ	 11		; Get the Input Status 
+C_WRITE 	equ	  2		; Write a character to the Console 
+C_WRITEBLK	equ	111		; Write a block of characters 
+C_WRITESTR	equ	  9		; Write a string 
+
+;					- Device Based System Calls 
+DEV_POLL	equ	131		; poll device 
+DEV_FLAGALLOC	equ	 87		; allocate flag 
+DEV_FLAGFREE	equ	 88		; free system flag 
+DEV_WAITFLAG	equ	132		; flag wait 
+DEV_SETFLAG	equ	133		; flag set 
+
+;					- Drive Management Functions 
+DRV_ACCESS	equ	 38		; Access drive (in LOCK TBL) 
+DRV_ALLOCVEC	equ	 27		; Get the Allocation Vector 
+DRV_ALLRESET	equ	 13		; Reset all drives 
+DRV_DPB 	equ	 31		; Get the DPB 
+DRV_FLUSH	equ	 48		; Flush internal buffers 
+DRV_FREE	equ	 39		; Relinguish access to drive 
+DRV_GET 	equ	 25		; Get the default Drive 
+DRV_GETLABEL	equ	101		; Get the drives label 
+DRV_LOCK	equ	 90		; lock physical drive 
+DRV_LOGINVEC	equ	 24		; Get the login vector 
+DRV_RESET	equ	 37		; Reset specified drives 
+DRV_ROVEC	equ	 29		; Get Read Only drives 
+DRV_SET 	equ	 14		; Set the default drive 
+DRV_SETLABEL	equ	100		; Set the drive label 
+DRV_SETRO	equ	 28		; Set the default drive to Read Only 
+DRV_SPACE	equ	 46		; Return the Unalloacted space 
+DRV_UNLOCK	equ	 91		; unlock physical drive 
+
+;					- File Management Functions 
+F_ATTRIB	equ	 30		; Set file attributes 
+F_CLOSE 	equ	 16		; Close File 
+F_DELETE	equ	 19		; Delete File 
+F_DMAGET	equ	 52		; Return DMA address 
+F_DMAOFF	equ	 26		; Set DMA Buffer Offset 
+F_DMASEG	equ	 51		; Set DMA Segment 
+F_DOS		equ	113		; Handle Functions 
+F_ERRMODE	equ	 45		; Set BDOS error mode 
+F_LOCK		equ	 42		; Lock Records in a File 
+F_MAKE		equ	 22		; Create a file 
+F_MULTISEC	equ	 44		; Set the Mutli sector I/O count 
+F_OPEN		equ	 15		; Open a file 
+F_PARSE 	equ	152		; Initialize an FCB from string 
+F_PASSWD	equ	106		; Set the default password 
+F_RANDREC	equ	 36		; Set Random record 
+F_READ		equ	 20		; Read Sequential 
+F_READRAND	equ	 33		; Read Random 
+F_RENAME	equ	 23		; Rename file 
+F_SETDATE	equ	116		; Set File Time and Date Stamp 
+F_SFIRST	equ	 17		; Get first Matching file 
+F_SIZE		equ	 35		; Get file Size 
+F_SNEXT 	equ	 18		; Get subsequent files 
+F_TIMEDATE	equ	102		; Return date and time 
+F_TRUNCATE	equ	 99		; Truncate the file 
+F_UNLOCK	equ	 43		; Unlock File 
+F_USERNUM	equ	 32		; Set or return user number 
+F_WRITE 	equ	 21		; Write Sequential 
+F_WRITERAND	equ	 34		; Write Random 
+F_WRITEZF	equ	 40		; Write with Zero fill 
+F_WRITEXFCB	equ	103		; Create or update XFCB 
+
+;					- Printer Related system calls 
+L_ATTACH	equ	158		; Attach Default List device 
+L_CATTACH	equ	161		; Conditionally Attach List Device 
+L_DETACH	equ	159		; Detach Virtual Printer 
+L_GET		equ	164		; Get the Default Printer 
+L_SET		equ	160		; Change the Default Printer 
+L_WRITE 	equ	  5		; Write a character to the Printer 
+L_WRITEBLK	equ	112		; Write a block of characters 
+
+;					- MP/M Memory Allocation 
+M_ALLOC 	equ	128		; Allocate Memory Segment 
+M_FREE		equ	130		; Free Memory Segment 
+
+;					- CP/M Memory Alloacation 
+MC_ABS		equ	 54		;   
+MC_ALLFREE	equ	 58		;   
+MC_ALLOC	equ	 55		;   
+MC_ALLOCABS	equ	 56		;   
+MC_FREE 	equ	 57		;   
+MC_MAX		equ	 53		;   
+
+;					- Network Function Calls 
+N_ATTACH	equ	 73		; Attach Process to Network 
+N_ATTRIB	equ	 70		; Set Compatiblilty Attributes 
+N_DETACH	equ	 74		; Detach a process from the network 
+N_ERRMODE	equ	 72		; Set the Network Error Mode 
+N_LOGOFF	equ	 65		; Terminate Link with Server 
+N_LOGON 	equ	 64		; Log a process to a server 
+N_LONGTIME	equ	 76		; Set the Long TimeOut Value 
+N_NAME		equ	 78		; Network Names Support 
+N_PARATAB	equ	 77		; Get the Parameter table 
+N_PASSWORD	equ	 75		; Set the Network Password 
+N_RCT		equ	 69		; Set Requester Config Table 
+N_SCT		equ	 71		; Get Server Config Table 
+N_STAT		equ	 68		; Get Network Status Word 
+N_XERROR	equ	 79		; Network Extended Errors 
+
+;					- process control functions: 
+P_ABORT 	equ	157		; Terminate a Process 
+P_CHAIN 	equ	 47		; Chain to a process 
+P_CLI		equ	150		; Interpret command line 
+P_CREATE	equ	144		; Create a process 
+P_DELAY 	equ	141		; delay specified number of ticks 
+P_DISPATCH	equ	142		; let other another process run 
+P_EXEC		equ	 93		; CDOS 6.0 Exec/Chain Function 
+P_EXITCODE	equ	 94		; CDOS 6.0 Get/Set Error Code 
+P_LOAD		equ	 59		; Load the specified CMD file 
+P_PATH		equ	 92		; locate file in search path 
+P_PDADR 	equ	156		; dbl word ptr of process descriptor 
+P_PRIORITY	equ	145		; Set process priority 
+P_RPL		equ	151		; Invoke a system call from RPL 
+P_TERM		equ	143		; Terminate process 
+P_TERMCPM	equ	  0		; Terminate process Unconditionally 
+
+;					- Queue Management Functions 
+Q_CREAD 	equ	138		; Conditional Read 
+Q_CWRITE	equ	140		; Conditional Write 
+Q_DELETE	equ	136		; Queue Delete 
+Q_MAKE		equ	134		; Create a Queue 
+Q_OPEN		equ	135		; Open a Queue 
+Q_READ		equ	137		; Read from Queue 
+Q_WRITE 	equ	139		; Write to Queue 
+
+;					- System Based Calls 
+S_BDOSVER	equ	 12		; BDOS version Number 
+S_BIOS		equ	 50		; Call BIOS character I/O routine 
+S_GETCOUNTRY	equ	 96		; CDOS 6.0 Get Country Data 
+S_MEMORY	equ	 89		; allocate SYSDAT memory 
+S_OSVER 	equ	163		; Return type and version number 
+S_SCB		equ	 49		; CP/M PLUS and DOS PLUS only 
+S_SETCOUNTRY	equ	 95		; CDOS 6.0 Set the System Country 
+S_SERIAL	equ	107		; Return the Serial Number 
+S_SYSDAT	equ	154		; Return System data page address 
+
+;					- Time System Calls 
+T_GET		equ	105		; Get the system Time 
+T_GETTIME	equ	 83		; Get Binary System Time 
+T_GETDATE	equ	 85		; Get Binary System Date 
+T_SECONDS	equ	155		; As above + seconds 
+T_SET		equ	104		; Set the system Time 
+T_SETTIME	equ	 84		; Set Binary System Time 
+T_SETDATE	equ	 86		; Set Binary System Date 
+
+;					-  Other Miscellaneous Equates
+CCPM            equ	224		; system call interrupt
+CR		equ	0dh		; carriage return
+LF		equ	0ah		; line feed
+ESC		equ	01bh		; escape
+list
+
+	cseg
+
+;----------------------------------------
+; main line
+;----------------------------------------
+
+main:
+;
+	jmps	main2			; skip license and copyright message
+
+	db	'FileView Version '
+	db	ver/10+'0','.',ver mod 10+'0',rev
+	db	' (c) Stephen Hunt 27-Apr-1998'
+	db	eof
+
+licn1	db	28h			; bcd license number - 1st byte
+licn2	db	99h			; bcd license number - 2nd byte
+licn3	db	99h			; bcd license number - 3rd byte
+
+main2:
+;
+	call	init_env		; initialise operating environment
+	jc	main8			; failed - exit
+
+main4:
+;
+	mov	dx,offset signon_scrn
+	call	print_string		; display signon screen
+
+main6:
+;
+	call	get_file		; get drive/user/path/file/password
+	jc	main8			; operator abort - exit
+
+	call	locate_file		; attempt to locate the file
+	jc	main6			; file not found - try again
+
+	call	init_file		; open + init file parameters
+	jc	main6			; open failed - try again
+
+	call	user_com		; user command loop
+	jnc	main4			; loop if return from 'close'
+					; exit if return from 'quit'
+
+main8:
+;
+	xor	cl,cl
+	mov	dl,cl
+	jmp	bdos			; terminate
+
+;----------------------------------------
+; initialise operating environment
+;----------------------------------------
+;
+; init segment registers
+;
+init_env:
+;
+	mov	ax,ds
+	mov	es,ax			; set eseg = dseg
+	cld				; clear data direction flag
+
+;----------------------------------------
+;
+; set raw input mode, string delimiter, and bdos error mode
+;
+init_env2:
+;
+	mov	byte ptr chrout,c_rawio	; set default chr output mode (screen)
+
+	mov	cl,s_bdosver
+	call	bdos			; return bdos version
+	mov	word ptr cpmver,ax
+
+	mov	byte ptr inpraw,0ffh	; assume cpm 2.2 raw input mode
+
+	or	ah,ah			; q. mpm or cdos ?
+	jz	init_env4		; no - jump
+
+	mov	byte ptr inpraw,0fdh	; set cdos raw input mode
+
+	mov	cl,c_mode
+	mov	dx,0ffffh
+	call	bdos			; return current console mode
+
+	or	al,10001000b		; disable ctrl-c and ctrl-o
+
+	mov	cl,c_mode
+	mov	dx,ax
+	call	bdos			; set console mode
+
+	mov	cl,c_delimit
+	xor	dl,dl
+	call	bdos			; set null string delimiter
+
+	mov	cl,f_errmode
+	mov	dl,0ffh			; return bdos errors
+	call	bdos			; set bdos error mode
+
+	mov	cl,n_stat
+	call	bdos			; return network status
+	inc	ax			; q. network attached ?
+	jz	init_env4		; no - jump
+
+	mov	cl,n_errmode
+	mov	dl,0ffh			; return ndos errors
+	call	bdos			; set ndos error mode
+
+;----------------------------------------
+;
+; return default drive and user number.
+;
+init_env4:
+;
+	mov	cl,drv_get
+	call	bdos			; return default drive
+	mov	byte ptr defdrv,al
+
+	mov	cl,f_usernum
+	mov	dl,0ffh
+	call	bdos			; return default user number
+	mov	byte ptr defusr,al
+
+	mov	dx,offset clrscn	; clear screen sequence
+	call	print_string		; print string
+
+;----------------------------------------
+;
+; set status condition and return
+;
+	clc				; clear error status
+	ret
+
+init_env6:
+;
+	stc				; set error status
+	ret
+
+;----------------------------------------
+; get {drive}{user}{path} filename {password}
+;----------------------------------------
+
+get_file:
+;
+	cmp	byte ptr fcomm,0	; q. test command line ?
+	jnz	get_file10		; no - enter filename
+
+	mov	byte ptr fcomm,1	; yes - set flag for next time
+
+	mov	byte ptr lstfle,0	; clear 'last filename'
+
+;----------------------------------------
+;
+; parse default command line
+;
+	mov	bl,byte ptr dma
+	or	bl,bl			; q. null command line
+	jz	get_file10		; yes - enter filename
+
+	xor	bh,bh
+	add	bx,offset dma +1	; point to end of command line
+	mov	byte ptr 0[bx],0	; terminate command line
+
+	mov	bx,offset dma +1	; point to command line
+
+;----------------------------------------
+;
+; skip over leading blanks and parse filename string (offset bx)
+;
+get_file2:
+;
+	cmp	byte ptr 0[bx],0	; q. termination chr ?
+	jnz	get_file4		; no - continue test
+
+	mov	byte ptr lstfle,0	; clear 'last filename'
+	jmps	get_file10		; enter filename
+
+get_file4:
+;
+	cmp	byte ptr 0[bx],' '	; q. space chr ?
+	jnz	get_file6		; no - parse command line
+
+	inc	bx			; bump pointer
+	jmps	get_file2		; loop until finished
+
+get_file6:
+;
+	mov	si,bx			; start of filename
+	mov	di,offset lstfle	; last filename store
+	mov	cx,40
+	cld
+	rep	movsw			; copy first 80 chrs
+
+	mov	byte ptr lstfle +60,0	; terminate 'last filename'
+
+	call	parse_file		; parse asciiz file string (bx)
+	jnc	get_file16		; valid - exit ok
+
+;----------------------------------------
+;
+; invalid file parse message - press 'return' then try again
+;
+	mov	dx,offset err_pe5	; parse error - 'invalid password'
+	cmp	al,5			; q. password error ?
+	jz	get_file8		; yes - display error
+
+	mov	dx,offset err_pe4	; parse error - 'invalid path/file'
+	cmp	al,4			; q. path/file name error ?
+	jz	get_file8		; yes - display error
+
+	mov	dx,offset err_pe3	; parse error - 'invalid user number'
+	cmp	al,3			; q. user number error ?
+	jz	get_file8		; yes - display error
+
+	mov	dx,offset err_pe2	; parse error - 'invalid drive ref'
+	cmp	al,2			; q. drive reference error ?
+	jz	get_file8		; yes - display error
+
+	mov	dx,offset err_pe1	; parse error - 'invalid file spec'
+
+get_file8:
+;
+	call	press_return		; print status + wait for 'return'
+
+;----------------------------------------
+;
+; enter a filename from the keyboard
+;
+get_file10:
+;
+	cmp	byte ptr flsmd,0	; q. license message displayed ?
+	jnz	get_file12		; yes - enter filename
+
+	mov	dx,offset msg_lno	; cursor position + 'license no. '
+	call	print_string		; display message
+
+	mov	al,cs:byte ptr licn1	; license 1st bcd byte
+	call	print_hbyte		; print hex characters
+
+	mov	al,cs:byte ptr licn2	; license 2nd bcd byte
+	call	print_hbyte		; print hex characters
+
+	mov	al,cs:byte ptr licn3	; license 3rd bcd byte
+	call	print_hbyte		; print hex characters
+
+	mov	byte ptr flsmd,1	; license message displayed
+
+get_file12:
+;
+	mov	dx,offset msg_nul	; null text string
+	call	print_status		; display status message (clear to end)
+
+	mov	dx,offset ask_fle
+	call	print_prompt		; prompt 'enter filename'
+
+	mov	bl,10h			; don't prompt default
+	mov	al,1			; minimum chrs required
+	mov	ah,60			; maximum chrs required
+	mov	si,offset lstfle	; default to last filename
+	call	input_string		; input filename
+	mov	bx,si			; bx points to filename entered
+	jc	get_file14
+	jmp	get_file2		; valid input - skip leading blanks
+
+get_file14:
+;
+	mov	dx,offset clrscn	; clear screen sequence
+	call	print_string
+
+;----------------------------------------
+;
+; set status condition and return
+;
+	stc				; set error status
+	ret
+
+get_file16:
+;
+	clc				; clear error status
+	ret
+
+;----------------------------------------
+; attempt to locate required file
+;----------------------------------------
+
+locate_file:
+;
+	call	select_media		; select required drive
+	jnc	locate_file2		; drive selected ok - continue
+
+	mov	dx,offset err_drv	; 'drive select error'
+	jmp	locate_file24		; exit with error
+
+;----------------------------------------
+;
+; ensure path names not specified if cpm media
+;
+locate_file2:
+;
+	cmp	byte ptr fmtyp,1	; q. dos media ?
+	jz	locate_file6		; yes - test dos file spec
+
+	cmp	byte ptr froot,1	; q. root directory specified ?
+	jz	locate_file4		; yes - display error
+
+	cmp	byte ptr fpath,1	; q. pathname specified ?
+	jnz	locate_file8		; no - continue ok
+
+locate_file4:
+;
+	mov	dx,offset err_dos	; 'paths require dos media'
+	jmp	locate_file24		; exit with error
+
+;----------------------------------------
+;
+; ensure user number not specified if dos media
+;
+locate_file6:
+;
+	cmp	byte ptr fuser,1	; q. user number specified ?
+	jnz	locate_file10		; no - continue ok
+
+	mov	dx,offset err_cpm	; 'user numbers require cpm media'
+	jmp	locate_file24		; exit with error
+
+;----------------------------------------
+;
+; set required user number
+;
+locate_file8:
+;
+	mov	cl,f_usernum
+	mov	dl,byte ptr requsr
+	call	bdos			; set required user number
+
+	jmp	locate_file18		; attempt to locate required file
+
+;----------------------------------------
+;
+; save current directory (if possible)
+;
+locate_file10:
+;
+	cmp	byte ptr cpmver,60h	; q. below cdos 6.0 ?
+	jb	locate_file12		; yes - set required directory
+
+	mov	word ptr dostbl +0,12			; fdos function - get current directory
+	mov	word ptr dostbl +2,0			; default drive
+	mov	word ptr dostbl +4,offset defdir +1	; default directory buffer
+	mov	word ptr dostbl +6,ds			; default directory segment
+
+	mov	cl,f_dos
+	mov	dx,offset dostbl
+	call	bdos			; return current directory
+
+;----------------------------------------
+;
+; set root directory if specified
+;
+locate_file12:
+;
+	cmp	byte ptr froot,1	; q. root directory specified ?
+	jnz	locate_file14		; no - test path name
+
+	mov	di,offset fcb
+	mov	al,80h
+	stosb				; set drive ref in default fcb
+
+	mov	cx,11
+	mov	al,' '
+	rep	stosb			; space over default fcb filename
+
+	mov	cx,24
+	xor	al,al
+	rep	stosb			; clear remainder of the default fcb
+
+	mov	cl,f_close
+	mov	dx,offset fcb
+	call	bdos			; force root directory
+
+;----------------------------------------
+;
+; set path(s) if specified
+;
+locate_file14:
+;
+	cmp	byte ptr fpath,1	; path name specified ?
+	jnz	locate_file18		; no - search for file
+
+	mov	word ptr pthcnt,0	; start from first path
+
+	mov	si,offset reqpas
+	mov	di,offset dma
+	mov	cx,4
+	rep	movsw			; copy password to dma buffer
+
+locate_file16:
+;
+	mov	ax,11
+	mul	word ptr pthcnt		; ax = correct path name offset
+	mov	si,ax
+	add	si,offset tmpbuf	; si points to required path name
+
+	inc	word ptr pthcnt		; update path counter
+	cmp	word ptr pthcnt,20	; q. reached end of path name list ?
+	ja	locate_file18		; yes - locate file
+
+	cmp	byte ptr 0[si],0	; q. null path name ?
+	jz	locate_file18		; yes - locate file
+
+	mov	di,offset fcb
+	mov	al,80h
+	stosb				; set drive ref in default fcb
+
+	mov	cx,11
+	rep	movsb			; copy pathname to default fcb
+
+	mov	cx,24
+	xor	al,al
+	rep	stosb			; clear remainder of the default fcb
+
+	mov	cl,f_open
+	mov	dx,offset fcb
+	call	bdos			; open directory path
+
+	inc	al			; path found ?
+	jnz	locate_file16		; yes - locate next part of path
+
+	mov	dx,offset err_de1	; dir error - 'path not found'
+	or	ah,ah			; q. path not found ?
+	jz	locate_file24		; yes - exit with error
+
+	mov	dx,offset err_de2	; dir error - 'password directory'
+	cmp	ah,7			; q. incorrect password ?
+	jz	locate_file24		; yes - exit with error
+
+	mov	dx,offset err_de3	; dir error - 'unable to open path'
+	jmps	locate_file24		; exit with error
+
+;----------------------------------------
+;
+; initialise fcb with required filename
+;
+locate_file18:
+;
+	mov	si,offset reqfle
+	mov	di,offset fcb
+	xor	al,al
+	stosb				; set default drive
+
+	mov	cx,11
+	rep	movsb			; copy filename to fcb
+
+	mov	cx,23
+	rep	stosb			; clear remainder of fcb
+
+	mov	byte ptr faxis,al	; flag not axis data file
+
+;----------------------------------------
+;
+; search for file (upper case)
+;
+	mov	cl,f_sfirst
+	mov	dx,offset fcb
+	call	bdos			; search first (exact)
+
+	inc	al			; q. file found ?
+	jnz	locate_file26		; yes - exit ok
+
+;----------------------------------------
+;
+; make filename lower case
+;
+	mov	byte ptr faxis,1	; flag axis data file
+
+	mov	si,offset fcb +1
+	mov	cx,8			; only lower case filename (not type)
+
+locate_file20:
+;
+	cmp	byte ptr 0[si],'A'	; q. below capital 'A' ?
+	jb	locate_file22		; yes - skip it
+	cmp	byte ptr 0[si],'Z'	; q. above capital 'Z' ?
+	ja	locate_file22		; yes - skip it
+
+	add	byte ptr 0[si],20h	; make lower case letter
+
+locate_file22:
+;
+	inc	si			; bump pointer
+	loop	locate_file20		; loop until finished
+
+;----------------------------------------
+;
+; search for file (lower case)
+;
+	mov	cl,f_sfirst
+	mov	dx,offset fcb
+	call	bdos			; search first (exact)
+
+	inc	al			; q. file found ?
+	jnz	locate_file26		; yes - exit ok
+
+	mov	dx,offset err_fnd	; 'file not found'
+
+;----------------------------------------
+;
+; display error then reset default directory/user number
+;
+locate_file24:
+;
+	call	press_return		; print status + wait for 'return'
+
+	call	set_dir			; set default directory/user
+
+;----------------------------------------
+;
+; set status condition and return
+;
+	stc				; set error status
+	ret
+
+locate_file26:
+;
+	clc				; clear error status
+	ret
+
+;----------------------------------------
+; open and initialise required file
+;----------------------------------------
+
+init_file:
+;
+	mov	si,offset reqpas
+	mov	di,offset dma
+	mov	cx,4
+	rep	movsw			; copy password to dma buffer
+
+	mov	cl,f_open
+	mov	dx,offset fcb
+	call	bdos			; open file
+
+	inc	al			; q. open failure ?
+	jnz	init_file6		; no - continue
+
+	mov	dx,offset err_oe1	; open error - 'file already open'
+	cmp	ah,5			; q. file already open ?
+	jz	init_file4		; yes - display error
+
+	mov	dx,offset err_oe2	; open error - 'incorrect password'
+	cmp	ah,7			; q. incorrect password ?
+	jz	init_file4		; yes - display error
+
+init_file2:
+;
+	mov	dx,offset err_oe3	; open error - 'unable to open file'
+
+init_file4:
+;
+	call	press_return		; print status + wait for 'return'
+
+	call	set_dir			; set default directory/user
+	jmp	init_file50		; exit invalid
+
+;----------------------------------------
+;
+; create filename string in temporary buffer
+;
+init_file6:
+;
+	mov	di,offset tmpbuf +256
+	cld
+
+	mov	al,byte ptr reqdrv	; get drive reference
+	add	al,'A'			; convert to ascii
+	stosb				; place in filename string
+
+;----------------------------------------
+;
+; setup user number if cpm media and user number specified
+;
+	cmp	byte ptr fmtyp,0	; q. cpm media ?
+	jnz	init_file12		; no - setup dos filename string
+
+	cmp	byte ptr fuser,1	; q. user number specified ?
+	jnz	init_file10		; no - continue
+
+	mov	ah,byte ptr requsr	; get user number
+	cmp	ah,10			; q. user number below 10 ?
+	jb	init_file8		; yes - continue
+
+	mov	al,'1'
+	stosb				; place ascii '1' in file string
+
+	sub	ah,10			; subtract 10
+
+init_file8:
+;
+	mov	al,'0'
+	add	al,ah			; make low digit ascii
+	stosb				; palce in file string
+
+init_file10:
+;
+	mov	al,':'
+	stosb				; place colon in file string
+
+	jmp	init_file30		; place filename in file string
+
+;----------------------------------------
+;
+; setup path name if specified
+;
+init_file12:
+;
+	mov	al,':'
+	stosb				; place colon in file string
+
+	cmp	byte ptr froot,1	; q. root directory specified ?
+	jnz	init_file14		; no - test pathname
+
+	mov	al,'\'
+	stosb				; place backslash in files string
+
+init_file14:
+;
+	cmp	byte ptr fpath,1	; q. path name specified ?
+	jnz	init_file30		; no - setup filename
+
+	mov	word ptr pthcnt,0	; start from first path
+
+init_file16:
+;
+	mov	ax,11
+	mul	word ptr pthcnt		; ax = correct path name offset
+	mov	si,ax
+	add	si,offset tmpbuf	; si points to required path name
+
+	cmp	byte ptr 0[si],0	; q. null path name ?
+	jz	init_file30		; yes - setup filename
+
+	cmp	byte ptr 8[si],' '	; q. path name extent present ?
+	jnz	init_file20		; yes - continue
+
+;----------------------------------------
+;
+; setup path name without extent
+;
+	mov	cx,8			; only 8 chrs
+
+init_file18:
+;
+	lodsb				; get path name chr
+	cmp	al,' '			; q. end of path name ?
+	jz	init_file28		; yes - place backslash after path name
+
+	stosb				; place chr in file string
+	loop	init_file18		; loop for next chr
+
+	jmps	init_file28		; place backslash after path name
+
+;----------------------------------------
+;
+; setup path name with extent
+;
+init_file20:
+;
+	mov	cx,8			; first 8 chrs
+
+init_file22:
+;
+	lodsb				; get path name chr
+	cmp	al,' '			; q. end of path name ?
+	jz	init_file24		; yes - complete loop
+
+	stosb				; place chr in file string
+
+init_file24:
+;
+	loop	init_file22		; loop for next chr
+
+	mov	al,'.'
+	stosb				; place dot after path name
+
+	mov	cx,3			; last 3 chrs
+
+init_file26:
+;
+	lodsb				; get path name chr
+	cmp	al,' '			; q. end of path name extent ?
+	jz	init_file28		; yes - place backslash after path name
+
+	stosb				; place chr in file string
+	loop	init_file26		; loop for next chr
+
+;----------------------------------------
+;
+; place backslash chr after path name
+;
+init_file28:
+;
+	mov	al,'\'
+	stosb				; place backslash chr after path name
+
+	inc	word ptr pthcnt		; update path counter
+
+	jmps	init_file16		; get next path name
+
+;----------------------------------------
+;
+; setup filename
+;
+init_file30:
+;
+	mov	si,offset fcb +1
+	mov	cx,8			; first 8 chrs of filename
+
+init_file32:
+;
+	lodsb				; get filename chr
+	and	al,7fh			; mask off attribute bits
+
+	cmp	al,' '			; q. space chr ?
+	jz	init_file34		; yes - complete loop
+
+	stosb				; place chr in filename string
+
+init_file34:
+;
+	loop	init_file32		; loop for next chr
+
+	mov	al,byte ptr 0[si]	; get first chr of file extent
+	and	al,7fh			; mask off attribute bits
+	cmp	al,' '			; q. filename extent present ?
+	jz	init_file38		; no - test read only file
+
+	mov	al,'.'
+	stosb				; place dot after filename
+
+	mov	cx,3			; last 3 chrs
+
+init_file36:
+;
+	lodsb				; get filename extent chr
+	and	al,7fh			; mask off attribute bits
+
+	cmp	al,' '			; q.  end of filename extent ?
+	jz	init_file38		; yes - test read only file
+
+	stosb				; place chr in filename string
+	loop	 init_file36		; loop for next chr
+
+;----------------------------------------
+;
+; check read only attribute + set read only flag accordingly
+;
+init_file38:
+;
+	mov	byte ptr frdwr,0	; flag read write file
+
+	test	byte ptr fcb +7,80h	; q. password write protected ?
+	jnz	init_file40		; yes - set read only
+
+	test	byte ptr fcb +8,80h	; q. opened in read only mode ?
+	jnz	init_file40		; yes - set read only
+
+	test	byte ptr fcb +9,80h	; q. read only attribute set ?
+	jz	init_file42		; no - display filename
+
+init_file40:
+;
+	mov	al,' '
+	stosb				; place space in filename string
+
+	mov	al,'+'
+	stosb				; place plus chr in filename string
+
+	mov	al,'R'
+	stosb				; place plus chr in filename string
+
+	mov	byte ptr frdwr,1	; flag read only file
+
+init_file42:
+;
+	xor	al,al
+	stosb				; terminate filename string
+
+;----------------------------------------
+;
+; display filename string in banner
+;
+	dec	di
+	sub	di,offset tmpbuf +256	; calculate length of filename string
+
+	mov	word ptr tmpwrd,di	; save filename string length
+
+	mov	ah,32			; assume column 32
+	cmp	di,45			; q. 45 or less chrs ?
+	jbe	init_file44		; yes - clear to end of line
+
+	mov	ah,15			; assume column 15
+	cmp	di,63			; q. 63 or less chrs ?
+	jbe	init_file44		; yes - clear to end of line
+
+	mov	ah,10			; assume column 10
+	cmp	di,66			; q. 66 or less chrs ?
+	jbe	init_file44		; yes - clear to end of line
+
+	xor	ah,ah			; assume column 0
+
+init_file44:
+;
+	mov	al,1			; row
+	call	cursor_addr		; position cursor
+
+	mov	dx,offset clreol	; clear to end of line sequence
+	call	print_string		; display string
+
+	mov	byte ptr flsmd,0	; license message cleared
+
+	mov	ax,word ptr tmpwrd	; get string length in al
+	mov	ah,78
+	sub	ah,al			; calculate column
+	mov	al,1			; row
+	call	cursor_addr		; position cursor
+
+	mov	dx,offset tmpbuf +256	; filename string
+	call	print_string		; display string
+
+;----------------------------------------
+;
+; return file size (number of 128 byte records)
+;
+	mov	dx,offset fcb
+	mov	cl,f_size
+	call	bdos			; return number of 128 byte records
+
+	mov	ax,word ptr fcb +33
+	mov	dl,byte ptr fcb +35	; ax:dl = record number (r0,r1,r2)
+
+	or	dl,dl			; q. high byte zero ?
+	jnz	init_file46		; no - correct record count
+	or	ax,ax			; q. low word zero ?
+	jz	init_file48		; yes - save file size
+
+init_file46:
+;
+	sub	ax,1			; subtract 1 from low word
+	sbb	dl,0			; subtract carry from high byte
+
+init_file48:
+;
+	mov	word ptr flesiz +0,ax
+	mov	byte ptr flesiz +2,dl	; store number of records
+
+	xor	ax,ax
+	mov	word ptr fcb +33,ax
+	mov	byte ptr fcb +35,al	; zero current record number
+
+	mov	byte ptr currow,al
+	mov	byte ptr curcol,al	; zero current row and column
+
+	mov	word ptr strrec +0,ax
+	mov	byte ptr strrec +2,al		; zero stream record
+	mov	word ptr stroff,offset dma	; reset stream record offset
+
+;----------------------------------------
+;
+; display maximum record number + contents of record zero
+;
+	mov	byte ptr fhxdc,0	; flag hex numbers
+	call	tog_record		; toggle/display decimal record numbers
+
+	call	read_display		; read plus display record zero
+
+;----------------------------------------
+;
+; set condition codes and return
+;
+	clc				; clear error condition
+	ret
+
+init_file50:
+;
+	stc				; set error condition
+	ret
+
+;----------------------------------------
+; USER COMMAND LOOP
+;----------------------------------------
+;
+; prompt for command, then poll keyboard for input
+;
+user_com:
+;
+	mov	dx,offset ask_com
+	call	print_prompt		; prompt 'command option'
+
+user_com2:
+;
+	call	read_chr		; read a key press (no wait)
+	or	al,al			; q. any key pressed ?
+	jz	user_com2		; no - try again
+
+	call	upper_case		; convert chr to upper case
+
+;----------------------------------------
+;
+; attempt to locate option in command table
+;
+	mov	bx,offset comtbl	; point to command table
+
+user_com4:
+;
+	cmp	byte ptr 0[bx],0	; q. reached end of table ?
+	jz	user_com2		; yes - try again
+
+	cmp	byte ptr 0[bx],al	; q. found required entry ?
+	jz	user_com6		; yes - perform function
+
+	add	bx,3			; no - point to next table entry
+	jmps	user_com4		; loop
+
+;----------------------------------------
+;
+; flush keyboard buffer before calling required option
+;
+user_com6:
+;
+	mov	byte ptr comopt,al	; save command option
+	push	bx			; preserve command table offset
+
+user_com8:
+;
+	mov	dl,0ffh
+	call	raw_io			; read keyboard (no wait)
+	or	al,al			; q. any more key presses ?
+	jnz	user_com8		; yes - loop
+
+	mov	dx,offset msg_nul	; null text string
+	call	print_status		; print status message (clear to end)
+
+	pop	bx			; restore command table offset
+
+;----------------------------------------
+;
+; perform option then start again
+;
+	call	word ptr 1[bx]		; call user command routine
+	jmps	user_com		; start again
+
+;----------------------------------------
+; user command routines
+;----------------------------------------
+;----------------------------------------
+; read/display next record (increment)
+;----------------------------------------
+
+inc_record:
+;
+	mov	ax,word ptr fcb +33
+	mov	dl,byte ptr fcb +35	; get current record number
+
+	cmp	dl,byte ptr flesiz +2	; q. high byte lower ?
+	ja	inc_record2		; no - above - error
+	jb	inc_record4		; yes - below - increase record number
+
+	cmp	ax,word ptr flesiz +0	; q. low word lower ?
+	jb	inc_record4		; yes - increase record number
+
+inc_record2:
+;
+	mov	dx,offset err_end	; 'end of file'
+	jmp	print_status		; display status and return
+
+inc_record4:
+;
+	add	word ptr fcb +33,1	; add one to r0, r1
+	adc	byte ptr fcb +35,0	; add only carry to r2
+
+	jmp	get_record		; get and display next record
+
+;----------------------------------------
+; read/display previous record (decrement)
+;----------------------------------------
+
+dec_record:
+;
+	mov	ax,word ptr fcb +33
+	mov	dl,byte ptr fcb +35	; get current record number
+
+	or	dl,dl			; q. high byte zero ?
+	jnz	dec_record2		; no - decrease record number
+
+	or	ax,ax			; q. low word zero ?
+	jnz	dec_record2		; no - decrease record number
+
+	mov	dx,offset err_sta	; 'start of file'
+	jmp	print_status		; display status and return
+
+dec_record2:
+;
+	sub	word ptr fcb +33,1	; subtract one from r0, r1
+	sbb	byte ptr fcb +35,0	; subtract only carry from r2
+
+	jmp	get_record		; get and display next record
+
+;----------------------------------------
+; enter required record number (go)
+;----------------------------------------
+;
+; request hex or decimal record number
+;
+go_record:
+;
+	mov	dx,offset ask_hrn	; 'record number (hex)' 
+	mov	ah,6			; maximum chrs required
+	mov	bl,4			; hexadecimal (chrs) only input
+
+	cmp	byte ptr fhxdc,0	; q. hex numbers ?
+	jz	go_record2		; yes - jump
+
+	mov	dx,offset ask_drn	; 'record number (dec)'
+	mov	ah,7			; maximum chrs required
+	mov	bl,2			; numeric only input
+
+go_record2:
+;
+	push	ax
+	push	bx
+	call	print_prompt		; prompt 'record number (???)'
+	pop	bx
+	pop	ax
+
+	xor	al,al			; minimum chrs required
+	xor	si,si			; no default input
+	call	input_string		; input record number
+	jnc	go_record4
+	ret				; operator abort - exit invalid
+
+go_record4:
+;
+	or	bx,bx			; q. anything entered ?
+	jnz	go_record6
+	ret				; no - exit
+
+go_record6:
+;
+	mov	cx,bx			; cx = number of chrs enterd
+	mov	di,5			; assume end of hex string
+
+	cmp	byte ptr fhxdc,0	; q. hex numbers ?
+	jz	go_record8		; yes - right justify number
+
+	mov	di,7			; assume end of decimal string
+
+go_record8:
+;
+	add	di,si			; di points to rightmost chr of string
+
+	push	si			; save si
+	add	si,cx
+	dec	si			; si points to last chr entered
+
+	cmp	di,si			; q. full string entered ?
+	jnz	go_record10		; no - right justify string
+
+	pop	si			; restore si
+	jmps	go_record14		; convert string to binary
+
+go_record10:
+;
+	std				; set backwards direction
+	rep	movsb			; right justify number entered
+	cld				; reset forward direction
+
+	pop	si			; restore si
+
+go_record12:
+;
+	mov	byte ptr 0[di],'0'	; add a leading ascii zero
+	dec	di
+	cmp	di,si			; q. reached start of string ?
+	jae	go_record12		; no - loop until finished
+
+go_record14:
+;
+	cmp	byte ptr fhxdc,0	; q. hex numbers ?
+	jnz	go_record20		; no - convert ascii decimal to binary
+
+;----------------------------------------
+;
+; convert ascii hex number to binary
+;
+	call	ascii_to_byte		; convert two chrs at si to hex
+	mov	dl,al			; copy hex byte to dl
+	jnc	go_record16		; valid hex - continue
+	jmp	go_record30		; exit invalid
+
+go_record16:
+;
+	call	ascii_to_byte		; convert second two chrs to hex
+	mov	bl,al			; copy hex byte to bl
+	jnc	go_record18		; valid hex - continue
+	jmp	go_record30		; exit invalid
+
+go_record18:
+;
+	call	ascii_to_byte		; convert third two chrs to hex
+	mov	ah,bl			; copy bl back to ah (ax:dl=value)
+	jnc	go_record26		; valid hex - test within filesize
+	jmp	go_record30		; exit invalid
+
+;----------------------------------------
+;
+; convert ascii decimal number to binary
+;
+go_record20:
+;
+	mov	di,offset bcdwk1	; bcd work area
+	mov	cx,4			; length of work area
+	cld				; set forward direction
+
+go_record22:
+;
+	lodsb				; get ms bcd chr
+	mov	ah,al			; copy to ah
+	sub	ah,'0'			; make ah binary
+	shl	ah,1
+	shl	ah,1
+	shl	ah,1
+	shl	ah,1			; shift to ms nibble
+
+	lodsb				; get ls bcd chr
+	sub	al,'0'			; make al binary
+
+	or	al,ah			; merge bcd digits
+	stosb				; store in bcd work area
+
+	loop	go_record22		; loop until complete
+
+	xor	dx,dx			; clear high word
+
+go_record24:
+;
+	inc	dx			; increment high word counter
+
+	mov	bx,offset bcdwk1
+	mov	si,offset bcdwk1
+	mov	di,offset bcd64k
+	call	sub_bcd			; subtract 64k from bcdwk1
+	jnc	go_record24		; loop until negative result
+
+	mov	bx,offset bcdwk1
+	mov	si,offset bcdwk1
+	mov	di,offset bcd64k
+	call	add_bcd			; add 64k to bcdwk1
+
+	dec	dx			; correct high word counter
+
+	push	dx			; preserve high word
+	mov	si,offset bcdwk1
+	call	bcd_bin			; convert bcd to binary
+	pop	dx			; ax:dl = value
+
+;----------------------------------------
+;
+; test record number in range. read + display record
+;
+go_record26:
+;
+	cmp	dl,byte ptr flesiz +2	; q. high byte lower ?
+	ja	go_record30		; no - above - invalid
+	jb	go_record28		; yes - below - continue
+
+	cmp	ax,word ptr flesiz +0	; q. low word higher ?
+	ja	go_record30		; yes - invalid
+
+go_record28:
+;
+	mov	word ptr fcb +33,ax
+	mov	byte ptr fcb +35,dl	; set next record number
+	jmps	get_record		; get and display next record
+
+go_record30:
+;
+	mov	dx,offset err_rec	; 'invalid record number'
+	jmp	print_status		; print status message and return
+
+;----------------------------------------
+; read/display current record details
+;----------------------------------------
+
+get_record:
+;
+	mov	al,byte ptr currow
+	or	al,byte ptr curcol	; q. row and column already zero ?
+	jz	get_record2		; yes - continue
+
+	mov	byte ptr currow,0
+	mov	byte ptr curcol,0	; zero current row and column
+
+	call	print_curofs		; print current offset
+
+get_record2:
+;
+get_record4:
+;
+	mov	ax,word ptr fcb +33
+	mov	dl,byte ptr fcb +35
+	mov	word ptr strrec +0,ax
+	mov	byte ptr strrec	+2,dl	; set stream record to current record
+
+	mov	word ptr stroff,offset dma	; reset stream record offset
+
+	mov	byte ptr fidat,0	; clear inverted data flag
+
+	call	cursor_off		; turn cursor off (if possible)
+
+	call	print_currec		; print current record number
+	call	read_display		; read plus display record
+
+	jmp	cursor_on		; turn cursor on (if possible) and return
+
+;----------------------------------------
+; invert current record contents
+;----------------------------------------
+
+inv_record:
+;
+	mov	si,offset dma
+	mov	cx,64
+
+inv_record2:
+;
+	not	word ptr 0[si]		; invert 2 bytes
+	inc	si
+	inc	si			; bump pointer to next word
+	loop	inv_record2		; loop until complete
+
+	xor	byte ptr fidat,1	; reverse inverted data flag
+
+	jmp	display_record		; display record and return
+
+;----------------------------------------
+; fill record with ascii or hex string
+;----------------------------------------
+;
+; prompt for fill command, then poll keyboard for input
+;
+fill_com:
+;
+	call	record_state		; q. read only file/record ?
+	jz	fill_com2
+	ret				; yes - exit
+
+fill_com2:
+;
+	mov	dx,offset msg_nul	; null text string
+	call	print_status		; print status message (clear to end)
+
+fill_com4:
+;
+	mov	dx,offset ask_fil
+	call	print_prompt		; prompt 'fill' command
+
+fill_com6:
+;
+	call	read_chr		; read a key press (no wait)
+	or	al,al			; q. any key pressed ?
+	jz	fill_com6		; no - try again
+
+	call	upper_case		; convert chr to upper case
+
+;----------------------------------------
+;
+; attempt to locate option in fill command table
+;
+	mov	bx,offset filtbl	; point to fill command table
+
+fill_com8:
+;
+	cmp	byte ptr 0[bx],0	; q. reached end of table ?
+	jz	fill_com6		; yes - try again
+
+	cmp	byte ptr 0[bx],al	; q. found required fill entry ?
+	jz	fill_com10		; yes - perform fill function
+
+	add	bx,3			; no - point to next table entry
+	jmps	fill_com8		; loop
+
+fill_com10:
+;
+	call	word ptr 1[bx]		; call fill command routine
+	jmps	fill_com4		; start again
+
+;----------------------------------------
+;
+; clear status line and return to command loop
+;
+fill_exit:
+;
+	pop	ax			; remove first level return
+
+	mov	dx,offset msg_nul	; null text string
+	jmp	print_status		; print status message (clear to end)
+					; and return to command loop
+
+;----------------------------------------
+;
+; request ascii fill string
+;
+fill_ascii:
+;
+	mov	dx,offset msg_nul	; null text string
+	call	print_status		; print status message (clear to end)
+
+	mov	dx,offset ask_fla
+	call	print_prompt		; prompt 'fill ascii'
+
+	xor	al,al			; minimum chrs required
+	mov	ah,16			; maximum chrs required
+	xor	bl,bl			; standard input
+	xor	si,si			; no default input
+	call	input_string		; input filler string
+	jc	fill_ascii2		; operator abort - exit
+
+	or	bx,bx			; q. anything entered ?
+	jnz	fill_string		; yes - fill record
+
+fill_ascii2:
+;
+	ret				; exit
+
+;----------------------------------------
+;
+; request hexadecimal fill string
+;
+fill_hex:
+;
+	mov	dx,offset msg_nul	; null text string
+	call	print_status		; print status message (clear to end)
+
+	mov	dx,offset ask_flh
+	call	print_prompt		; prompt 'fill hex'
+
+	xor	al,al			; minimum chrs required
+	mov	ah,16			; maximum chrs required
+	mov	bl,8			; hexadecimal (pair) input
+	xor	si,si			; no default input
+	call	input_string		; input filler string
+	jc	fill_hex4		; operator abort - exit
+
+	or	bx,bx			; q. anything entered ?
+	jz	fill_hex4		; no - exit
+
+	shr	bx,1			; half the string length
+	mov	cx,bx			; copy to counter
+	mov	di,offset tmpbuf +255	; temporary work area
+	cld
+
+fill_hex2:
+;
+	call	ascii_to_byte		; convert two chrs at si to hex
+	stosb				; store in temporary work area
+
+	loop	fill_hex2		; loop until complete
+
+	mov	si,offset tmpbuf +255	; set source pointer
+
+	jmps	fill_string		; fill record
+
+fill_hex4:
+;
+	ret				; exit
+;----------------------------------------
+;
+; fill record with required string
+;
+fill_string:
+;
+	mov	dx,si			; save source string offset
+	mov	cx,bx			; copy source length
+	mov	di,offset tmpbuf
+	cld
+
+fill_string2:
+;
+	rep	movsb			; copy to tmporary buffer
+
+	mov	si,dx			; reset source pointer
+	mov	cx,bx			; reset source length
+
+	cmp	di,offset tmpbuf +128	; q. copied 128 or more chrs ?
+	jb	fill_string2		; no - copy again
+
+	mov	si,offset tmpbuf
+	mov	di,offset dma
+	mov	cx,64
+	rep	movsw			; copy 128 bytes of tmpbuf to dma
+
+	mov	byte ptr fidat,0	; clear inverted data flag
+
+	call	display_record		; display new record content
+
+	call	save_record		; save amendments
+
+	cmp	byte ptr fwrit,0	; q. record written ?
+	jnz	fill_string4		; yes - exit
+
+	call	read_display		; read/display original
+
+fill_string4:
+;
+	pop	ax			; remove first level return
+
+	ret				; exit
+
+;----------------------------------------
+;
+; display fill options
+;
+fill_opt:
+;
+	mov	dx,offset opt_fil
+	jmp	print_string		; print fill options + return
+
+;----------------------------------------
+; tobble hex/decimal record numbers
+;----------------------------------------
+;
+; reverse hex/decimal toggle flag and determine hex or dec text
+;
+tog_record:
+;
+
+	mov	dx,offset msg_hex	; assume hex text
+
+	xor	byte ptr fhxdc,1	; reverse hex/decimal flag
+	jz	tog_record2		; jump if now hex
+
+	mov	dx,offset msg_dec	; assume dec text
+
+;----------------------------------------
+;
+; re-print current plus maximum record numbers in hex or dec
+;
+tog_record2:
+;
+	mov	word ptr tmpwrd,dx	; preserve hex/dec message offset
+
+	call	print_currec		; print current record number
+	mov	dx,word ptr tmpwrd	; hex/dec message
+	call	print_string		; print string
+
+	call	print_maxrec		; print maximum record number
+	mov	dx,word ptr tmpwrd	; hex/dec message
+	call	print_string		; print string
+
+	call	print_curofs		; print current offset within record
+	mov	dx,word ptr tmpwrd	; hex/dec message
+	jmp	print_string		; print string and return
+
+;----------------------------------------
+;
+; display command options
+;
+com_option:
+;
+	mov	dx,offset opt_com
+	jmp	print_string		; print command options + return
+
+;----------------------------------------
+; amend hex or ascii data
+;----------------------------------------
+;
+; prompt for amend command, then poll keyboard for input
+;
+amend_com:
+;
+	call	record_state		; q. read only file/record ?
+	jz	amend_com2
+	ret				; yes - exit
+
+amend_com2:
+;
+	mov	si,offset dma
+	mov	di,offset tmpbuf
+	mov	cx,64
+	rep	movsw			; copy dma to temporary buffer
+
+	xor	al,al
+;	mov	byte ptr currow,al
+;	mov	byte ptr curcol,al	; initialise row and column
+	mov	byte ptr fhilo,al	; flag high nibble
+;	mov	byte ptr fhxas,al	; flag hex amend
+
+	mov	dx,offset ask_amn
+	call	print_prompt		; prompt 'amend'
+
+amend_com4:
+;
+	call	cursor_data		; position cursor in data area
+
+amend_com6:
+;
+	call	read_chr		; read a key press (no wait)
+	or	al,al			; q. any key pressed ?
+	jz	amend_com6		; no - try again
+
+	mov	byte ptr tmpbyt,al	; save chr for update
+	call	upper_case		; convert chr to upper case
+
+;----------------------------------------
+;
+; attempt to locate option in amend command table
+;
+	mov	bx,offset amntbl	; point to amend command table
+
+amend_com8:
+;
+	cmp	byte ptr 0[bx],0	; q. reached end of table ?
+	jz	amend_byte		; yes - assume update chr
+
+	cmp	byte ptr 0[bx],al	; q. found required entry ?
+	jz	amend_com10		; yes - perform function
+
+	add	bx,3			; no - point to next table entry
+	jmps	amend_com8		; loop
+
+;----------------------------------------
+;
+; perform amend option then start again
+;
+amend_com10:
+;
+	call	word ptr 1[bx]		; perform amend option
+
+	call	print_curofs		; print current offset
+
+	jmps	amend_com4		; loop
+
+;----------------------------------------
+;
+; amend data with hex or ascii input
+;
+amend_byte:
+;
+	mov	al,byte ptr tmpbyt	; restore update chr
+
+	cmp	byte ptr fhxas,0	; q. hex amendment ?
+	jnz	amend_byte2		; no - ascii amendment
+
+;----------------------------------------
+;
+; validate hex or ascii chr
+;
+	call	ascii_to_hex		; convert ascii chr to hex
+	jnc	amend_byte4
+	jmps	amend_com4		; invalid hex - try again
+
+amend_byte2:
+;
+	cmp	al,20h			; q. below valid ascii chr ?
+	jb	amend_com4		; yes - try again
+	cmp	al,7fh			; q. above valid ascii chr ?
+	ja	amend_com4		; yes - try again
+
+;----------------------------------------
+;
+; calculate address of chr to update
+;
+amend_byte4:
+;
+	mov	byte ptr tmpbyt,al	; save update data
+
+	mov	bx,offset dma
+
+	mov	cl,byte ptr currow
+	xor	ch,ch
+	or	cl,cl
+	jz	amend_byte8
+
+amend_byte6:
+;
+	add	bx,16			; bump bx by 16
+	loop	amend_byte6
+
+amend_byte8:
+;
+	mov	cl,byte ptr curcol
+	add	bx,cx			; bx points to byte at cursor
+
+	mov	al,byte ptr tmpbyt
+	cmp	byte ptr fhxas,0	; q. hex amendment ?
+	jnz	amend_byte14		; no - replace with chr entered
+
+;----------------------------------------
+;
+; update hi or low nibble of data with hex chr entered
+;
+	mov	al,byte ptr 0[bx]
+	xor	byte ptr fhilo,1	; reverse hi/low nibble flag
+	jnz	amend_byte10		; jump if now low nibble
+
+	mov	ah,byte ptr tmpbyt
+	and	ah,00001111b
+	and	al,11110000b
+	jmps	amend_byte12
+
+amend_byte10:
+;
+	mov	ah,byte ptr tmpbyt
+	mov	cl,4
+	shl	ah,cl
+	and	ah,11110000b
+	and	al,00001111b
+
+amend_byte12:
+;
+	or	al,ah			; merge al and ah into al
+
+;----------------------------------------
+;
+; replace updated chr plus display in inverse video
+;
+amend_byte14:
+;
+	mov	byte ptr 0[bx],al	; save back
+	mov	word ptr tmpwrd,bx	; save byte address
+
+	mov	al,byte ptr fhilo
+	mov	byte ptr tmpbyt,al	; save left_right flag
+	mov	byte ptr fhilo,0	; flag hi nibble
+
+	call	inv_video		; set inverse video
+	call	cursor_hex		; position cursor in hex data
+
+	mov	bx,word ptr tmpwrd
+	mov	al,byte ptr 0[bx]
+	call	print_hbyte		; print hex characters
+
+	call	cursor_ascii		; position cursor in ascii data
+
+	mov	bx,word ptr tmpwrd
+	mov	al,byte ptr 0[bx]
+	call	print_ascii		; print ascii character
+
+	call	norm_video		; set normal video
+
+	mov	al,byte ptr tmpbyt
+	mov	byte ptr fhilo,al	; restore hi/low nibble flag
+
+	cmp	byte ptr fhilo,1	; flag low nibble
+	jz	amend_byte20
+
+	cmp	byte ptr curcol,15
+	jb	amend_byte18
+	mov	byte ptr curcol,0ffh	; column wrap round
+	cmp	byte ptr currow,7
+	jb	amend_byte16
+	mov	byte ptr currow,0ffh	; row wrap round
+
+amend_byte16:
+;
+	inc	byte ptr currow		; update row
+
+amend_byte18:
+;
+	inc	byte ptr curcol		; update column
+
+amend_byte20:
+;
+	call	print_curofs		; print current offset within record
+
+	jmp	amend_com4		; position cursor + try again
+
+;----------------------------------------
+;
+amend_exit:
+;
+	mov	dx,offset msg_nul	; null text string
+	call	print_status		; print status message (clear to end)
+
+	mov	si,offset dma
+	mov	di,offset tmpbuf
+	mov	cx,64
+	rep	cmpsw			; q. dma buffer amended ?
+	jz	amend_exit4		; no - skip record save
+
+	cmp	byte ptr fidat,0	; q. inverted data ?
+	jz	amend_exit2		; no - continue
+
+	call	inv_record		; invert data record (back to normal)
+
+amend_exit2:
+;
+	call	save_record		; yes - save amendments
+
+	cmp	byte ptr fwrit,0	; q. record written ?
+	jnz	amend_exit4		; yes - jump
+
+	call	read_display		; read/display original
+
+amend_exit4:
+;
+	mov	byte ptr currow,0
+	mov	byte ptr curcol,0	; reset column and row
+	call	print_curofs		; print current offset
+
+	pop	ax			; remove previous level of return
+	ret				; return to command loop
+
+;----------------------------------------
+;
+; move cursor up (ctrl_e)
+;
+amend_up:
+;
+	mov	byte ptr fhilo,0	; flag high nibble
+
+	cmp	byte ptr currow,0	; q. already on top row ?
+	ja	amend_up2
+	mov	byte ptr currow,8	; yes - wrap round
+
+amend_up2:
+;
+	dec	byte ptr currow		; next row up
+
+	ret
+
+;----------------------------------------
+;
+; move cursor down (ctrl_x)
+;
+amend_down:
+;
+	mov	byte ptr fhilo,0	; flag high nibble
+
+	cmp	byte ptr currow,7	; q. already on bottom row ?
+	jb	amend_down2
+	mov	byte ptr currow,0ffh	; yes - wrap round
+
+amend_down2:
+;
+	inc	byte ptr currow		; next row down
+
+	ret
+
+;----------------------------------------
+;
+; move cursor left (ctrl_s)
+;
+amend_left:
+;
+	mov	byte ptr fhilo,0	; flag high nibble
+
+	cmp	byte ptr curcol,0	; q. already on leftmost column ?
+	ja	amend_left2
+	mov	byte ptr curcol,15	; yes - wrap round
+	jmp	amend_up		; and up
+
+amend_left2:
+;
+	dec	byte ptr curcol		; next row left
+
+	ret
+
+;----------------------------------------
+;
+; move cursor right (ctrl_d)
+;
+amend_right:
+;
+	mov	byte ptr fhilo,0	; flag high nibble
+
+	cmp	byte ptr curcol,15	; q. already on rightmost column ?
+	jb	amend_right2
+	mov	byte ptr curcol,0	; yes - wrap round
+	jmp	amend_down		; and down
+
+amend_right2:
+;
+	inc	byte ptr curcol		; next row right
+
+	ret
+
+;----------------------------------------
+;
+; undo amendment left of cursor
+;
+amend_bac:
+;
+	cmp	byte ptr fhxas,0	; q. hex amendment ?
+	jnz	amend_bac2		; no - move cursor back
+
+	cmp	byte ptr fhilo,0	; q. hex amend high nibble ?
+	jnz	amend_bac8		; no - calculate offset
+
+;----------------------------------------
+;
+; move cursor coordinates left (with wrap round and up)
+;
+amend_bac2:
+;
+	cmp	byte ptr curcol,0	; q. already on leftmost column ?
+	ja	amend_bac6
+	mov	byte ptr curcol,16	; yes - wrap round
+
+	cmp	byte ptr currow,0	; q. already on top row ?
+	ja	amend_bac4
+	mov	byte ptr currow,8	; yes - wrap round
+
+amend_bac4:
+;
+	dec	byte ptr currow		; downdate row
+
+amend_bac6:
+;
+	dec	byte ptr curcol		; downdate column
+
+;----------------------------------------
+;
+; calculate address of chr to downdate
+;
+amend_bac8:
+;
+	mov	byte ptr fhilo,0	; flag high nibble
+
+	xor	bx,bx
+
+	mov	cl,byte ptr currow
+	xor	ch,ch
+	or	cl,cl
+	jz	amend_bac12
+
+amend_bac10:
+;
+	add	bx,16			; bump bx by 16
+	loop	amend_bac10
+
+amend_bac12:
+;
+	mov	cl,byte ptr curcol
+	add	bx,cx			; bx points to byte at cursor
+
+;----------------------------------------
+;
+; replace updated chr wth original display in normal video
+;
+	mov	word ptr tmpwrd,bx	; save chr offset
+	add	bx,offset tmpbuf	; add temporary buffer address
+	mov	al,byte ptr 0[bx]	; get original chr
+
+	mov	bx,word ptr tmpwrd	; get chr offset
+	add	bx,offset dma		; add dma buffer address
+	mov	byte ptr 0[bx],al	; replace original chr
+	mov	byte ptr tmpbyt,al	; save original chr
+
+	call	cursor_hex		; position cursor in hex data
+	mov	al,byte ptr tmpbyt
+	call	print_hbyte		; print hex characters
+
+	call	cursor_ascii		; position cursor in ascii data
+	mov	al,byte ptr tmpbyt
+	call	print_ascii		; print ascii character
+
+	ret
+
+;----------------------------------------
+;
+; toggle between hex and ascii data
+;
+amend_toggle:
+;
+	xor	byte ptr fhxas,1	; reverse hex/ascii amend flag
+	mov	byte ptr fhilo,0	; flag high nibble
+
+	ret
+
+;----------------------------------------
+;
+; display amend options
+;
+amend_opt:
+;
+	mov	dx,offset opt_amn
+	jmp	print_string		; print amend options + return
+
+;----------------------------------------
+; search for ascii or hex string
+;----------------------------------------
+;
+; prompt for search command, then poll keyboard for input
+;
+search_com:
+;
+	mov	dx,offset msg_nul	; null text string
+	call	print_status		; print status message (clear to end)
+
+	cmp	byte ptr fidat,0	; q. inverted data ?
+	jz	search_com2		; no - continue
+
+	call	inv_record		; invert data record (back to normal)
+
+search_com2:
+;
+	mov	dx,offset ask_srm
+	call	print_prompt		; prompt 'search' command
+
+search_com4:
+;
+	call	read_chr		; read a key press (no wait)
+	or	al,al			; q. any key pressed ?
+	jz	search_com4		; no - try again
+
+	call	upper_case		; convert chr to upper case
+
+;----------------------------------------
+;
+; attempt to locate option in search command table
+;
+	mov	bx,offset srctbl	; point to search command table
+
+search_com6:
+;
+	cmp	byte ptr 0[bx],0	; q. reached end of table ?
+	jz	search_com4		; yes - try again
+
+	cmp	byte ptr 0[bx],al	; q. found required search entry ?
+	jz	search_com8		; yes - perform search function
+
+	add	bx,3			; no - point to next table entry
+	jmps	search_com6		; loop
+
+search_com8:
+;
+	call	word ptr 1[bx]		; call search command routine
+	jmps	search_com2		; start again
+
+;----------------------------------------
+;
+; clear status line and return to command loop
+;
+search_exit:
+;
+	pop	ax			; remove first level return
+
+	mov	dx,offset msg_nul	; null text string
+	jmp	print_status		; print status message (clear to end)
+					; and return to command loop
+
+;----------------------------------------
+;
+; init pointers, enter hex or ascii, and jump to search routine
+;
+search_data:
+;
+	mov	ah,byte ptr srcopt
+	mov	byte ptr tmpbyt,ah	; save previous search option
+
+	mov	byte ptr srcopt,al	; store search command
+
+	mov	dx,offset msg_nul	; null text string
+	call	print_status		; print status message (clear to end)
+
+	mov	byte ptr fsnxt,0	; flag search next not allowed
+
+	mov	ax,word ptr fcb +33
+	mov	dl,byte ptr fcb +35
+	mov	word ptr tmprec +0,ax
+	mov	byte ptr tmprec +2,dl	; save current record number
+
+	mov	word ptr strrec +0,ax
+	mov	byte ptr strrec +2,dl		; set stream record
+	mov	word ptr stroff,offset dma	; and offset
+
+	mov	dx,offset ask_sra	; assume 'search (ascii)'
+	mov	bl,10h			; assume standard input, no default
+
+	cmp	byte ptr srcopt,'A'	; q. ascii search ?
+	jz	search_data2		; yes - display prompt
+
+	mov	dx,offset ask_srh	; 'search (hex)'
+	mov	bl,18h			; hexadecimal (pair) input, no default
+
+search_data2:
+;
+	push	bx			; preserve input function
+
+	call	print_prompt		; display 'search' prompt
+
+	pop	bx			; restore input function
+
+	mov	al,byte ptr tmpbyt
+	cmp	al,byte ptr srcopt	; q. previous search same type ?
+	jz	search_data4		; yes - enter search sting
+
+	mov	byte ptr srcstr,0	; clear default search string
+
+search_data4:
+;
+	xor	al,al			; min chrs required
+	mov	ah,16			; max chrs required
+	mov	si,offset srcstr	; default to last search string
+	call	input_string		; input search string
+	jc	search_data8		; operator abort - exit
+
+	or	bx,bx			; q. anything entered ?
+	jz	search_data8		; no - exit
+
+	mov	word ptr srclen,bx	; store string length
+
+	mov	di,offset srcstr
+	mov	cx,bx
+	cld
+	rep	movsb			; copy string (for repeat search)
+
+	xor	al,al
+	stosb				; null terminate string
+
+	cmp	byte ptr srcopt,'H'	; q. hex search ?
+	jnz	search_data6
+	shr	word ptr srclen,1	; yes - half the string length
+
+search_data6:
+;
+	mov	byte ptr fsnxt,1	; flag search next allowed
+
+	jmps	search_str		; perform search
+
+search_data8:
+;
+	ret				; return to search command
+
+;----------------------------------------
+;
+; repeat search: init pointers, display previous search options and
+; jump to search routine.
+;
+search_next:
+;
+	cmp	byte ptr fsnxt,0	; q. search next allowed ?
+	jz	search_next4		; no - return to search command
+
+	mov	dx,offset msg_nul	; null text string
+	call	print_status		; print status message (clear to end)
+
+	mov	ax,word ptr fcb +33
+	mov	dl,byte ptr fcb +35
+	mov	word ptr tmprec +0,ax
+	mov	byte ptr tmprec +2,dl	; save current record number
+
+	mov	ax,word ptr strrec +0
+	mov	dl,byte ptr strrec +2
+	mov	word ptr fcb +33,ax	; set current record to
+	mov	byte ptr fcb +35,dl	; last stream record
+
+	call	read_record		; read last stream record
+	call	print_currec		; display stream record number
+
+	mov	dx,offset ask_sra	; assume 'search (ascii)'
+
+	cmp	byte ptr srcopt,'A'	; q. previous ascii search ?
+	jz	search_next2		; yes - display prompt
+
+	mov	dx,offset ask_srh	; 'search (hex)'
+
+search_next2:
+;
+	call	print_prompt		; display 'search' prompt
+
+	mov	dx,offset srcstr	; point to previous search string
+	call	print_string		; displa message
+
+	jmps	search_str		; perform search
+
+search_next4:
+;
+	ret				; return to search command
+
+;----------------------------------------
+;
+; prime search data string ready for search
+;
+search_str:
+;
+	call	cursor_off		; turn cursor off (if possible)
+
+	mov	dx,offset msg_sip	; 'search in progress'
+	call	print_status		; print status
+
+	mov	si,offset srcstr	; input string
+	mov	di,offset srcdat	; search data
+	mov	cx,word ptr srclen
+	cld
+
+	cmp	byte ptr srcopt,'H'	; q. hex search ?
+	jnz	search_str4		; no - prime ascii search data
+
+search_str2:
+;
+	call	ascii_to_byte		; convert two chrs at si to hex
+	stosb				; store in search data
+	loop	search_str2		; loop until complete
+
+	jmps	search_str8		; initialise comparison string
+
+search_str4:
+;
+	lodsb				; get byte from input string
+
+	cmp	byte ptr fscas,0	; q. case sensitive search ?
+	jz	search_str6
+	call	upper_case		; yes - ensure upper case if alpha
+
+search_str6:
+;
+	stosb				; store in search data
+	loop	search_str4		; loop until complete
+
+;----------------------------------------
+;
+; initialise comparison string from chr_stream:
+;
+search_str8:
+;
+	mov	bx,offset srccmp	; comparison string
+	mov	cx,word ptr srclen	; string length required
+
+search_str10:
+;
+	call	chr_stream		; read chr from input stream
+	jc	search_str20		; EOF encountered or ESC pressed
+
+	cmp	byte ptr srcopt,'A'	; q. ascii search ?
+	jnz	search_str12		; no - continue
+
+	cmp	byte ptr fscas,0	; q. case sensitive search ?
+	jz	search_str12		; no - continue
+
+	call	upper_case		; ensure chr is upper case
+
+search_str12:
+;
+	mov	byte ptr 0[bx],al	; place chr in comparison string
+	inc	bx			; bump pointer
+	loop	search_str10		; loop until finished
+
+;----------------------------------------
+;
+; compare search string with compare string, jump if both batch
+;
+search_str14:
+;
+	mov	si,offset srcdat	; search data
+	mov	di,offset srccmp	; compare string
+	mov	cx,word ptr srclen
+	cld
+	rep	cmpsb			; q. strings match ?
+	jz	search_str26		; yes - highlight match
+
+search_str16:
+;
+	mov	si,offset srccmp +1
+	mov	di,offset srccmp
+	mov	cx,word ptr srclen
+	dec	cx
+	rep	movsb			; shift comparison string left 1 chr
+	dec	si
+
+	call	chr_stream		; read chr from input stream
+	jc	search_str20		; jump if EOF or ESC pressed
+
+	cmp	byte ptr srcopt,'A'	; q. ascii search ?
+	jnz	search_str18		; no - continue
+
+	cmp	byte ptr fscas,0	; q. case sensitive search ?
+	jz	search_str18		; no - continue
+
+	call	upper_case		; ensure chr is upper case
+
+search_str18:
+;
+	mov	byte ptr 0[si],al	; place at right end of compare string
+	jmps	search_str14		; test string
+
+;----------------------------------------
+;
+; search failed or aborted. go back to original record
+;
+search_str20:
+;
+	mov	ax,word ptr tmprec +0
+	mov	dl,byte ptr tmprec +2	; get original record number
+
+	mov	word ptr fcb +33,ax
+	mov	byte ptr fcb +35,dl	; reset record number
+
+	mov	word ptr strrec +0,ax
+	mov	byte ptr strrec +2,dl	; reset stream record number
+
+	mov	word ptr stroff,offset dma	; reset stream offset
+
+	call	read_record		; read original record
+
+	mov	al,0			; assume no read error
+	jz	search_str22		; jump if no read error
+	inc	al			; assume read error
+
+search_str22:
+;
+	mov	byte ptr frerr,al	; set/reset read error flag
+
+	call	print_currec		; display current record number
+
+	mov	byte ptr currow,0
+	mov	byte ptr curcol,0	; zero current row and column
+
+	call	print_curofs		; display current offset (zero)
+
+	call	cursor_on		; turn cursor on (if possible)
+
+	mov	dx,offset err_sfl	; assume 'search failed'
+	cmp	byte ptr fstfa,0	; q. stream failed ?
+	jz	search_str24
+	mov	dx,offset err_sab	; no - assume 'search aborted'
+
+search_str24:
+;
+;	jmp	print_status		; display status message and return
+	call	print_status		; display status message
+
+	pop	ax			; discard first level of return
+	ret				; return to main command loop
+
+;----------------------------------------
+;
+; string found. if string crossed from previous record, go back
+; one record.
+;
+search_str26:
+;
+	mov	byte ptr frerr,0	; flag no read error
+
+	mov	ax,word ptr stroff	; last stream offset
+	sub	ax,offset dma		; subtract dma offset
+	sub	ax,word ptr srclen	; subtract string length
+	jnb	search_str28		; continue if not negative
+
+	sub	word ptr fcb +33,1	; subtact one from r0, r1
+	sbb	byte ptr fcb +35,0	; subtract only carry from r2
+
+	call	read_record		; read previous record
+	call	print_currec		; display current record number
+
+;----------------------------------------
+;
+; display current record and calculate string offset and length
+;
+search_str28:
+;
+	call	display_record		; display current record
+
+	mov	bx,word ptr stroff	; last stream offset
+	mov	cx,word ptr srclen	; string length
+
+	sub	bx,offset dma		; subtract dma offset
+	sub	bx,cx			; subtract string length
+	jnb	search_str30		; continue if not negative
+
+	add	bx,cx			; add string length back
+	sub	cx,bx			; subtract from string length
+	mov	bx,offset dma
+	sub	bx,cx			; subtract string length
+
+;----------------------------------------
+;
+; heighlight matching string in ascii and hex data areas
+;
+search_str30:
+;
+	mov	word ptr tmpwrd,bx	; store original offset
+	push	bx			; (also on stack)
+
+	push	cx
+	call	inv_video		; turn inverse video on
+	pop	cx
+
+	mov	byte ptr fhilo,0	; flag high nibble
+
+search_str32:
+;
+	push	cx			; preserve length counter
+
+	mov	ax,word ptr tmpwrd
+
+	mov	ah,al			; copy al to ah
+	shr	ah,1
+	shr	ah,1
+	shr	ah,1
+	shr	ah,1			; shift upper nibble to lower nibble
+	and	al,0fh			; mask off upper nibble
+
+	mov	byte ptr currow,ah
+	mov	byte ptr curcol,al	; set row and column
+	call	cursor_hex		; position cursor in hex data area
+
+	mov	bx,word ptr tmpwrd
+	mov	al,byte ptr dma[bx]	; get byte from dma
+	call	print_hbyte		; print hex chrs
+
+	call	cursor_ascii		; position cursor in ascii data area
+
+	mov	bx,word ptr tmpwrd
+	mov	al,byte ptr dma[bx]	; get byte from dma
+	call	print_ascii		; print ascii chr
+
+	inc	word ptr tmpwrd		; bump chr offset
+
+	pop	cx			; restore length counter
+	loop	search_str32		; loop until finished
+
+	call	norm_video		; turn inverse video off
+	call	cursor_on		; turn cursor on (if possible)
+
+	pop	ax			; restore original offset
+	mov	ah,al			; copy al to ah
+	shr	ah,1
+	shr	ah,1
+	shr	ah,1
+	shr	ah,1			; shift upper nibble to lower nibble
+	and	al,0fh			; mask off upper nibble
+
+	mov	byte ptr currow,ah
+	mov	byte ptr curcol,al	; set row and column
+	call	print_curofs		; display current offset
+
+	pop	ax			; discard first level of return
+
+	mov	dx,offset msg_nul	; null message
+	jmp	print_status		; display status (clear line)
+					; and return to main command loop
+
+;----------------------------------------
+;
+; toggle search error reporting
+;
+search_err:
+;
+	mov	dx,offset msg_ser	; 'error reporting'
+	call	print_status		; print status message
+
+	mov	dx,offset msg_oft	; assume 'off' text
+
+	xor	byte ptr fster,1	; reverse error reporting flag
+	jz	search_err2		; jump if now off
+
+	mov	dx,offset msg_ont	; assume 'on' text
+
+search_err2:
+;
+	jmp	print_string		; print on/off text + return
+
+;----------------------------------------
+;
+; toggle search direction
+;
+; ** NOT YET IMPLEMENTED **
+;
+search_dir:
+;
+;*	mov	dx,offset msg_src	; 'search'
+;*	call	print_status		; print status message
+
+;*	mov	dx,offset msg_for	; assume 'forward' text
+
+;*	xor	byte ptr fsdir,1	; reverse search direction flag
+;*	jz	search_dir2		; jump if now forward
+
+;*	mov	dx,offset msg_bac	; assume 'backward' text
+
+search_dir2:
+;
+;*	jmp	print_string		; print on/off text + return
+
+;----------------------------------------
+;
+; toggle search case sensitive
+;
+search_case:
+;
+	mov	dx,offset msg_src	; 'search'
+	call	print_status		; print status message
+
+	xor	byte ptr fscas,1	; reverse search case sensitive flag
+	jz	search_case2		; jump if now on
+
+	mov	dx,offset msg_not	; 'not'
+	call	print_string		; print string
+
+search_case2:
+;
+	mov	dx,offset msg_cas	; 'case sensitive'
+	jmp	print_string		; print string
+
+;----------------------------------------
+;
+; display search options
+;
+search_opt:
+;
+	mov	dx,offset opt_src
+	jmp	print_string		; print search options + return
+
+;----------------------------------------
+; print current record in hex and ascii
+;----------------------------------------
+
+print_record:
+;
+	mov	dx,offset ask_prn	; 'print record'
+	call	request_yn		; request y or n
+	jc	print_record3		; 'N' or ESC pressed - exit
+
+	cmp	byte ptr cpmver +1,0	; q. mpm or cdos ?
+	jz	print_record4		; no - print record
+
+print_record2:
+;
+	mov	cl,l_cattach
+	call	bdos			; conditionally attach printer
+	or	ax,ax			; q. attached ok ?
+	jz	print_record4		; yes - print record
+
+	mov	dx,offset err_bsy	; 'printer busy'
+	call	press_return		; print status + wait for 'return'
+	jnc	print_record2		; return pressed - try again
+
+print_record3:
+;
+	jmp	print_record14		; ESC pressed - exit
+
+;----------------------------------------
+;
+; set dma offset, line count and chr output channel
+;
+print_record4:
+;
+	mov	dx,offset msg_pip	; 'printing in progress'
+	call	print_status		; print status message
+
+	mov	byte ptr chrout,l_write		; set chr output mode (printer)
+	mov	word ptr dmaofs,offset dma	; point to dma
+	mov	cx,8				; 8 lines to print
+
+print_record6:
+;
+	push	cx			; save line count
+
+	mov	al,cr
+	call	print_chr		; print cr
+	mov	al,lf
+	call	print_chr		; print lf
+
+;----------------------------------------
+;
+; print 16 hex chrs from current dma offset
+;
+	mov	si,word ptr dmaofs	; current dma offset
+	mov	cx,16			; 16 hex chrs to print
+
+print_record8:
+;
+	push	cx			; save chr count
+
+	lodsb				; get next byte
+	call	print_hbyte		; print hex byte
+	mov	al,' '
+	call	print_chr		; print space chr
+
+	pop	cx			; restore chr count
+	loop	print_record8		; loop until complete
+
+;----------------------------------------
+;
+; print 5 spaces
+;
+	mov	cx,5			; 5 spaces required
+
+print_record10:
+;
+	push	cx
+	mov	al,' '
+	call	print_chr		; print space chr
+	pop	cx
+	loop	print_record10		; loop until complete
+
+;----------------------------------------
+;
+; print 16 ascii chrs from current dma offset
+;
+
+	mov	si,word ptr dmaofs	; current dma offset
+	mov	cx,16			; 16 ascii chrs to print
+
+print_record12:
+;
+	push	cx			; save chr count
+
+	lodsb				; get next byte
+	call	print_ascii		; print ascii chr
+
+	pop	cx			; restore chr count
+	loop	print_record12		; loop until complete
+
+;----------------------------------------
+;
+; advance dma offset pointer, and loop until all lines printed
+;
+	add	word ptr dmaofs,16	; point to next line
+	pop	cx			; restore line count
+	loop	print_record6		; loop until complete
+
+	mov	al,cr
+	call	print_chr		; print cr
+	mov	al,lf
+	call	print_chr		; print lf
+
+	mov	byte ptr chrout,c_rawio	; set chr output mode (screen)
+
+	cmp	byte ptr cpmver +1,0	; q. mpm or cdos ?
+	jz	print_record14		; no - exit
+
+	mov	cl,l_detach
+	call	bdos			; detach printer
+
+print_record14:
+;
+
+	mov	dx,offset msg_nul	; null text string
+	jmp	print_status		; print status message (clear to end)
+					; and return to command loop
+
+;----------------------------------------
+; close file and return to main line
+;----------------------------------------
+;
+; request 'close' or 'quit to cdos'
+;
+close_file:
+;
+	mov	dx,offset ask_clf	; assume 'close file'
+	cmp	byte ptr comopt,'C'	; q. close file option ?
+	jz	close_file2
+	mov	dx,offset ask_qit	; no - 'quit to cdos'
+
+close_file2:
+;
+	call	request_yn		; request 'close' or 'quit'
+	jc	close_file6		; 'N' or ESC pressed - exit
+
+;----------------------------------------
+;
+; close file. any errors, default to quit option
+;
+	mov	cl,f_close
+	mov	dx,offset fcb
+	call	bdos			; close the file
+
+	inc	al			; q. any errors
+	jnz	close_file4		; no - continue
+
+	mov	dx,offset err_clf	; 'close error'
+
+	call	press_return		; print status + wait for 'return'
+
+	mov	byte ptr comopt,'Q'	; default to 'quit' option
+
+;----------------------------------------
+;
+; reset default directory/user number + variables/flags, remove first
+; level of return then return (to main line) with quit or close status.
+;
+close_file4:
+;
+	call	set_dir			; set default directory/user
+
+	xor	ax,ax			; initialise required variables
+
+	mov	word ptr flesiz +0,ax
+	mov	byte ptr flesiz +2,al	; zero file size
+
+	mov	byte ptr frerr,al	; flag no read errors
+	mov	byte ptr fidat,al	; flag normal data (not inverted)
+
+	mov	word ptr stroff,offset dma	; reset stream record offset
+
+	pop	ax			; remove first level of return
+
+	cmp	byte ptr comopt,'Q'	; q. quit option ?
+	jnz	close_file6		; no - set return condition
+
+	mov	dx,offset clrscn	; clear screen sequence
+	call	print_string
+
+;----------------------------------------
+;
+; set condition codes and return
+;
+	stc				; set 'quit' condition
+	ret
+
+close_file6:
+;
+	clc				; set 'close' condition
+	ret
+
+;----------------------------------------
+; * general purpose file/disk routines *
+;----------------------------------------
+;----------------------------------------
+; parse asciiz file string
+;----------------------------------------
+; {d:}{user}filename{.typ}{;password}
+; {d:}{path}filename{.typ}{;password}
+;
+; Error codes returned in AL if carry flag set
+;
+; 1 = null string or embeded spaces
+; 2 = invalid drive reference
+; 3 = invalid user number
+; 4 = invalid path or file name
+; 5 = invalid password
+;
+;----------------------------------------
+;
+; scan ASCIIZ string for embeded spaces.
+; remove trailing spaces plus check null length.
+;
+parse_file:
+;
+	mov	word ptr parlin,bx	; store parse line offset
+	mov	si,bx			; si = offset of asciiz string
+	xor	ah,ah			; flag no spaces found
+
+parse_file2:
+;
+	cmp	byte ptr 0[si],0	; q. termination chr ?
+	jz	parse_file8		; yes - exit asciiz scan
+
+	cmp	byte ptr 0[si],' '	; q. space chr ?
+	jnz	parse_file4		; no - check previous chr
+
+	mov	ah,1			; flag a space chr found
+	jmps	parse_file6		; continue loop
+
+parse_file4:
+;
+	or	ah,ah			; q. embeded space chr ?
+	jnz	parse_file12		; yes - exit invalid
+
+parse_file6:
+;
+	inc	si			; bump pointer
+	jmps	parse_file2		; loop until finished
+
+parse_file8:
+;
+	cmp	si,word ptr parlin	; q. null length file ?
+	jz	parse_file12		; yes - exit invalid
+
+parse_file10:
+;
+	dec	si			; point to previous chr
+	cmp	si,word ptr parlin	; q. null length file ?
+	jb	parse_file12		; yes - exit invalid
+
+	cmp	byte ptr 0[si],' '	; q. trailing space chr ?
+	jnz	parse_file14		; no - init default parameters
+
+	mov	byte ptr 0[si],0	; yes - change to null terminator
+	jmps	parse_file10		; loop until finished
+
+parse_file12:
+;
+	mov	al,1			; flag embeded spaces or null string
+	jmp	parse_file40		; exit file parse
+
+;----------------------------------------
+;
+; initialise required flags + drive + filename + user + path
+;
+parse_file14:
+;
+	xor	al,al
+	mov	byte ptr fuser,al	; flag user not specified
+	mov	byte ptr fpath,al	; flag path not specified
+	mov	byte ptr froot,al	; flag root not specified
+
+	mov	al,byte ptr defdrv
+	mov	byte ptr reqdrv,al	; reqested drive = default drive
+
+	mov	al,byte ptr defusr
+	mov	byte ptr requsr,al	; reqested user = default user
+
+	mov	di,offset reqfle
+	mov	al,' '
+	mov	cx,11
+	rep	stosb			; clear requested filename
+
+	mov	di,offset reqpas
+	mov	cx,8
+	rep	stosb			; clear requested password
+
+	mov	di,offset tmpbuf
+	xor	ax,ax
+	mov	cx,256			; clear temporary buffer
+	rep	stosw			; (store for individual path names)
+
+;----------------------------------------
+;
+; validate drive reference and check for user number
+;
+	mov	si,word ptr parlin	; si = asciiz string offset
+
+	cmp	byte ptr 1[si],':'	; q. second chr a colon ?
+	jz	parse_file16		; yes - possible drive reference
+
+	cmp	byte ptr 2[si],':'	; q. third chr a colon ?
+	jz	parse_file16		; yes - possible drive ref + user no.
+
+	cmp	byte ptr 3[si],':'	; q. fourth chr a colon ?
+	jz	parse_file16		; yes - possible drive ref + user no.
+
+	jmps	parse_file28		; no - scan path and file names
+
+parse_file16:
+;
+	lodsb				; get drive reference
+	call	upper_case		; convert chr to upper case
+
+	cmp	al,'A'			; q. below 'A' ?
+	jb	parse_file18		; yes - exit invalid
+
+	cmp	al,'P'			; q. above 'P' ?
+	ja	parse_file18		; yes - exit invalid
+
+	sub	al,41h			; make range 0h - 0fh
+	mov	byte ptr reqdrv,al	; store drive code
+
+	cmp	byte ptr 1[si],':'	; q. third chr a colon ?
+	jz	parse_file20		; yes - validate user number
+
+	cmp	byte ptr 2[si],':'	; q. fourth chr a colon ?
+	jz	parse_file20		; yes - validate user number
+
+	inc	si			; bump pointer past colon
+	jmps	parse_file28		; scan path and file names
+
+parse_file18:
+;
+	mov	al,2			; flag drive reference error
+	jmp	parse_file40		; exit file parse
+
+;----------------------------------------
+;
+; validate user number (0 to 15)
+;
+parse_file20:
+;
+	lodsw
+	mov	dx,ax			; dx = user number (+ a colon ?)
+
+	cmp	dh,':'			; q. second chr a colon ?
+	jz	parse_file22		; yes - correct user number
+
+	inc	si			; no - bump pointer past colon
+	jmps	parse_file24		; validate user number
+
+parse_file22:
+;
+	mov	dh,dl			; move number to first chr
+	mov	dl,'0'			; move ascii zero to second chr
+
+parse_file24:
+;
+	cmp	dh,'0'			; q. valid number ?
+	jb	parse_file26		; no - exit invalid
+	cmp	dh,'9'			; q. valid number ?
+	ja	parse_file26		; no - exit invalid
+	cmp	dl,'0'			; q. valid number ?
+	jb	parse_file26		; no - exit invalid
+	cmp	dh,'9'			; q. valid number ?
+	ja	parse_file26		; no - exit invalid
+
+	sub	dx,3030h		; make binary numbers
+
+	xor	ax,ax
+	mov	al,dl			; ax = tens digit
+	push	dx
+	mov	cl,10
+	mul	cl			; multiply tens digit by ten
+	pop	dx
+	mov	dl,dh
+	xor	dh,dh
+	add	ax,dx			; add units to tens
+
+	cmp	ax,15			; q. number greater than 15 ?
+	ja	parse_file26		; yes - exit invalid
+
+	mov	byte ptr requsr,al	; store user number
+	mov	byte ptr fuser,1	; flag user number specified
+
+	jmps	parse_file30		; scan file name
+
+parse_file26:
+;
+	mov	al,3			; flag user number error
+	jmps	parse_file40		; exit file parse
+
+;----------------------------------------
+;
+; parse path names (20 maximum), and file name.
+;
+parse_file28:
+;
+	cmp	byte ptr 0[si],'\'	; q. root directory required ?
+	jnz	parse_file30
+
+	mov	byte ptr froot,1	; yes - flag root directory specified
+	inc	si			; point to path or filename
+
+parse_file30:
+;
+	mov	word ptr pthcnt,0	; reset path counter
+
+parse_file32:
+;
+	mov	di,offset reqfle	; parse to filename
+	call	pfname			; parse file name
+	jc	parse_file34		; parse error - exit invalid
+
+	or	al,al			; q. terminator reached ?
+	jz	parse_file42		; yes - exit ok
+
+	cmp	al,';'			; q. password to follow ?
+	jz	parse_file36		; yes - parse password
+					; no - end of a path name
+
+	mov	byte ptr fpath,1	; flag path name specified
+
+	cmp	word ptr pthcnt,20	; q. already 20 path names parsed ?
+	ja	parse_file34		; yes - exit invalid
+
+	mov	ax,11
+	mul	word ptr pthcnt		; ax = offset within path list
+
+	push	si			; preserve current parse address
+
+	mov	si,offset reqfle	; si = offset path name
+	mov	di,offset tmpbuf
+	add	di,ax			; di = next path list entry offset
+	mov	cx,11
+	rep	movsb			; copy path name to path list table
+
+	pop	si			; restore current parse address
+
+	inc	word ptr pthcnt		; increment path name counter
+	jmps	parse_file32		; parse next path or file name
+
+parse_file34:
+;
+	mov	al,4			; flag path or filename error
+	jmps	parse_file40		; exit file parse
+
+;----------------------------------------
+;
+; parse password
+;
+parse_file36:
+;
+	mov	di,offset reqpas	; parse to password
+	call	pfname			; parse file name
+	jc	parse_file38		; parse error - exit invalid
+
+	or	al,al			; q. reached termination chr ?
+	jnz	parse_file38		; no - exit invalid
+
+	cmp	byte ptr reqpas +8,' '	; q. extent on password field
+	jz	parse_file42		; no - exit ok
+
+parse_file38:
+;
+	mov	al,5			; flag password error
+
+;----------------------------------------
+;
+; set condition codes and return
+;
+parse_file40:
+;
+	stc				; set error condition
+	ret
+
+parse_file42:
+;
+	clc				; clear error condition
+	ret
+;
+;----------------------------------------
+; parse filename and filetype
+;----------------------------------------
+; SI = asciiz filename offset
+; DI = result filename offset
+;----------------------------------------
+;
+; parse file name
+;
+pfname:
+;
+	push	di			; preserve result filename offset
+
+	mov	al,' '
+	mov	cx,11
+	rep	stosb			; space out result filename
+
+	pop	di			; restore result filename offset
+	mov	cx,8			; 8 chrs in filename
+
+pfname2:
+;
+	lodsb				; get character
+
+	call	pfendchr		; q. end of filename chr ?
+	jz	pfname6			; yes - exit after length check
+
+	cmp	al,'.'			; q. end of filename ?
+	jz	pfname4			; yes - check length then type
+
+	call	pfvalchr		; q. valid filename chr ?
+	jc	pfname12		; no - exit invalid
+
+	stosb				; store chr in filename
+	loop	pfname2			; loop until finished
+
+;----------------------------------------
+;
+; check valid filename termination chr
+;
+	lodsb				; get termination chr
+
+	call	pfendchr		; q. end of filename chr ?
+	jz	pfname14		; yes - exit ok
+
+	cmp	al,'.'			; q. end of filename ?
+	jnz	pfname12		; no - exit invalid
+
+;----------------------------------------
+;
+; if at least 1 filename chr processed, continue with filetype
+;
+pfname4:
+;
+	cmp	cx,8			; q. any chrs processed ?
+	jz	pfname12		; no - exit invalid
+	jmps	pfname8			; yes - parse filetype
+
+;----------------------------------------
+;
+; if at least 1 filename chr processed, exit ok
+;
+pfname6:
+;
+	cmp	cx,8			; q. any chrs processed ?
+	jz	pfname12		; no - exit invalid
+	jmp	pfname14		; yes - exit ok
+
+;----------------------------------------
+;
+; parse file type
+;
+pfname8:
+;
+	add	di,cx			; point to result filetype
+	mov	cx,3			; 3 chrs in filetype
+
+pfname10:
+;
+	lodsb				; get character
+
+	call	pfendchr		; q. end of filename chr ?
+	jz	pfname14		; yes - exit ok
+
+	call	pfvalchr		; q. valid filename chr ?
+	jc	pfname12		; no - exit invalid
+
+	stosb				; store chr in filetype
+	loop	pfname10		; loop until finished
+
+;----------------------------------------
+;
+; check valid filename termination chr
+;
+	lodsb				; get termination chr
+
+	call	pfendchr		; q. end of filename chr ?
+	jz	pfname14		; yes - exit ok
+
+;----------------------------------------
+;
+; set error conditiion and return
+;
+pfname12:
+;
+	stc				; set error condition
+	ret
+
+pfname14:
+;
+	clc				; clear error condition
+	ret
+
+;----------------------------------------
+; check terminating filename chr (al)
+;----------------------------------------
+;
+; return:  z flag set if termination chr else z flag reset
+;
+pfendchr:
+;
+	or	al,al			; q. terminatin chr
+	jz	pfendchr2
+
+	cmp	al,';'			; q. termination chr
+	jz	pfendchr2
+
+	cmp	al,'\'			; q. termination chr
+
+pfendchr2:
+;
+	ret
+
+;----------------------------------------
+; check valid filename chr (AL)
+;----------------------------------------
+;
+pfvalchr:
+;
+	call	upper_case		; convert chr to upper case
+
+	cmp	al,'_'			; q. underscore chr ?
+	jz	pfvalchr6		; yes - exit valid
+
+	cmp	al,' '			; q. below space chr ?
+	jb	pfvalchr4		; yes - exit invalid
+
+	cmp	al,'Z'			; q. above 'Z' chr ?
+	ja	pfvalchr4		; yes - exit invalid
+
+	mov	bx,offset pfvtbl	; point to invalid chr table
+
+pfvalchr2:
+;
+	cmp	byte ptr 0[bx],0	; q. reached end of table ?
+	jz	pfvalchr6		; yes - exit ok
+
+	cmp	byte ptr 0[bx],al	; q. invalid filename chr ?
+	jz	pfvalchr4		; yes - exit invalid
+
+	inc	bx			; bump pointer
+	jmps	pfvalchr2		; loop until finished
+
+;----------------------------------------
+;
+; set error condition and return
+;
+pfvalchr4:
+;
+	stc	     			; set error condition
+	ret
+
+pfvalchr6:
+;
+	clc				; clear error condition
+	ret
+
+;----------------------------------------
+; select drive (AL) and determine media type
+;----------------------------------------
+
+select_media:
+;
+	mov	byte ptr fmtyp,0	; default to cpm media
+
+	mov	cl,byte ptr reqdrv
+	mov	dx,1
+	shl	dx,cl			; setup 16 bit drive vector
+
+	mov	cl,drv_reset
+	call	bdos			; attempt to reset required drive
+
+	mov	cl,drv_set
+	mov	dl,byte ptr reqdrv
+	call	bdos			; select required drive
+	or	al,al			; q. drive selected ok ?
+	jnz	select_media4		; no - exit
+
+	mov	byte ptr fcb,'?'	; set drive reference '?'
+
+	mov	di,offset fcb +1
+	mov	cx,35
+	xor	al,al
+	rep	stosb			; clear remainder of the default fcb
+
+	mov	cl,f_sfirst
+	mov	dx,offset fcb
+	call	bdos			; return first fcb in directory
+
+	cmp	byte ptr dma +0,20h	; q. directory label present ?
+ 	jnz	select_media2		; no - assume cpm media
+
+	cmp	byte ptr dma + 0fh,80h	; q. dos media ?
+	jnz	select_media2		; no - must be cpm media
+
+	mov	byte ptr fmtyp,1	; flag dos media
+
+;----------------------------------------
+;
+; set status condition and return
+;
+select_media2:
+;
+	clc				; clear error status
+	ret
+
+select_media4:
+;
+	stc				; set error status
+	ret
+
+;----------------------------------------
+; set default directory/user
+;----------------------------------------
+
+set_dir:
+;
+	cmp	byte ptr fmtyp,1	; q. dos media ?
+	jnz	set_dir2		; no - continue
+
+	cmp	byte ptr cpmver,60h	; q. below cdos 6.0 ?
+	jb	set_dir2		; yes - continue
+
+	mov	word ptr dostbl +0,3		; fdos function - set current directory
+	mov	word ptr dostbl +2,offset defdir; default directory buffer
+	mov	word ptr dostbl +4,ds		; default directory segment
+
+	mov	cl,f_dos
+	mov	dx,offset dostbl
+	call	bdos			; set default directory
+
+set_dir2:
+;
+	mov	cl,f_usernum
+	mov	dl,byte ptr defusr
+	jmp	bdos			; set default user number and return
+
+;----------------------------------------
+; check record error/read/write status
+;----------------------------------------
+
+record_state:
+;
+	cmp	byte ptr frdwr,0	; q. file read only ?
+	jnz	record_state2		; yes - display error
+
+	cmp	byte ptr frerr,0	; q. record read error ?
+	jz	record_state4		; no - exit
+
+record_state2:
+;
+	mov	dx,offset err_ror	; 'read only record'
+	call	print_status		; print status message
+
+	or	al,0ffh			; reset zero flag
+
+record_state4:
+;
+	ret
+
+;----------------------------------------
+; read record direct
+;----------------------------------------
+; random read error codes:-
+;
+;	00 no error
+;	01 reading unwritten data
+;	03 cannot close current extent
+;	04 seek to unwritten extent
+;	06 random record number out of range
+;	08 record locked by another process
+;	0A FCB Checksum error
+;	0B unlocked file verification error
+;	0C drnet - server error
+;	0D drnet - requester error
+;	0E drnet - physical network error
+;
+;----------------------------------------
+
+read_record:
+;
+	mov	dx,offset fcb
+	mov	cl,f_readrand
+	call	bdos			; read current record
+
+	or	al,al			; set or reset z-flag
+	ret
+
+;----------------------------------------
+; WRITE A RECORD DIRECT
+;----------------------------------------
+; random write error codes:-
+;	
+;	00 no error
+;	02 no available data block
+;	03 cannot close current extent
+;	05 no available directory space
+;	06 random record number out of range
+;	08 record locked by another process
+;	0A FCB Checksum error
+;	0B unlocked file verification error
+;	0C drnet - server error
+;	0D drnet - requester error
+;	0E drnet - physical network error
+;
+;----------------------------------------
+
+write_record:
+;
+	mov	dx,offset fcb
+	mov	cl,f_writerand
+	call	bdos			; write current record
+
+	or	al,al			; set or reset z-flag
+	ret
+
+;----------------------------------------
+; chr input stream
+;----------------------------------------
+
+chr_stream:
+;
+	push	bx
+	push	cx
+	push	si			; preserve certain variables
+
+	cmp	word ptr stroff,offset dma +128	; q. reached end of record ?
+	jb	chr_stream10			; no - get a chr
+
+chr_stream2:
+;
+	mov	dl,0ffh
+	call	raw_io			; read keyboard (without waiting)
+	cmp	al,esc			; q. ESC pressed ?
+	jnz	chr_stream4
+
+	mov	byte ptr fstfa,1	; yes - flag search aborted
+	jmps	chr_stream6		; get ready to exit
+
+chr_stream4:
+;
+	mov	word ptr stroff,offset dma	; set stream address
+
+	mov	ax,word ptr fcb +33
+	mov	dl,byte ptr fcb +35	; get current record number
+
+	add	ax,1			; add one to r0, r1
+	adc	dl,0			; add only carry to r2
+
+	cmp	dl,byte ptr flesiz +2	; q. r2 passed end ?
+	ja	chr_stream5		; yes - above - exit with error
+	jb	chr_stream8		; no - below - continue
+
+	cmp	ax,word ptr flesiz +0	; q. r0, r1 within end ?
+	jbe	chr_stream8		; yes - continue
+
+chr_stream5:
+;
+	mov	byte ptr fstfa,0	; flag search failed
+
+chr_stream6:
+;
+	stc				; set error status - end of stream
+	jmps	chr_stream12		; exit
+
+chr_stream8:
+;
+	mov	word ptr fcb +33,ax
+	mov	byte ptr fcb +35,dl	; update curret record r0, r1, r2
+	mov	word ptr strrec +0,ax
+	mov	byte ptr strrec +2,dl	; and stream record r0, r1, r2
+
+	call	read_record		; read record
+	push	ax			; preserve read status
+
+	call	print_currec		; display current record number
+
+	pop	ax			; restore read status
+	or	al,al			; q. read error ?
+	jz	chr_stream10		; no - continue
+
+	cmp	byte ptr fster,0	; q. report stream read errors ?
+	jz	chr_stream2		; no - read next record
+
+	push	ax			; preserve read status
+	mov	dx,offset err_rdc	; 'read error'
+	call	print_status		; display status message
+
+	pop	ax			; restore read error
+	call	print_hword		; print hex error code
+
+	xor	dx,dx			; no status message
+	call	press_return		; wait for 'return'
+	jc	chr_stream12		; ESC pressed - exit with carry set
+
+	jmps	chr_stream2		; read next record
+
+chr_stream10:
+;
+	mov	si,word ptr stroff	; get current stream offset
+	cld
+	lodsb				; get stream chr
+	mov	word ptr stroff,si	; store new stream offset
+
+	clc				; clear error status - more to stream
+
+chr_stream12:
+;
+	pop	si
+	pop	cx
+	pop	bx			; restore saved registers
+
+	ret				; return to caller
+
+;----------------------------------------
+; * general purpose conversion routines *
+;----------------------------------------
+;----------------------------------------
+; convert binary byte/digit to ascii at DI
+;----------------------------------------
+;
+; hex byte to two ascii chrs at di
+;
+byte_to_ascii:
+;
+	mov	ah,al			; copy al to ah
+	shr	ah,1
+	shr	ah,1
+	shr	ah,1
+	shr	ah,1			; shift upper nibble to lower nibble
+	and	al,0fh			; mask off upper nibble
+
+	push	ax
+	mov	al,ah
+	call	digit_to_ascii
+	pop	ax
+
+;----------------------------------------
+;
+; hex digit to ascii chr at di
+;
+digit_to_ascii:
+;
+	cmp	al,9			; q. alpha chr ?
+	jbe	digit_to_ascii2
+	add	al,7			; yes - correct alpha digit
+
+digit_to_ascii2:
+;
+	add	al,30h			; make ascii character
+	stosb				; store chr at di
+
+	ret
+
+;----------------------------------------
+; convert two ascii chrs at SI to one hex byte in al
+;----------------------------------------
+
+ascii_to_byte:
+;
+	lodsb				; get a chr
+
+	call	ascii_to_hex		; convert to hex
+	jc	ascii_to_byte2		; invalid - exit
+
+	shl	al,1
+	shl	al,1
+	shl	al,1
+	shl	al,1			; shift lower nibble to upper nibble
+
+	mov	ah,al			; move to ah
+
+	lodsb				; get next chr
+
+	call	ascii_to_hex		; convert to hex
+	jc	ascii_to_byte2		; invalid - exit
+
+	or	al,ah			; merge ah into al
+
+	clc				; clear error status
+
+ascii_to_byte2:
+;
+	ret				; cf=0 (no error) or 1 (error)
+
+;----------------------------------------
+; convert ascii chr in AL to binary digit in AL
+;----------------------------------------
+
+ascii_to_hex:
+;
+	call	upper_case		; convert chr to upper case
+
+	cmp	al,'A'			; q. 'A' chr or above ?
+	jae	ascii_to_hex2		; yes - continue
+
+	cmp	al,'9'			; q. '9' chr or below ?
+	ja	ascii_to_hex6		; no - exit invalid
+
+ascii_to_hex2:
+;
+	sub	al,30h			; subtract 30h
+	jb	ascii_to_hex6		; exit invalid if negative
+
+	cmp	al,0ah			; q. 0 to 9 ?
+	jb	ascii_to_hex4		; yes - exit ok
+
+	sub	al,7h			; adjust for A - F
+	cmp	al,0fh			; q. above F ?
+	ja	ascii_to_hex6		; yes - exit invalid
+
+ascii_to_hex4:
+;
+	clc				; clear error condition
+	ret
+
+ascii_to_hex6:
+;
+	stc				; set error condition
+	ret
+
+;----------------------------------------
+; convert binary value in AX to three bytes packed-bcd string at SI
+;----------------------------------------
+
+bin_bcd:
+;
+	mov	bx,10000
+	xor	dx,dx			; clear high word
+	div	bx			; calculate number of 10000's
+	mov	byte ptr 0[si],al	; store result
+
+	mov	ax,dx			; copy remainder to ax
+	mov	bx,1000
+	xor	dx,dx			; clear high word
+	div	bx			; calculate number of 1000's
+	rol	al,1
+	rol	al,1
+	rol	al,1
+	rol	al,1			; move result to high nibble
+	inc	si
+	mov	byte ptr 0[si],al	; store result
+
+	mov	ax,dx			; copy remainder to ax
+	mov	bx,100
+	xor	dx,dx			; clear high word
+	div	bx			; calculate number of 100's
+	add	byte ptr 0[si],al	; add to result
+
+	mov	ax,dx			; copy remainder to ax
+	mov	bx,10
+	xor	dx,dx			; clear high word
+	div	bx			; calculate number of 10's
+	rol	al,1
+	rol	al,1
+	rol	al,1
+	rol	al,1			; move result to high nibble
+	add	ax,dx			; add in remainder (1's)
+	inc	si
+	mov	byte ptr 0[si],al	; store result
+
+	ret
+
+;----------------------------------------
+; convert three bytes packed-bcd string at SI to binary value in AX
+;----------------------------------------
+
+bcd_bin:
+;
+	xor	dx,dx			; clear work register
+	mov	cx,4			; bcd string length +1
+	mov	bl,1			; flag ms nibble
+	jmps	bcd_bin4		; enter calculation
+
+bcd_bin2:
+;
+	add	dx,dx			; assume ax = dx
+	shl	ax,1
+	shl	ax,1
+	shl	ax,1
+	add	dx,ax			; multiply dx by 10
+
+bcd_bin4:
+;
+	mov	al,byte ptr 0[si]	; get bcd byte pair
+
+	or	bl,bl			; q. ls nibble ?
+	jz	bcd_bin6		; yes - continue
+
+	shr	al,1
+	shr	al,1
+	shr	al,1
+	shr	al,1			; move ms nibble to ls nibble
+
+bcd_bin6:
+;
+	and	al,0fh			; mask off ms nibble
+	xor	ah,ah
+	add	ax,dx			; add to previous result
+	mov	dx,ax			; copy back to dx
+
+	xor	bl,1			; reverse ms/ls toggle
+	jz	bcd_bin2		; jump back if now ls nibble
+
+	inc	si			; bump pointer
+	loop	bcd_bin2		; loop until complete
+
+	ret
+
+;----------------------------------------
+; add two bcd fields (each four bytes long) - [BX] = [SI] + [DI]
+;----------------------------------------
+
+add_bcd:
+;
+	add	si,3
+	add	di,3
+	add	bx,3			; point to end of each field
+	mov	cx,4			; field lengths
+	clc				; clear initial carry
+
+add_bcd2:
+;
+	mov	al,byte ptr 0[si]
+	adc	al,byte ptr 0[di]	; add bcd byte with carry
+	daa				; decimal adjust after addition
+	mov	byte ptr 0[bx],al	; store result
+
+	dec	si			; decrement pointers
+	dec	di
+	dec	bx
+
+	loop	add_bcd2		; loop until complete
+
+	ret
+
+;----------------------------------------
+; subtract two bcd fields (each four bytes long) - [BX] = [SI] - [DI]
+;----------------------------------------
+
+sub_bcd:
+;
+	add	si,3
+	add	di,3
+	add	bx,3			; point to end of each field
+	mov	cx,4			; field lengths
+	clc				; clear initial carry
+
+sub_bcd2:
+;
+	mov	al,byte ptr 0[si]
+	sbb	al,byte ptr 0[di]	; subtract bcd byte with borrow
+	das				; decimal adjust after subtraction
+	mov	byte ptr 0[bx],al	; store result
+
+	dec	si			; decrement pointers
+	dec	di
+	dec	bx
+
+	loop	sub_bcd2		; loop until complete
+
+	ret
+
+;----------------------------------------
+; convert chr in AL to upper case
+;----------------------------------------
+
+upper_case:
+;
+	cmp	al,'a'			; q. below lower case 'A' ?
+	jb	upper_case2		; yes - exit
+
+	cmp	al,'z'			; q. above lower case 'Z' ?
+	ja	upper_case2		; yes - exit
+
+	and	al,5fh			; convert to upper case
+
+upper_case2:
+;
+	ret
+
+;----------------------------------------
+; read/display current record
+;----------------------------------------
+
+read_display:
+;
+	call	read_record
+	jnz	read_display2
+
+	mov	dx,offset msg_nul	; nul message
+	call	print_status		; clear status line
+
+	mov	byte ptr frerr,0	; clear read error flag
+	jmps	display_record		; display record
+
+read_display2:
+;
+	push	ax			; preserve error code
+	mov	dx,offset err_rdc
+	call	print_status		; 'read error - code'
+	pop	ax			; restore error code
+
+	call	print_hword		; print error code
+
+	cmp	byte ptr frerr,0	; q. read error already occured ?
+	jz	read_display4		; no - display record
+	ret				; yes - exit
+
+read_display4:
+;
+	mov	byte ptr frerr,1	; flag read error
+
+	mov	di,offset dma
+	mov	cx,64
+	xor	ax,ax
+	cld
+	rep	stosw			; clear dma record
+
+;----------------------------------------
+;
+; display contents of dma buffer in hex and ascii.
+;
+; a text string is created and printed for each line because
+; cdos can print a string much quicker than individual characters.
+;
+display_record:
+;
+	mov	byte ptr dislin,7		; cursor line position
+	mov	word ptr dmaofs,offset dma	; point to dma
+	mov	cx,8				; 8 lines to display
+
+display_record2:
+;
+	push	cx			; preserve line counter
+
+;----------------------------------------
+;
+; create and print hex text line
+;
+	mov	si,word ptr dmaofs	; current dma offset
+	mov	di,offset txtlin	; text display line
+	mov	cx,16			; 16 hex digits to display
+
+display_record4:
+;
+	lodsb				; get a byte
+
+	call	byte_to_ascii		; convert to ascii in string
+
+	mov	al,' '
+	stosb				; place space after chrs
+	loop	display_record4		; loop until complete
+
+	dec	di			; move back to last space chr
+	xor	al,al
+	stosb				; null terminate string
+
+	mov	al,byte ptr dislin	; current line
+	mov	ah,5			; offset 5
+	call	cursor_addr		; position cursor
+
+	mov	dx,offset txtlin
+	call	print_string		; print text line (hex)
+
+;----------------------------------------
+;
+; create and print ascii text line
+;
+	mov	si,word ptr dmaofs	; current dma offset
+	mov	di,offset txtlin	; text display line
+	mov	cx,16			; 16 hex digits to display
+
+display_record6:
+;
+	lodsb				; get a byte
+
+	cmp	al,' '			; q. below space ?
+	jb	display_record8		; yes - convert to dot
+
+	cmp	al,07fh			; q. below delete chr
+	jb	display_record10	; yes - store ascii chr
+
+display_record8:
+;
+	mov	al,'.'			; replace with dot
+
+display_record10:
+;
+	stosb				; store chr in text line
+	loop	display_record6		; loop until complete
+
+	xor	al,al
+	stosb				; nul terminate string
+
+	mov	al,byte ptr dislin	; current line
+	mov	ah,58			; offset 58
+	call	cursor_addr		; position cursor
+
+	mov	dx,offset txtlin
+	call	print_string		; print text line (ascii)
+
+;----------------------------------------
+;
+; loop until 8 lines printed
+;
+
+	add	word ptr dmaofs,16	; advance dma line pointer
+	inc	byte ptr dislin		; advance scrren line pointer
+
+	pop	cx
+	loop	display_record2		; loop until complete
+
+	ret				; exit
+
+;----------------------------------------
+; sace current record
+;----------------------------------------
+
+save_record:
+;
+	mov	byte ptr fwrit,0	; flag no record written
+
+	mov	dx,offset ask_sav	; 'save record'
+	call	request_yn		; request y or n
+	jnc	save_record2
+	ret				; exit - n or esc presed
+
+save_record2:
+;
+	mov	byte ptr fwrit,1	; flag record written
+	call	write_record		; write record
+	jnz	save_record4		; write error - jump
+
+	mov	dx,offset msg_sav	; 'record saved'
+	jmp	print_status		; print status message and return
+
+save_record4:
+;
+	mov	word ptr tmpwrd,ax	; store error code
+
+	mov	dx,offset err_wrc	; 'write error'
+	call	print_status		; print status message
+
+	mov	ax,word ptr tmpwrd	; restore error code
+	jmp	print_hword		; print hex error code
+
+;----------------------------------------
+; request/wait for 'RETURN' to be pressed
+;----------------------------------------
+
+press_return:
+;
+	or	dx,dx			; q. message to be printed ?
+	jz	press_return2		; no - continue
+
+	call	print_status		; print status message
+
+press_return2:
+;
+	mov	dx,offset ask_ret	; 'press return'
+	call	print_string		; print message
+
+press_return4:
+;
+	mov	dl,0ffh
+	call	raw_io			; read keyboard (no wait)
+	or	al,al			; q. any more key presses ?
+	jnz	press_return4		; yes - try again
+
+	xor	ax,ax			; min = 0, max = 0
+	xor	bl,bl			; standard input
+	xor	si,si			; no default input
+	jmp	input_string		; input string and return
+
+;----------------------------------------
+; request y or n response
+;----------------------------------------
+
+request_yn:
+;
+	call	print_prompt		; print prompt message
+
+	mov	dx,offset ask_yon	; 'y or n'
+	call	print_string		; print message
+
+request_yn2:
+;
+	mov	al,1			; min chrs required
+	mov	ah,al			; max chrs required
+	mov	bl,1			; upper case input
+	xor	si,si			; no default input
+	call	input_string		; input string
+	jc	request_yn4		; ESC pressed - exit
+
+	lodsb				; get chr entered
+
+	cmp	al,'N'			; q. 'N' entered ?
+	jz	request_yn4		; yes - exit
+
+	cmp	al,'Y'			; q. 'Y' entered ?
+	jz	request_yn6		; yes - exit
+
+	mov	dx,offset curbac	; cursor backspace sequece
+	call	print_string		; print message
+
+	jmps	request_yn2		; try again
+
+request_yn4:
+;
+	stc				; flag 'N' or ESC entered
+	ret
+
+request_yn6:
+;
+	clc				; flag 'Y' entered
+	ret
+
+;----------------------------------------
+; buffered keyboard input
+;----------------------------------------
+;	input  :  al = minimum number of chrs to input
+;              :  ah = maximum number of chrs to input
+;              :  bl = input flags (bit settings)
+;              :       1 = upper case chrs
+;              :       2 = numeric chrs
+;              :       4 = hexadecimal chrs
+;              :       8 = hexadecimal chr pairs
+;              :      10 = do not prompt default input
+;	       :  si = default input offset (0 = no default)
+;
+;	output :  bx = number of chrs entered
+;	       :  si = points to start of buffer (nul terminated)
+;	       :  carry clear - return pressed - valid input
+;	       :  carry set   - escape pressed - invalid input
+;----------------------------------------
+;
+input_string:
+;
+	mov	byte ptr inpmax,ah	; store max chrs required
+	mov	byte ptr inpmin,al	; store min chrs required
+	mov	byte ptr inpflg,bl	; store input flags
+
+	xor	al,al
+	mov	byte ptr inppos,al	; zero input position
+	mov	byte ptr inplen,al	; zero input length
+	mov	byte ptr tmpbuf,al	; clear temporary buffer
+	mov	byte ptr fichr,1	; flag insert on
+
+	or	si,si			; q. default input data ?
+	jz	input_string6		; no - continue
+
+	cld
+	mov	di,offset inpbuf	; point to input buffer
+
+	test	bl,10h			; q. prompt default input ?
+	jz	input_string2
+
+	mov	di,offset tmpbuf	; no - point to temporary buffer
+
+input_string2:
+;
+	lodsb
+	stosb				; copy chr to input buffer
+
+	test	bl,10h			; q. prompt default input ?
+	jnz	input_string4		; no - skip pointer/counter update
+
+	inc	byte ptr inplen		; increment input length
+	inc	byte ptr inppos		; and input position
+
+input_string4:
+;
+	or	al,al			; q. end of default input ?
+	jnz	input_string2		; no - loop for next chr
+
+	test	bl,10h			; q. prompt default input ?
+	jnz	input_string6		; no - get keyboard input
+
+	dec	byte ptr inplen		; correct input length
+	dec	byte ptr inppos		; and input position
+
+	mov	dx,offset inpbuf	; default input string
+	call	print_string		; print string
+
+;----------------------------------------
+;
+; read keyboard and take action
+;
+input_string6:
+;
+	call	read_chr		; input a chr
+	or	al,al			; q. any key pressed ?
+	jz	input_string6		; no - try again
+
+	cmp	al,ctrl_s		; q. cursor left chr ?
+	jnz	input_string8
+	call	input_cursl		; yes - move cursor left
+	jmps	input_string6		; get next chr
+
+input_string8:
+;
+	cmp	al,ctrl_d		; q. cursor right chr ?
+	jnz	input_string10
+	call	input_cursr		; yes - move cursor right
+	jmps	input_string6		; get next chr
+
+input_string10:
+;
+	cmp	al,ctrl_a		; q. cursor left word ?
+	jnz	input_string12
+	call	input_wordl		; yes - move cursor left word
+	jmps	input_string6		; get next chr
+
+input_string12:
+;
+	cmp	al,ctrl_f		; q. cursor right word ?
+	jnz	input_string14
+	call	input_wordr		; yes - move cursor right word
+	jmps	input_string6		; get next chr
+
+input_string14:
+;
+	cmp	al,bac			; q. delete left chr ?
+	jnz	input_string16
+	call	input_delcl		; yes - delete chr left of cursor
+	jmps	input_string6		; get next chr
+
+input_string16:
+;
+	cmp	al,ctrl_g		; q. delete right chr ?
+	jnz	input_string18
+	call	input_delcr		; yes - delete chr right of cursor
+	jmps	input_string6		; get next chr
+
+input_string18:
+;
+	cmp	al,ctrl_t		; q. delete word right ?
+	jnz	input_string20
+	call	input_delwr		; yes - delete word right of cursor
+	jmps	input_string6		; get next chr
+
+input_string20:
+;
+	cmp	al,ctrl_y		; q. delete all line ?
+	jnz	input_string22
+	call	input_delal		; yes - delete all line
+	jmps	input_string6		; get next chr
+
+input_string22:
+;
+	cmp	al,ctrl_r		; q. recover deleted line ?
+	jnz	input_string24
+	call	input_recln		; yes - recover line
+	jmps	input_string6		; get nect chr
+
+input_string24:
+;
+	cmp	al,ctrl_v		; q. insert toggle ?
+	jnz	input_string26
+	call	input_togin		; yes - toggle insert state
+	jmps	input_string6		; get next chr
+
+input_string26:
+;
+	cmp	al,ctrl_c		; q. abort pressed ?
+	jz	input_string32		; yes - exit invalid
+
+	cmp	al,esc			; q. escape pressed ?
+	jz	input_string32		; yes - exit invalid
+
+	cmp	al,cr			; q. return pressed ?
+	jz	input_string28		; yes - exit (if possible)
+
+	cmp	al,lf			; q. linefeed pressed ?
+	jz	input_string28		; yes - exit (if possible)
+
+	call	input_inchr		; insert chr into string
+	jmps	input_string6		; get next chr
+
+;----------------------------------------
+;
+; exit if return pressed (and minimum chrs entered)
+;
+input_string28:
+;
+	mov	bl,byte ptr inplen
+	cmp	bl,byte ptr inpmin	; q. minimum chrs entered ?
+	jb	input_string6		; no - get next chr
+
+	test	byte ptr inpflg,8	; q. hexadecimal pair chrs ?
+	jz	input_string30		; no - exit
+
+	test	byte ptr inplen,1	; q. odd number of chrs entered ?
+	jz	input_string30
+	jmp	input_string6		; yes - get next chr
+
+input_string30:
+;
+	xor	bh,bh			; bx holds string length
+	mov	si,offset inpbuf	; si points to input string
+	mov	byte ptr 0[bx+si],0	; terminate input string
+
+	clc				; clear error condition
+	ret
+
+input_string32:
+
+	stc				; set error condition
+	ret
+
+;----------------------------------------
+;
+; move cursor (and pointer) one chr left
+;
+input_cursl:
+;
+	cmp	byte ptr inppos,0	; q. at start of input ?
+	jz	input_cursl2		; yes - exit
+
+	dec	byte ptr inppos		; decrement pointer
+
+	mov	al,bac			; backspace
+	call	print_chr		; print chr
+
+input_cursl2:
+;
+	ret
+
+;----------------------------------------
+;
+; move cursor (and pointer) one chr right
+;
+input_cursr:
+;
+	mov	bl,byte ptr inppos
+	cmp	bl,byte ptr inplen	; q. at end of input ?
+	jz	input_cursr2		; yes - exit
+
+	inc	byte ptr inppos		; increment pointer
+
+	xor	bh,bh
+	mov	al,byte ptr inpbuf[bx]	; get current chr
+	call	print_chr		; print chr (and advance cursor)
+
+input_cursr2:
+;
+	ret
+
+;----------------------------------------
+;
+; move cursor (and pointer) one word left
+;
+input_wordl:
+;
+	call	input_cursl		; move chr left
+
+	mov	bl,byte ptr inppos
+	or	bl,bl			; q. at start of input ?
+	jz	input_wordl6		; yes - exit
+
+	xor	bh,bh
+	mov	al,byte ptr inpbuf[bx]	; get current chr
+	call	check_word		; q. part of word string ?
+	jc	input_wordl		; no - loop until previous word found
+
+input_wordl2:
+;
+	call	input_cursl		; move cursor left
+
+	mov	bl,byte ptr inppos
+	or	bl,bl			; q. at start of input ?
+	jz	input_wordl4		; yes - check first chr
+
+	xor	bh,bh
+	mov	al,byte ptr inpbuf[bx]	; get current chr
+	call	check_word		; q. part of word string ?
+	jnc	input_wordl2		; yes - loop until previous space found
+
+	call	input_cursr		; move back to next word chr
+	jmps	input_wordl6		; exit
+
+input_wordl4:
+;
+	mov	al,byte ptr inpbuf	; get first chr
+	call	check_word		; q. part of word string ?
+	jnc	input_wordl6		; yes - exit
+
+	call	input_cursr		; move back to next word chr
+
+input_wordl6:
+;
+	ret
+
+;----------------------------------------
+;
+; move cursor (and pointer) one word right
+;
+input_wordr:
+;
+	call	input_cursr		; move cursor right
+
+	mov	bl,byte ptr inppos
+	cmp	bl,byte ptr inplen	; q. at end of input ?
+	jz	input_wordr4		; yes - exit
+
+	xor	bh,bh
+	mov	al,byte ptr inpbuf[bx]	; get current chr
+	call	check_word		; q. part of word string ?
+	jnc	input_wordr		; yes - loop until next space found
+
+input_wordr2:
+;
+	call	input_cursr		; move cursor right
+
+	mov	bl,byte ptr inppos
+	cmp	bl,byte ptr inplen	; q. at end of input ?
+	jz	input_wordr4		; yes - exit
+
+	xor	bh,bh
+	mov	al,byte ptr inpbuf[bx]	; get current chr from input
+	call	check_word		; q. part of word string ?
+	jc	input_wordr2		; no - loop until next word found
+
+input_wordr4:
+;
+	ret
+
+;----------------------------------------
+;
+; delete chr to left of cursor
+;
+input_delcl:
+;
+	cmp	byte ptr inppos,0	; q. at start of input ?
+	jz	input_delcl8		; yes - exit
+
+	dec	byte ptr inplen
+	dec	byte ptr inppos		; decrement pointer and length
+
+	mov	al,bac			; backspace
+	call	print_chr		; print chr
+
+	xor	ch,ch
+	mov	cl,byte ptr inplen
+	sub	cl,byte ptr inppos	; length to end of string
+	jbe	input_delcl4		; zero length - continue
+
+	xor	bh,bh
+	mov	bl,byte ptr inppos
+	add	bx,offset inpbuf	; new current position
+	mov	dx,bx			; copy pointer for display
+
+input_delcl2:
+;
+	mov	al,byte ptr 1[bx]
+	mov	byte ptr 0[bx],al	; move chr back
+
+	inc	bx			; advance pointer
+	loop	input_delcl2		; loop until complete
+
+	mov	byte ptr 0[bx],0	; terminate string (for display)
+
+	call	print_string		; display remainder of string
+
+input_delcl4:
+;
+	mov	al,' '
+	call	print_chr		; display space over last chr
+
+	mov	cl,byte ptr inplen
+	inc	cl
+	sub	cl,byte ptr inppos	; calculate chrs to end of string
+	jbe	input_delcl8		; none - exit
+	xor	ch,ch
+
+input_delcl6:
+;
+	push	cx
+
+	mov	al,bac			; backspace
+	call	print_chr		; print chr
+
+	pop	cx
+	loop	input_delcl6		; loop until complete
+
+input_delcl8:
+;
+	ret
+
+;----------------------------------------
+;
+; delete chr to right of cursor
+;
+input_delcr:
+;
+	mov	bl,byte ptr inppos
+	cmp	bl,byte ptr inplen	; q. at end of input ?
+	jz	input_delcr2		; yes - exit
+
+	call	input_cursr		; move cursor right
+	call	input_delcl		; delete chr left of cursor
+
+input_delcr2:
+;
+	ret
+
+;----------------------------------------
+;
+; delete word to right of cursor
+;
+input_delwr:
+;
+	mov	bl,byte ptr inppos
+	cmp	bl,byte ptr inplen	; q. at end of input ?
+	jz	input_delwr6		; yes - exit
+
+input_delwr2:
+;
+	call	input_delcr		; delete chr to right of cursor
+
+	mov	bl,byte ptr inppos
+	cmp	bl,byte ptr inplen	; q. at end of input ?
+	jz	input_delwr6		; yes - exit
+
+	xor	bh,bh
+	mov	al,byte ptr inpbuf[bx]	; get current chr
+	call	check_word		; q. part of word string ?
+	jnc	input_delwr2		; yes - delete next chr
+
+input_delwr4:
+;
+	call	input_delcr		; delete chr right of cursor
+
+	mov	bl,byte ptr inppos
+	cmp	bl,byte ptr inplen	; q. at end of input ?
+	jz	input_delwr6		; yes - exit
+
+	xor	bh,bh
+	mov	al,byte ptr inpbuf[bx]	; get current chr from input
+	call	check_word		; q. part of word string ?
+	jc	input_delwr4		; no - delete next chr
+
+input_delwr6:
+;
+	ret
+
+;----------------------------------------
+;
+; delete all of line
+;
+input_delal:
+;
+	cmp	byte ptr inplen,0	; q. any input ?
+	jz	input_delal6		; no - exit
+
+	mov	si,offset inpbuf	; point to start of input buffer
+	mov	di,offset tmpbuf	; point to temporary bufer
+	xor	ch,ch
+	mov	cl,byte ptr inplen	; current string length
+	rep	movsb			; copy string to temporary buffer
+
+	xor	al,al
+	stosb				; terminate temporary string
+	
+input_delal2:
+;
+	call	input_cursl		; move cursor left
+
+	cmp	byte ptr inppos,0	; q. at start of input ?
+	jnz	input_delal2		; no - move back again
+	
+	xor	ch,ch
+	mov	cl,byte ptr inplen	; current string length
+	mov	di,offset inpbuf	; point to start of input buffer
+	mov	dx,di			; copy pointer for later
+	mov	al,' '
+	rep	stosb			; space over all input
+
+	xor	al,al
+	stosb				; terminate inut string
+
+	call	print_string		; print blank string over input
+
+	mov	al,byte ptr inplen
+	mov	byte ptr inppos,al	; set current position to input length
+
+input_delal4:
+;
+	call	input_cursl		; move cursor left
+
+	cmp	byte ptr inppos,0	; q. at start of input ?
+	jnz	input_delal4		; no - move back again
+
+	mov	byte ptr inplen,0	; reset input length
+
+input_delal6:
+;
+	ret
+
+;----------------------------------------
+;
+; recover deleted line
+;
+input_recln:
+;
+	cmp	byte ptr inplen,0	; q. any input ?
+	jnz	input_recln4		; yes - exit
+
+	xor	al,al
+	mov	byte ptr inppos,al	; zero input position
+	mov	byte ptr inplen,al	; zero input length
+
+	mov	si,offset tmpbuf	; point to temporary buffer
+	mov	di,offset inpbuf	; point to input buffer
+
+input_recln2:
+;
+	lodsb
+	stosb				; copy chr to input buffer
+
+	inc	byte ptr inplen		; increment input length
+	inc	byte ptr inppos		; and input position
+
+	or	al,al			; q. end of default input ?
+	jnz	input_recln2		; no - loop for next chr
+
+	dec	byte ptr inplen		; correct input length
+	dec	byte ptr inppos		; and input position
+
+	mov	dx,offset inpbuf	; default input string
+	call	print_string		; print string
+
+input_recln4:
+;
+	ret
+
+;----------------------------------------
+;
+; toggle insert on/off
+;
+input_togin:
+;
+	xor	byte ptr fichr,1	; toggle insert flag
+
+	ret
+
+;----------------------------------------
+;
+; insert chr into string
+;
+input_inchr:
+;
+	cmp	al,' '			; q. below space chr
+	jae	input_inchr2
+	jmp	input_inchr38		; yes - exit
+
+input_inchr2:
+;
+	cmp	al,07fh			; q. below delete chr ?
+	jb	input_inchr4
+	jmp	input_inchr38		; no - exit
+
+input_inchr4:
+;
+	test	byte ptr inpflg,0dh	; q. upper case or hexadecimal input ?
+	jz	input_inchr6
+	call	upper_case		; yes - convert chr to upper case
+
+input_inchr6:
+;
+	test	byte ptr inpflg,0eh	; q. numeric or hexadecimal input ?
+	jz	input_inchr14		; no - continue
+
+	cmp	al,'9'			; q. numeric chr ?
+	ja	input_inchr8		; no - check hexadecimal input
+
+	cmp	al,'0'			; q. numeric chr ?
+	jae	input_inchr14		; yes - insert chr
+
+input_inchr8:
+;
+	test	byte ptr inpflg,0ch	; q. hexadecimal input ?
+	jnz	input_inchr10
+	jmp	input_inchr38		; no - (invalid input) exit
+
+input_inchr10:
+;
+	cmp	al,'F'			; q. alpha hexadecimal chr ?
+	ja	input_inchr12		; no - invalid
+
+	cmp	al,'A'			; q. alpha hexadecimal chr ?
+	jae	input_inchr14		; yes - insert chr
+
+input_inchr12:
+;
+	jmp	input_inchr38		; not hexadecimal chr - exit
+
+input_inchr14:
+;
+	mov	bl,byte ptr inppos
+	cmp	bl,byte ptr inpmax	; q. at maximum chr position ?
+	jnz	input_inchr16
+	jmp	input_inchr38		; yes - exit
+
+input_inchr16:
+;
+	cmp	bl,byte ptr inplen	; q. at end of current input ?
+	jae	input_inchr18		; yes - add chr to end of string
+
+	cmp	byte ptr fichr,1	; q. insert on ?
+	jz	input_inchr22		; yes - insert chr within string
+	jmps	input_inchr20		; no - overtype chr
+
+input_inchr18:
+;
+	inc	byte ptr inplen		; increment string length
+
+input_inchr20:
+;
+	xor	bh,bh
+	mov	byte ptr inpbuf[bx],al	; place chr in string
+
+	inc	byte ptr inppos		; advance pointer
+
+	call	print_chr		; display chr
+	jmps	input_inchr38		; exit
+
+input_inchr22:
+;
+	push	ax			; save chr entered
+
+	xor	ch,ch
+	mov	cl,byte ptr inplen
+	sub	cl,byte ptr inppos	; length to end of string
+	jz	input_inchr26		; continue if at end of string
+
+	mov	al,byte ptr inppos
+	push	ax			; save current position
+
+input_inchr24:
+;
+	call	input_cursr		; move cursor right
+
+	mov	bl,byte ptr inppos
+	cmp	bl,byte ptr inplen	; q. at end of input ?
+	jnz	input_inchr24		; no - cursor right again
+
+	pop	ax
+	mov	byte ptr inppos,al	; restore current position
+
+input_inchr26:
+
+	xor	bh,bh
+	mov	bl,byte ptr inplen	; full input string length
+
+	xor	ch,ch
+	mov	cl,byte ptr inplen
+	sub	cl,byte ptr inppos	; length to end of string
+
+input_inchr28:
+;
+	jcxz	input_inchr34		; insert chr if at end of string
+
+	push	cx			; save length to end
+	push	bx			; save full length
+
+	dec	bx			; decrement buffer pointer
+	mov	al,byte ptr inpbuf[bx]	; get chr from input string
+
+	inc	bl			; increment buffer pointer
+	cmp	bl,byte ptr inpmax	; q. at maximum chr position
+	jb	input_inchr30		; no - insert chr
+
+	mov	al,' '
+	mov	byte ptr inpbuf[bx],al	; store space in input buffer
+	call	print_chr		; print space chr
+
+	jmps	input_inchr32		; move cursor left 2
+
+input_inchr30:
+;
+	mov	byte ptr inpbuf[bx],al	; store chr in input
+	call	print_chr		; print chr
+
+input_inchr32:
+;
+	mov	al,bac			; backspace
+	call	print_chr		; print chr
+	mov	al,bac			; backspace
+	call	print_chr		; print chr
+
+	pop	bx			; restore full length
+	pop	cx			; restore length to end
+
+	dec	bx			; decrement full length
+	dec	cx			; decrement length to end
+
+	jmps	input_inchr28		; shuffle next chr right
+
+input_inchr34:
+;
+	pop	ax			; restore input chr
+	mov	byte ptr inpbuf[bx],al	; store chr in input (insert)
+	call	print_chr		; display input chr
+
+	mov	dl,byte ptr inplen
+	cmp	dl,byte ptr inpmax	; q. string length reached maximum ?
+	jz	input_inchr36
+	inc	byte ptr inplen		; no - increment string length
+
+input_inchr36:
+;
+	inc	byte ptr inppos		; increment pointer
+
+input_inchr38:
+;
+	ret
+
+;----------------------------------------
+;
+; check chr (AL) for being part of a word
+;
+check_word:
+;
+	call	upper_case		; convert chr to upper case
+
+	cmp	al,'A'			; q. below upper case a ?
+	jb	check_word2		; yes - check numeric
+	cmp	al,'Z'			; q. below or equal to upper case z ?
+	jbe	check_word4		; yes - assume part of word
+
+check_word2:
+;
+	cmp	al,'0'			; q. below ascii zero ?
+	jb	check_word6		; yes - assume not part of word
+	cmp	al,'9'			; below or equal to ascii 9 ?
+	ja	check_word6		; yes - assume not part of word
+
+check_word4:
+;
+	clc				; flag part of word
+	ret
+
+check_word6:
+;
+	stc				; flag not part of word
+	ret
+
+;----------------------------------------
+; RAW CHR INPUT. CHR RETURNED IN AL
+;----------------------------------------
+
+read_chr:
+;
+	mov	dl,byte ptr inpraw	; set raw input mode
+
+raw_io:
+;
+	mov	cl,c_rawio		; raw i/o function
+	jmp	bdos			; perform function and return
+
+;----------------------------------------
+; * general purpose print routines *
+;----------------------------------------
+;----------------------------------------
+; print current or maximum record number in hex or decimal
+;----------------------------------------
+;
+; print current record number
+;
+print_currec:
+;
+	mov	al,3			; row
+	mov	ah,22			; column
+	call	cursor_addr		; position cursor
+
+	mov	ax,word ptr fcb +33
+	mov	dl,byte ptr fcb +35	; get current record number
+
+	jmps	print_recnum		; print hex/dec record number
+
+;----------------------------------------
+;
+; print maximum record number
+;
+print_maxrec:
+;
+	mov	al,3			; row
+	mov	ah,50			; column
+	call	cursor_addr		; position cursor
+
+	mov	ax,word ptr flesiz +0
+	mov	dl,byte ptr flesiz +2	; get max record number
+
+	;jmps	print_recnum		; print hex/dec record number
+
+;----------------------------------------
+;
+; print record number in hex or decimal
+;
+print_recnum:
+;
+	cmp	byte ptr fhxdc,1	; q. decimal numbers ?
+	jnz	print_recnum2
+
+	jmp	print_dlong		; yes - print decimal long word
+					;       and return
+
+print_recnum2:
+;
+	jmp	print_hlong		; no - print hex long word
+					;      and return
+
+;----------------------------------------
+; print current offset within record in hex or decimal
+;----------------------------------------
+
+print_curofs:
+;
+	mov	al,3			; row
+	mov	ah,70			; column
+	call	cursor_addr		; position cursor
+
+	mov	al,byte ptr currow	; get current row
+	shl	al,1
+	shl	al,1
+	shl	al,1
+	shl	al,1			; shift to upper nibble
+	or	al,byte ptr curcol	; merge in current row
+
+	cmp	byte ptr fhxdc,1	; q. decimal numbers ?
+	jnz	print_curofs2
+
+	jmps	print_dbyte		; yes - print decimal byte and return
+
+print_curofs2:
+;
+	jmps	print_hbyte		; no - print hex byte and return
+
+;----------------------------------------
+; print hex long word, word, or digit
+;----------------------------------------
+;
+; ptint hex long word (AX:DL)
+;
+print_hlong:
+;
+	push	ax
+	mov	al,dl
+	call	print_hbyte
+	pop	ax
+
+;----------------------------------------
+;
+; print hex word (AX)
+;
+print_hword:
+;
+	push	ax
+	mov	al,ah
+	call	print_hbyte
+	pop	ax
+
+;----------------------------------------
+;
+; print hex byte (AL)
+;
+print_hbyte:
+;
+	mov	ah,al			; copy al to ah
+	shr	ah,1
+	shr	ah,1
+	shr	ah,1
+	shr	ah,1			; shift upper nibble to lower nibble
+	and	al,0fh			; mask off upper nibble
+
+	push	ax
+	mov	al,ah
+	call	print_hdigit
+	pop	ax
+
+;----------------------------------------
+;
+; print hex digit (lower nibble of AL)
+;
+print_hdigit:
+;
+	cmp	al,9			; q. alpha chr ?
+	jbe	print_hdigit2
+	add	al,7			; yes - correct alpha digit
+
+print_hdigit2:
+;
+	add	al,30h			; make ascii character
+	jmp	print_chr		; print chr and return
+
+;----------------------------------------
+; print decimal long word, word or byte
+;----------------------------------------
+;
+; print decimal long word (AX:DL)
+;
+print_dlong:
+;
+	xor	dh,dh			; clear very high byte
+
+	mov	cx,7			; length of decimal string
+	jmps	print_decimal		; print decimal string
+
+;----------------------------------------
+;
+; print decimal word (AX)
+;
+print_dword:
+;
+	xor	dx,dx			; clear high and very high bytes
+
+	mov	cx,5			; length of decimal string
+	jmps	print_decimal		; print decimal number
+
+;----------------------------------------
+;
+; print decimal byte (AL)
+;
+print_dbyte:
+;
+	xor	dx,dx			; clear high and very high bytes
+	xor	ah,ah			; clear low byte
+
+	mov	cx,3			; length of decimal string
+	;jmps	print_decimal		; print decimal number
+
+;----------------------------------------
+;
+; print decimal number
+;
+print_decimal:
+;
+	push	cx			; preserve print length
+
+	or	dx,dx			; q. number greater than 64k ?
+	jnz	print_decimal2		; yes - convert 32 bit to bcd
+
+	mov	word ptr bcdwk3 +0,0
+	mov	word ptr bcdwk3 +2,0	; clear result field
+
+	mov	si,offset bcdwk3 +1	; result field
+	call	bin_bcd			; convert 16 bit to bcd
+
+	jmps	print_decimal6		; print decimal string
+
+print_decimal2:
+;
+	push	ax			; save low word
+
+	xor	ax,ax
+	mov	cx,6
+	mov	di,offset bcdwk1
+	rep	stosw			; zero bcdwk1, 2, and 3
+
+	mov	cx,dx			; copy dx to loop counter
+
+print_decimal4:
+;
+	push	cx
+
+	mov	si,offset bcdwk1
+	mov	di,offset bcd64k	; bcd 65536
+	mov	bx,si
+	call	add_bcd			; [bx] = [si] + [di]
+
+	pop	cx
+	loop	print_decimal4		; loop until complete
+
+	pop	ax			; restore low word
+	mov	si,offset bcdwk2 +1
+	call	bin_bcd			; convert 16 bit to bcd
+
+	mov	si,offset bcdwk1	; multilpe of 64k
+	mov	di,offset bcdwk2	; low word
+	mov	bx,offset bcdwk3	; result field
+	call	add_bcd			; [bx] = [si] + [di]
+
+print_decimal6:
+;
+	mov	si,offset bcdwk3
+	mov	di,offset ascdec
+	mov	cx,4
+	cld
+
+print_decimal8:
+;
+	lodsb				; get a bcd byte
+	call	byte_to_ascii		; convert byte to ascii at di
+	loop	print_decimal8		; loop until complete
+
+	mov	byte ptr 0[di],0	; terminate ascii decimal string
+
+	pop	cx			; restore print length
+	sub	di,cx
+	mov	dx,di
+	jmp	print_string		; print string and return
+
+;----------------------------------------
+; print ascii chr (print dot if not ascii chr)
+;----------------------------------------
+
+print_ascii:
+;
+	cmp	al,' '			; q. below space chr ?
+	jb	print_ascii2		; yes - print a dot
+	cmp	al,07fh			; q. below delete chr ?
+	jb	print_ascii4		; yes - print chr
+
+print_ascii2:
+;
+	mov	al,'.'			; replace chr with a dot
+
+print_ascii4:
+;
+	jmp	print_chr		; print chr and return
+
+;----------------------------------------
+; turn cursor on or off (only CDOS 5.0 or above)
+;----------------------------------------
+;
+; turn cursor on
+; (only if cdos 5.0 or above, not all lower versions can do this)
+;
+cursor_on:
+;
+	cmp	byte ptr cpmver,50h	; q. cdos 5.0 or above ?
+	jae	cursor_on2
+	ret				; no - return
+
+cursor_on2:
+;
+	mov	dx,offset curson
+	jmps	print_string		; print cursor on string and return
+
+;----------------------------------------
+;
+; turn cursor off
+; (only if cdos 5.0 or above, not all lower versions can do this)
+;
+cursor_off:
+;
+	cmp	byte ptr cpmver,50h	; q. cdos 5.0 or above ?
+	jae	cursor_off2
+	ret				; no - return
+
+cursor_off2:
+;
+	mov	dx,offset cursof
+	jmps	print_string		; print cursor off string and return
+
+;----------------------------------------
+; turn inverse video on or off
+;----------------------------------------
+
+inv_video:
+;
+	mov	dx,offset invvon
+	jmps	print_string		; print inverse video on string
+
+norm_video:
+;
+	mov	dx,offset invvof
+	jmps	print_string		; print normal video on string
+
+;----------------------------------------
+; print string on prompt line
+;----------------------------------------
+
+print_prompt:
+;
+	push	dx
+
+	mov	al,16			; row
+	mov	ah,5			; column
+	call	cursor_addr		; position cursor
+
+	pop	dx
+	call	print_string		; print_string
+
+	mov	dx,offset clreol	; clear to end of line sequence
+	jmp	print_string		; print string and return
+
+;----------------------------------------
+; print string on status line
+;----------------------------------------
+
+print_status:
+;
+	push	dx
+
+	mov	al,18			; row
+	mov	ah,5			; column
+	call	cursor_addr		; position cursor
+
+	mov	dx,offset clreos	; clear to end of screen sequence
+	call	print_string		; print string
+
+	pop	dx
+	jmps	print_string		; print string and return
+
+;----------------------------------------
+; position cursor in hex or ascii data
+;----------------------------------------
+;
+cursor_data:
+;
+	cmp	byte ptr fhxas,0	; q. cursor in hex data ?
+	jz	cursor_hex		; yes - position cursor
+
+;----------------------------------------
+;
+; position cursor in ascii data
+;
+cursor_ascii:
+;
+	mov	al,byte ptr currow	; get row
+	mov	ah,byte ptr curcol	; get column
+
+	add	ax,03a07h		; adjust cursor for ascii data
+	jmps	cursor_addr		; position cursor and return
+
+;----------------------------------------
+;
+; position cursor in hex data
+;
+cursor_hex:
+;
+	mov	al,byte ptr currow	; reg row
+	mov	ah,byte ptr curcol	; get column
+
+	or	ah,ah			; q. column zero ?
+	jz	cursor_hex2		; yes - jump
+
+	shl	ah,1			; double column number
+	add	ah,byte ptr curcol	; add in original number
+
+cursor_hex2:
+;
+	add	ah,byte ptr fhilo	; adjust for lo nibble
+	add	ax,0507h		; adjust cursor position
+	jmps	cursor_addr		; position cursor and return
+
+;----------------------------------------
+; position cursor - AL (row) + AH (column)
+;----------------------------------------
+
+cursor_addr:
+;
+	add	ax,2020h		; add offsets
+	mov	word ptr curpos +2,ax	; store in cursor address sring
+	mov	dx,offset curpos
+	jmps	print_string		; print string and return
+
+;----------------------------------------
+; print null terminated string at DX
+;----------------------------------------
+
+print_string:
+;
+	push	si			; preserve si
+
+	cmp	byte ptr cpmver +1,0	; q. mpm or cdos ?
+	jz	print_string2		; no - print individual chrs
+
+	mov	cl,c_writestr
+	call	bdos			; print null delimited string
+
+	jmps	print_string6		; exit
+
+print_string2:
+;
+	mov	si,dx			; si points to string
+
+print_string4:
+;
+	lodsb				; get a chr
+	or	al,al			; q. end of string ?
+	jz	print_string6		; yes - exit
+
+	call	print_chr		; no - print chr
+	jmps	print_string4		; loop for next chr
+
+print_string6:
+;
+	pop	si			; restore si
+	ret
+
+;----------------------------------------
+; print chr in AL
+;----------------------------------------
+
+print_chr:
+;
+	mov	dl,al			; get chr in dl
+	mov	cl,byte ptr chrout	; chr output channel (screen/printer)
+;	jmps	bdos			; print chr and return
+
+;----------------------------------------
+; perform bdos call (es preserved)
+;----------------------------------------
+
+bdos:
+;
+	push	es
+	int	ccpm			; perform bdos call
+	pop	es
+
+	ret
+
+;----------------------------------------
+; DATA SEGMENT
+;----------------------------------------
+
+	dseg
+	org	100h			; base page occupies ds:0000-00ff
+;
+; general text strings
+;
+signon_scrn	db	esc,'Y',20h,20h
+		db	'----------------------------------------'
+		db	'---------------------------------------',cr,lf
+		db	' FileView '
+		db	ver/10+'0','.',ver mod 10+'0'
+		db	rev
+		db	' (c) Stephen Hunt'
+		db	esc,4bh,cr,lf
+		db	'----------------------------------------'
+		db	'---------------------------------------',cr,lf
+		db	esc,'Y',23h,25h,'Current record :          '
+		db	esc,'Y',23h,41h,'Maximum record :          '
+		db	esc,'Y',23h,5Dh,'Offset :     ',cr,lf
+		db	'----------------------------------------'
+		db	'---------------------------------------'
+heading		db	esc,'Y',26h,25h
+head_hex	db	'-------------- Hexadecimal codes --------------'
+		db	esc,'Y',26h,5ah
+head_asc	db	'- Ascii values -'
+clear_to_end	db	esc,4ah,0
+
+clrscn		db	esc,45h,0	; clear screen + home cursor
+clreos		db	esc,4ah,0	; clear to end of screen
+clreol		db	esc,4bh,0	; clear to end of line
+curpos		db	esc,59h,'  ',0	; cursor positioning
+curbac		db	bac,' ',bac,0	; space cursor back one
+curson		db	esc,65h,0	; turn cursor on
+cursof		db	esc,66h,0	; turn cursor off
+invvon		db	esc,70h,0	; turn inverse video on
+invvof		db	esc,71h,0	; turn inverse video off
+
+currow		db	0
+curcol		db	0
+
+ascdec		db	'00000000',0	; ascii decimal text string
+
+;
+; general text messages
+;
+msg_lno		db	esc,'Y',21h,5ch,'License No. ',0
+msg_hex		db	'h ',0
+msg_dec		db	'd ',0
+msg_sav		db	'Record Saved',0
+msg_ser		db	'Error reporting ',0
+msg_src		db	'Search ',0
+msg_ont		db	'on',0
+msg_oft		db	'off',0
+msg_for		db	'forward',0
+msg_bac		db	'backward',0
+msg_not		db	'not ',0
+msg_cas		db	'case sensitive',0		
+msg_sip		db	'Searching ...',0
+msg_pip		db	'Printing ...',0
+msg_nul		db	0
+;
+; prompt messages
+;
+ask_fle		db	'Filename : ',0
+ask_ret		db	' - Press Return ',0
+ask_yon		db	' (y/n) ',0
+ask_com		db	'Command (^J help)',0
+ask_sav		db	'Save Record',0
+ask_clf		db	'Close file',0
+ask_qit		db	'Quit to CP/M-86',0
+ask_hrn		db	'Record Number (Hex) ',0
+ask_drn		db	'Record Number (Dec) ',0
+ask_fil		db	'Fill (^J help)',0
+ask_fla		db	'Fill (Ascii) ',0
+ask_flh		db	'Fill (Hex) ',0
+ask_amn		db	'Amend (^J help)',0
+ask_srm		db	'Search (^J help)',0
+ask_sra		db	'Search (Ascii) ',0
+ask_srh		db	'Search (Hex) ',0
+ask_prn		db	'Print Record',0
+;
+; option messages
+;
+opt_com		db	esc,'Y',32h,25h
+		db	esc,4ah
+		db	'(N)ext record          (P)revious record      '
+		db	'(G)oto record'
+		db	esc,'Y',33h,25h
+		db	'(I)nvert record        (F)ill record          '
+		db	'(A)mend record'
+		db	esc,'Y',34h,25h
+		db	'(S)earch               (H)ard copy            '
+		db	'(T)oggle hex/decimal'
+		db	esc,'Y',35h,25h
+		db	'(C)lose file           (Q)uit to CP/M',0
+
+opt_fil		db	esc,'Y',32h,25h
+		db	esc,4ah
+		db	'(A)scii string         (H)ex string           '
+		db	'(RET) Exit',0
+
+opt_amn		db	esc,'Y',32h,25h
+		db	esc,4ah
+		db	'(^E)  Up        (^X)  Down      '
+		db	'(^S)  Left      (^D)  Right'
+		db	esc,'Y',33h,25h
+		db	'(BAC) Undo      (TAB) Toggle    '
+		db	'(RET) Exit',0
+
+opt_src		db	esc,'Y',32h,25h
+		db	esc,4ah
+		db	'(A)scii search         (H)ex search           '
+		db	'(R)epeat search'
+		db	esc,'Y',33h,25h
+		db	'(C)ase sensitive       (E)rror reporting      '
+		db	'(RET) Exit',0
+;
+; parse error messages
+;
+err_pe1		db	'Invalid File Specification',0
+err_pe2		db	'Invalid Drive Reference',0
+err_pe3		db	'Invalid User Number',0
+err_pe4		db	'Invalid Path or File Name',0
+err_pe5		db	'Invalid Password',0
+;
+; open file/directory error messages
+;
+err_oe1		db	'File Currently Open',0
+err_oe2		db	'Incorrect File Password',0
+err_oe3		db	'Unable To Open File',0
+err_de1		db	'Path Not Found',0
+err_de2		db	'Incorrect Path Password',0
+err_de3		db	'Unable To Open Path',0
+;
+; general error messages
+;
+err_drv		db	'Drive Select Error',0
+err_dos		db	'Path Names Require DOS Media',0
+err_cpm		db	'User Numbers Require CPM Media',0
+err_fnd		db	'File Not Found',0
+err_rof		db	'Read Only',0
+err_ror		db	'Read Only Record',0
+err_rdc		db	'Read Error - Code ',0
+err_wrc		db	'Write Error - Code ',0
+err_clf		db	'File Close Error',0
+err_sta		db	'Start of File',0
+err_end		db	'End of File',0
+err_rec		db	'Invalid Record Number',0
+err_sfl		db	'Search Failed',0
+err_sab		db	'Search Aborted',0
+err_bsy		db	'Printer Busy',0
+
+;----------------------------------------
+;
+; fuction byte and execution tables
+;
+comopt	db	0			; current command
+
+comtbl	rs	0			; main command table
+
+	db	'+'			; next record
+	dw	offset inc_record
+	db	ctrl_x			; next record
+	dw	offset inc_record
+	db	'N'			; next record
+	dw	offset inc_record
+	db	'-'			; previous record
+	dw	offset dec_record
+	db	ctrl_e			; previous record
+	dw	offset dec_record
+	db	'P'			; previous record
+	dw	offset dec_record
+	db	'G'			; go to record
+	dw	offset go_record
+	db	'I'			; invert record
+	dw	offset inv_record
+	db	'T'			; toggle hex/dec record numbers
+	dw	offset tog_record
+	db	ctrl_j			; help 'command options'
+	dw	offset com_option
+	db	'H'			; hard copy
+	dw	offset print_record
+	db	'C'			; close file
+	dw	offset close_file
+	db	'Q'			; quit to cdos
+	dw	offset close_file
+	db	'F'			; fill hex/ascii string
+	dw	offset fill_com
+	db	'A'			; amend hex/ascii data
+	dw	offset amend_com
+	db	'S'			; search hex/ascii string
+	dw	offset search_com
+	db	0			; end of command table
+
+filtbl	rs	0			; fill command table
+
+	db	'A'			; fill ascii string
+	dw	offset fill_ascii
+	db	'H'			; fill hex string
+	dw	offset fill_hex
+	db	ctrl_j			; help 'fill options'
+	dw	offset fill_opt
+	db	cr			; exit fill
+	dw	offset fill_exit
+	db	esc			; exit fill
+	dw	offset fill_exit
+	db	0			; end of command table
+
+amntbl	rs	0			; amendment command table
+
+	db	ctrl_e			; cursor up
+	dw	offset amend_up
+	db	ctrl_x			; cursor down
+	dw	offset amend_down
+	db	ctrl_s			; cursor left
+	dw	offset amend_left
+	db	ctrl_d			; cursor right
+	dw	offset amend_right
+	db	bac			; undo amendment
+	dw	offset amend_bac
+	db	tab			; toggle hex/ascii data
+	dw	offset amend_toggle
+	db	ctrl_t			; toggle hex/dec record numbers
+	dw	offset tog_record
+	db	ctrl_j			; help 'amend options'
+	dw	offset amend_opt
+	db	cr			; exit amend
+	dw	offset amend_exit
+	db	esc			; exit amend
+	dw	offset amend_exit
+	db	0			; end of command table
+
+srctbl	rs	0			; search string command table
+
+	db	'A'			; string search (ascii)
+	dw	search_data
+	db	'H'			; string search (hex)
+	dw	search_data
+	db	'R'			; string search (repeat)
+	dw	search_next
+	db	'E'			; toggle error reporting on/off
+	dw	search_err
+;*	db	'D'			; toggle direction forward/backward
+;*	dw	search_dir
+	db	'C'			; toggle case sensitive on/off
+	dw	search_case
+	db	ctrl_j			; help 'search options'
+	dw	search_opt
+	db	cr			; exit search routine
+	dw	search_exit
+	db	esc			; exit search routine
+	dw	search_exit
+	db	0			; end of command table
+
+;----------------------------------------
+
+pfvtbl	db	',.:;|<>/=?* ',0	; invalid filename chr table
+
+;----------------------------------------
+;
+; general work areas
+;
+cpmver		dw	0		; cpm/cdos bdos version
+
+defdrv		db	0		; default drive
+defusr		db	0		; default user number
+defdir		db	'\'		; defualt directory (from root)
+		rs	64		; default directory buffer
+reqdrv		db	0		; required drive
+requsr		db	0		; required user number
+reqfle		rs	11		; requested filename
+reqpas		rs	11		; requested password
+
+flesiz		rs	3		; file size (records)
+strrec		rs	3		; stream record
+stroff		dw	0		; stream offset
+
+srcopt		db	0		; search command
+srclen		dw	0		; search string length
+srcstr		rs	17		; search input buffer
+srcdat		rs	16		; search data string
+srccmp		rs	16		; search comparison string
+
+;----------------------------------------
+
+inpraw		db	0		; raw input mode
+chrout		db	0		; chr output mode
+
+inpmax		db	0		; maximum input count
+inpmin		db	0		; minimum input count
+inplen		db	0		; current input length
+inppos		db	0		; current input position
+inpflg		db	0		; input flags
+inpbuf		rs	128		; keyboard input buffer
+
+lstfle		rs	80		; last filename store
+
+;----------------------------------------
+
+parlin		dw	0		; parse line offset
+pthcnt		dw	0		; path counter
+
+dostbl		rs	8		; fdos parameter table
+
+dislin		db	0		; display line number
+dmaofs		dw	0		; offset within dma buffer
+
+txtlin		rs	50		; text display line
+
+tmpbyt		db	0		; temporary byte storage
+tmpwrd		dw	0		; temporary word storage
+tmprec		rs	3		; temporary record storeage
+tmpbuf		rs	512		; temporary buffer
+					; (fill, amend, parse)
+
+bcd64k		db	00h,06h,55h,36h	; bcd 65536 (constant)
+bcdwk1		rs	4		; bcd work area 1
+bcdwk2		rs	4		; bcd work area 2
+bcdwk3		rs	4		; bcd work area 3 (result)
+
+;----------------------------------------
+;
+; flag bytes (default values set)
+;
+fcomm	db	0			; parse command line
+fmtyp	db	0			; dos or cpm media
+fuser	db	0			; user number specified
+fpath	db	0			; path specified
+froot	db	0			; root directory specified
+faxis	db	0			; axis (lower case) data file
+frdwr	db	0			; read write file
+fhxdc	db	0			; hex or decimal numbers
+fhxas	db	0			; hex or ascii data amendment
+fhilo	db	0			; high or low nibble
+fstat	db	0			; status messages required
+fichr	db	0			; string insert chr
+frerr	db	0			; read error status
+fwerr	db	0			; write error status
+fwrit	db	0			; record(s) written
+fidat	db	0			; inverted data
+fsdir	db	0			; search direction
+fscas	db	1			; search case sensitive
+fsnxt	db	0			; search next allowed
+;fstyp	db	0			; search type
+fster	db	1			; stream error reports on or off
+fstfa	db	0			; stream failed or aborted
+flsmd	db	0			; license message displayed
+
+	db	0			; spare
+
+;----------------------------------------
+
+	end

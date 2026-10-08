@@ -11,6 +11,7 @@ Used as a soak testing and source for https://github.com/tsupplis/cpm86-crossdev
 | ansi2kr | ANSI C to K&R C converter for BDS C and MSX-C | masakioba / upstream ansi2kr sources | BSD 2-Clause |
 | dc | Arbitrary precision reverse Polish desk calculator | Plan 9 / Unix Research Edition dc | MIT |
 | filer | VFILER, a full-screen file manager | ZCPR2 VFILER by Rich Conn, CP/M-86 translation by H. M. Van Tassell | Public domain / Abandonware |
+| fv | FileView, view and amend a file in hex and ASCII | Stephen Hunt | Public domain |
 | grep | Search a file for a pattern | RetroBSD / DiscoBSD, originally Berkeley grep | BSD 3-Clause |
 | lispc | Minimal Lisp interpreter written in C | Johan Fjeldtvedt | MIT |
 | tinybas | Tiny BASIC interpreter | Classic Tiny BASIC sources | Public domain / Abandonware |
