@@ -28,6 +28,22 @@ environments.
 
 VERSION LIST, most recent version first
 
+08/Oct/26 Version 1.1 for Aztec C86, with fixes and features taken
+	  from the MS-DOS ports of "lar" (lar 1.3 by T. Bonfield and
+	  R. McVay, lar 2.2 by P.H. Mack):
+	  - wildcards (* and ?) in member names; for u/a they are
+	    expanded against the disk directory
+	  - the library type defaults to .LBR
+	  - a (add) and l (list) as LU-style aliases for u and t
+	  - a leading - on the key is accepted
+	  - reports whether each member is added or replaced
+	  - a drive prefix is no longer stored in member names
+	  - asking for n slots gives n members plus the directory
+	  - reorganize no longer fails when the new library is
+	    exactly full
+	  - file I/O does not depend on seeking to the end of a file,
+	    which CP/M cannot do reliably for a file being written
+
 09/Aug/84 Minor modifications to Stephen Hemmingers UNIX
           "lar" program. DRC always returns command line
 	  arguments in lower case (how's that for counter
@@ -57,7 +73,7 @@ Stephen Hemminger,  Mitre Corp. Bedford MA
 */
 
 /*
- * Lar - LU format library file maintainer
+ * Lar - LUU format library file maintainer
  * by Stephen C. Hemminger
  *	linus!sch	or	sch@Mitre-Bedford
  *
@@ -107,6 +123,11 @@ Stephen Hemminger,  Mitre Corp. Bedford MA
 #include <stdio.h>
 #include <ctype.h>
 
+#ifdef AZTEC
+#define fopenb	fopen	/* Aztec getc/putc/fread/fwrite are already binary */
+#define rewind(f)	fseek(f, 0L, 0)
+#endif
+
 #define ACTIVE	00
 #define UNUSED	0xff
 #define DELETED 0xfe
@@ -119,7 +140,7 @@ Stephen Hemminger,  Mitre Corp. Bedford MA
 #define equal(s1, s2) ( strcmp(s1,s2) == 0 )
 
 #define VERS 1		/* major revision number */
-#define REV 0		/* minor revision number */
+#define REV 1		/* minor revision number */
 
 /* if you don't have void type just define as blank */
 
@@ -144,7 +165,7 @@ typedef struct {
 
 /* convert word to int */
 
-#define wtoi(w) ( (w.hibyte<<8) + w.lobyte)
+#define wtoi(w) ( ((w.hibyte & 0xff)<<8) + (w.lobyte & 0xff) )
 #define itow(dst,src)	dst.hibyte = (src & 0xff00) >> 8;\
 				dst.lobyte = src & 0xff;
 
@@ -158,10 +179,11 @@ struct ludir {			/* Internal library ldir structure */
 } ldir[MAXFILES];
 
 int     errcnt, nfiles, nslots;
+int	endsec;			/* first free sector at the end of the library */
 bool	verbose = false;
 char	*cmdname;
 
-char   *getname(), *sprintf();
+char   *getname(), *sprintf(), *nopath(), *index(), *strcat(), *fgets();
 int	update(), reorg(), table(), extract(), print(), delete();
 
 
@@ -172,6 +194,7 @@ char  **argv;
 {
     register char *flagp;
     char   *aname;			/* name of library file */
+    static char libname[20];
     int	   (*function)() = NULL;	/* function to do on library */
 /* set the function to be performed, but detect conflicts */
 #define setfunc(val)	if(function != NULL) conflict(); else function = val
@@ -179,7 +202,7 @@ char  **argv;
 #ifdef UNIX
     cmdname = argv[0];
 #else
-    cmdname = "LU";
+    cmdname = "LUU";
 
     printf ("\n%s - library maintenance utility, CP/M-86 version %d.%d\n\n",
      cmdname,VERS,REV);
@@ -191,19 +214,24 @@ char  **argv;
 #ifdef UNIX
     aname = argv[2];
 #else
-    ucase (aname,argv[2]);	/* get library name /*
+    aname = libname;
+    ucase (aname,argv[2]);	/* get library name */
+    if (index (nopath (aname), '.') == NULL)
+	VOID strcat (aname, ".LBR");
 #endif /* UNIX */
 
     filenames (argc, argv);
 
     for(flagp = argv[1]; *flagp; flagp++)
-	switch (*flagp) {
+	switch (isupper(*flagp) ? *flagp - 'A' + 'a' : *flagp) {
 	case '-':
 		break;
 	case 'u': 
+	case 'a':
 	    setfunc(update);
 	    break;
 	case 't': 
+	case 'l':
 	    setfunc(table);
 	    break;
 	case 'e': 
@@ -235,15 +263,16 @@ char  **argv;
 
 /* print error message and exit */
 help () {
-    fprintf (stderr, "Usage: %s {utepdr}[v] library [files] ...\n", cmdname);
-    fprintf (stderr, "Functions are:\n\tu - Update, add files to library\n");
-    fprintf (stderr, "\tt - Table of contents\n");
+    fprintf (stderr, "Usage: %s [-]{utepdr}[v] library[.LBR] [files] ...\n", cmdname);
+    fprintf (stderr, "Functions are:\n\tu - Update, add files to library (or a)\n");
+    fprintf (stderr, "\tt - Table of contents (or l)\n");
     fprintf (stderr, "\te - Extract files from library\n");
     fprintf (stderr, "\tp - Print files in library\n");
     fprintf (stderr, "\td - Delete files in library\n");
     fprintf (stderr, "\tr - Reorginize library\n");
 
     fprintf (stderr, "Flags are:\n\tv - Verbose\n");
+    fprintf (stderr, "Files may use the * and ? wildcards.\n");
     exit (1);
 }
 
@@ -262,10 +291,14 @@ char   *str;
 cant (name)
 char   *name;
 {
+#ifdef AZTEC
+    fprintf (stderr, "%s: can't open\n", name);
+#else
     extern int  errno;
     extern char *sys_errlist[];
 
     fprintf (stderr, "%s: %s\n", name, sys_errlist[errno]);
+#endif
     exit (1);
 }
 
@@ -281,7 +314,8 @@ char  **av;
 #ifdef UNIX
 	fname[i] = av[i + 3];
 #else
-	ucase (fname[i],av[i + 3]);
+	fname[i] = av[i + 3];
+	ucase (fname[i],fname[i]);
 #endif /* UNIX */
 
 	ftouched[i] = false;
@@ -317,7 +351,7 @@ char   *lib;
     }
 
     for (i = 1; i < nslots; i++)
-	switch(ldir[i].l_stat) {
+	switch(ldir[i].l_stat & 0xff) {
 	case ACTIVE:
 		active++;
 		uname = getname(ldir[i].l_name, ldir[i].l_ext);
@@ -357,8 +391,26 @@ FILE *f;
 
     nslots = wtoi (ldir[0].l_len) * SLOTS_SEC;
 
-    if (fread ((char *) & ldir[1], DSIZE, nslots, f) != nslots)
+    if (fread ((char *) & ldir[1], DSIZE, nslots - 1, f) != nslots - 1)
 	error ("Can't read directory - is it a library?");
+}
+
+/*
+ * End of the library in sectors, from the directory. Seeking to the end of
+ * the file is not reliable on CP/M: the size of a file that is open for
+ * writing is not known until it is closed.
+ */
+libend ()
+{
+    register int    i, n, e;
+
+    for (e = i = 0; i < nslots; i++)
+	if (ldir[i].l_stat == ACTIVE) {
+	    n = wtoi (ldir[i].l_off) + wtoi (ldir[i].l_len);
+	    if (n > e)
+		e = n;
+	}
+    return e;
 }
 
 putdir (f)
@@ -395,7 +447,7 @@ FILE *f;
 	    break;
     }
 
-    numsecs = nslots / SLOTS_SEC;
+    numsecs = (nslots + 1 + SLOTS_SEC - 1) / SLOTS_SEC;	/* + directory */
     nslots = numsecs * SLOTS_SEC;
 
     for (i = 0; i < nslots; i++)
@@ -474,12 +526,108 @@ char   *name;
 	return 1;
 
     for (i = 0; i < nfiles; i++)
-	if (equal (name, fname[i])) {
+	if (match (name, fname[i])) {
 	    ftouched[i] = true;
 	    return 1;
 	}
 
     return 0;
+}
+
+/* nopath - skip a d: drive prefix */
+char   *nopath (name)
+char   *name;
+{
+    return name[0] && name[1] == ':' ? name + 2 : name;
+}
+
+/* tofcb - name to the 11 character FCB form, * becomes ? */
+tofcb (fcb, name)
+char   *fcb, *name;
+{
+    register int    i;
+
+    name = nopath (name);
+    for (i = 0; i < 11; i++)
+	fcb[i] = ' ';
+    for (i = 0; i < 8 && *name && *name != '.'; name++)
+	if (*name == '*')
+	    while (i < 8)
+		fcb[i++] = '?';
+	else
+	    fcb[i++] = islower (*name) ? toupper (*name) : *name;
+    while (*name && *name != '.')
+	name++;
+    if (*name == '.')
+	name++;
+    for (i = 8; i < 11 && *name; name++)
+	if (*name == '*')
+	    while (i < 11)
+		fcb[i++] = '?';
+	else
+	    fcb[i++] = islower (*name) ? toupper (*name) : *name;
+}
+
+/* match - does name match pattern, with ? wildcards */
+match (name, pat)
+char   *name, *pat;
+{
+    char    nf[11], pf[11];
+    register int    i;
+
+    tofcb (nf, name);
+    tofcb (pf, pat);
+    for (i = 0; i < 11; i++)
+	if (pf[i] != '?' && pf[i] != nf[i])
+	    return 0;
+    return 1;
+}
+
+/* wild - does name have wildcards */
+wild (name)
+register char   *name;
+{
+    for (; *name; name++)
+	if (*name == '*' || *name == '?')
+	    return 1;
+    return 0;
+}
+
+/*
+ * expand - names of the disk files matching pat, with its drive prefix,
+ * via BDOS search first/next. Returns the number found, at most max.
+ */
+expand (pat, names, max)
+char   *pat;
+char    names[][16];
+int     max;
+{
+    char    fcb[36], dma[128];
+    register char  *dp, *cp;
+    register int    i, n, rc;
+
+    for (i = 0; i < 36; i++)
+	fcb[i] = 0;
+    if (pat[0] && pat[1] == ':')
+	fcb[0] = (islower (pat[0]) ? toupper (pat[0]) : pat[0]) - 'A' + 1;
+    tofcb (fcb + 1, pat);
+
+    bdos (26, dma);			/* set DMA */
+    for (n = 0, rc = bdos (17, fcb); rc != 255 && n < max; rc = bdos (18, fcb)) {
+	dp = dma + (rc & 3) * 32;
+	cp = names[n++];
+	if (pat != nopath (pat)) {
+	    *cp++ = pat[0];
+	    *cp++ = ':';
+	}
+	for (i = 1; i < 9 && (dp[i] & 0x7f) != ' '; i++)
+	    *cp++ = dp[i] & 0x7f;
+	*cp++ = '.';
+	for (i = 9; i < 12 && (dp[i] & 0x7f) != ' '; i++)
+	    *cp++ = dp[i] & 0x7f;
+	*cp = '\0';
+    }
+    return n;
 }
 
 not_found () {
@@ -548,7 +696,11 @@ FILE *fdi, *fdo;
 register unsigned int nsecs;
 {
     register int    i, c;
+#ifdef AZTEC
+    int	    textfile = 0;	/* CP/M files are whole sectors: keep the ^Z */
+#else
     int	    textfile = 1;
+#endif
 
     while( nsecs-- != 0) 
 	for(i=0; i<SECTOR; i++) {
@@ -571,7 +723,9 @@ update (name)
 char   *name;
 {
     FILE *lfd;
-    register int    i;
+    register int    i, j;
+    int     n;
+    static char names[MAXFILES][16];
 
     if ((lfd = fopenb (name, "r+")) == NULL) {
 	if ((lfd = fopenb (name, "w+")) == NULL)
@@ -580,11 +734,22 @@ char   *name;
     }
     else
 	getdir (lfd);		/* read old directory */
+    endsec = libend ();
 
     if(verbose)
 	    fprintf (stderr,"Updating files:\n");
     for (i = 0; i < nfiles; i++)
-	addfil (fname[i], lfd);
+	if (wild (fname[i])) {
+	    n = expand (fname[i], names, MAXFILES);
+	    if (n == 0) {
+		fprintf (stderr, "%s: no match\n", fname[i]);
+		errcnt++;
+	    }
+	    for (j = 0; j < n; j++)
+		addfil (names[j], lfd);
+	}
+	else
+	    addfil (fname[i], lfd);
     if (errcnt == 0)
 	putdir (lfd);
     else
@@ -605,28 +770,33 @@ FILE *lfd;
 	errcnt++;
 	return;
     }
-    if(verbose)
-        fprintf(stderr, "%s\n", name);
-    for (i = 0; i < nslots; i++) {
-	if (equal( getname (ldir[i].l_name, ldir[i].l_ext), name) ) /* update */
+    for (i = 1; i < nslots; i++) {
+	if (ldir[i].l_stat == ACTIVE &&
+	    match (getname (ldir[i].l_name, ldir[i].l_ext), name)) {
+	    fprintf (stderr, "Replacing %s\n", nopath (name));
 	    break;
-	if (ldir[i].l_stat != ACTIVE)
-		break;
+	}
+	if (ldir[i].l_stat != ACTIVE) {
+	    fprintf (stderr, "Adding %s\n", nopath (name));
+	    break;
+	}
     }
     if (i >= nslots) {
 	fprintf (stderr, "%s: can't add library is full\n",name);
 	errcnt++;
+	VOID fclose (ifd);
 	return;
     }
 
     ldir[i].l_stat = ACTIVE;
-    putname (ldir[i].l_name, name);
-    VOID fseek(lfd, 0L, 2);		/* append to end */
-    secoffs = ftell(lfd) / SECTOR;
+    putname (ldir[i].l_name, nopath (name));
+    secoffs = endsec;		/* append to end */
+    VOID fseek(lfd, (long) secoffs * SECTOR, 0);
 
     itow (ldir[i].l_off, secoffs);
     numsecs = fcopy (ifd, lfd);
     itow (ldir[i].l_len, numsecs);
+    endsec += numsecs;
     VOID fclose (ifd);
 }
 
@@ -682,10 +852,14 @@ char  *name;
     FILE *olib, *nlib;
     int oldsize;
     register int i, j;
-    struct ludir odir[MAXFILES];
+    static struct ludir odir[MAXFILES];
     char tmpname[SECTOR];
+    register char *cp, *dp;
 
-    VOID sprintf(tmpname,"%-10.10s.TMP", name);
+    /* same drive and name as the library, with a .$$$ type */
+    for (cp = tmpname, dp = name; *dp && *dp != '.';)
+	*cp++ = *dp++;
+    VOID strcpy(cp, ".$$$");
 
     if( (olib = fopenb(name,"r")) == NULL)
 	cant(name);
@@ -699,19 +873,20 @@ char  *name;
 	    copymem( (char *) &odir[i], (char *) &ldir[i],
 			sizeof(struct ludir));
     initdir(nlib);
+    endsec = libend();
     errcnt = 0;
 
     for (i = j = 1; i < oldsize; i++)
 	if( odir[i].l_stat == ACTIVE ) {
-	    if(verbose)
-		fprintf(stderr, "Copying: %-8.8s.%3.3s\n",
-			odir[i].l_name, odir[i].l_ext);
-	    copyentry( &odir[i], olib,  &ldir[j], nlib);
-	    if (++j >= nslots) {
+	    if (j >= nslots) {
 		errcnt++;
 		fprintf(stderr, "Not enough room in new library\n");
 		break;
 	    }
+	    if(verbose)
+		fprintf(stderr, "Copying: %s\n",
+			getname(odir[i].l_name, odir[i].l_ext));
+	    copyentry( &odir[i], olib,  &ldir[j++], nlib);
         }
 
     VOID fclose(olib);
@@ -741,12 +916,13 @@ FILE *of, *nf;
     copymem(new->l_name, old->l_name, 8);
     copymem(new->l_ext, old->l_ext, 3);
     VOID fseek(of, (long) wtoi(old->l_off)*SECTOR, 0);
-    VOID fseek(nf, 0L, 2);
-    secoffs = ftell(nf) / SECTOR;
+    secoffs = endsec;
+    VOID fseek(nf, (long) secoffs * SECTOR, 0);
 
     itow (new->l_off, secoffs);
     numsecs = wtoi(old->l_len);
     itow (new->l_len, numsecs);
+    endsec += numsecs;
 
     while(numsecs-- != 0) {
 	if( fread( buf, 1, SECTOR, of) != SECTOR)
