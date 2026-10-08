@@ -25,6 +25,8 @@ z80.cmd: z80.h86
 	$(GENCMD) $< 'extra[MC00]'
 	$(CMDINFO) $@ 
 
+z80.h86: z80.a86 jumpaddr.z80 edaddr.z80 cbaddr.z80 code8086.z80 codecb.z80 codeed.z80
+
 %.obj: %.a86
 	$(RASM86) $<
 

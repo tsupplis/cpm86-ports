@@ -88,10 +88,15 @@ Programs must go through addresses 0 and 5 only; the BIOS jump table is off
 limits except for CONIN, CONOUT, CONST and LIST. The original documentation's own
 assessment: *"has more bugs than the Jersey swamps."*
 
-**This does not currently build.** `cpm86_asm86` produces an empty `.h86`, so
-`z80.cmd` has no code segment. The `PAGEWIDTH` and `TITLE` lines at the top are
-RASM86 directives that DRI's ASM86 doesn't accept. Building it via the
-`RASM86` + `LINK86` path the Makefile already defines would be the fix.
+The opcode handlers and dispatch tables live in six include files:
+`jumpaddr.z80`, `edaddr.z80`, `cbaddr.z80`, `code8086.z80`, `codecb.z80` and
+`codeed.z80`. Each must end with a `^Z`, or ASM86 reads the padding of the last
+128-byte record as source and reports `ILLEGAL FIRST ITEM`.
+
+Z80 is a compact-model program: code, data (base page FCB/TBUF, emulated
+registers, BIOS image) and the 48K CP/M-80 TPA in the extra segment. Build it
+with `GENCMD Z80 EXTRA[MC00]`, **not** with the `8080` switch. That drops the
+data group and makes the loader ignore `EXTRA`, and the emulator crashes.
 
 ## CPUID — processor detection
 
