@@ -27,6 +27,7 @@
 #define LBSIZE  BUFSIZ
 #define ESIZE   256
 #define NBRA    9
+#define PAGELEN 23
 
 void    compile(char *);
 void    execute(char *);
@@ -36,6 +37,8 @@ int     ecmp(char *, char *, int);
 void    errexit(char *, char *);
 void    casefold(char *);
 void    usage(int);
+void    pageline(void);
+void    conputs(char *);
 
 char    expbuf[ESIZE];
 long    lnum;
@@ -52,6 +55,8 @@ int hflag   = 1;
 int sflag;
 int yflag;
 int wflag;
+int pflag;
+int plines;
 int retcode = 0;
 int circf;
 int blkno;
@@ -91,6 +96,10 @@ char **argv;
 
         case 'w':
             wflag++;
+            continue;
+
+        case 'p':
+            pflag++;
             continue;
 
         case 'h':
@@ -520,6 +529,7 @@ char *f;
     if (lflag) {
         printf("%s\n", f);
         fflush(stdout);
+        pageline();
         fseek(stdin, 0l, 2);
         return;
     }
@@ -531,6 +541,37 @@ char *f;
         printf("%ld:", lnum);
     printf("%s\n", linebuf);
     fflush(stdout);
+    pageline();
+}
+
+/*
+ * With -p, wait for a key after every PAGELEN lines of output (there are no
+ * pipes to feed a pager). The prompt goes straight to the console through
+ * BDOS direct console I/O, which also reads the key, so redirected output
+ * and input files are left alone. ^C leaves.
+ */
+void
+pageline()
+{
+    int c;
+
+    if (!pflag || ++plines < PAGELEN)
+        return;
+    plines = 0;
+    conputs("-- Press a key to continue, ^C to quit --");
+    while ((c = bdos(6, 0xFF) & 0xFF) == 0)
+        continue;
+    conputs("\r                                        \r");
+    if (c == 3)
+        exit(nsucc == 0);
+}
+
+void
+conputs(s)
+char *s;
+{
+    while (*s)
+        bdos(2, *s++);
 }
 
 int
@@ -605,13 +646,14 @@ usage(rc)
 int rc;
 {
     fprintf(stderr, "grep - print lines matching a pattern\n");
-    fprintf(stderr, "usage: grep [-bchilnsvwy] [-e] pattern [file ...]\n\n");
+    fprintf(stderr, "usage: grep [-bchilnpsvwy] [-e] pattern [file ...]\n\n");
     fprintf(stderr, "-b  show the block number of each match\n");
     fprintf(stderr, "-c  print only a count of matching lines\n");
     fprintf(stderr, "-h  never prefix output lines with the file name\n");
     fprintf(stderr, "-i  ignore case (same as -y)\n");
     fprintf(stderr, "-l  print only the names of files that match\n");
     fprintf(stderr, "-n  prefix each line with its line number\n");
+    fprintf(stderr, "-p  pause after %d lines until a key is pressed\n", PAGELEN);
     fprintf(stderr, "-s  print nothing, only set the exit status\n");
     fprintf(stderr, "-v  print the lines that do NOT match\n");
     fprintf(stderr, "-w  match only whole words\n");

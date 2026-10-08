@@ -10,7 +10,7 @@ provided; there is no `egrep` or `fgrep` in this port.
 ## Synopsis
 
 ```
-grep [-bcehilnsvwy?] expression [file ...]
+grep [-bcehilnpsvwy?] expression [file ...]
 ```
 
 With no file argument the console is read.
@@ -26,6 +26,7 @@ With no file argument the console is read.
 | `-i` | Ignore the case of letters when comparing (same as `-y`). |
 | `-l` | List the names of the files that contain a match, once each. |
 | `-n` | Each line is preceded by its line number in the file. |
+| `-p` | Pause after 23 lines of output until a key is pressed (`^C` quits); CP/M-86 has no pipes to a pager. |
 | `-s` | Silent: print nothing, only set the exit status. |
 | `-v` | Print all lines *except* those matching. |
 | `-w` | Search for the expression as a whole word. |
@@ -107,6 +108,11 @@ make test     # run the regression suite under emu2
 make clean
 ```
 
+The regression suite runs with no console input, so it does not cover `-p`:
+the prompt would wait forever for a key. Check it by hand on a real console or
+under `emu2` with a tty, e.g. `grep -p line file` on a file with more than 23
+matching lines (any key continues, `^C` quits).
+
 See https://github.com/tsupplis/cpm86-crossdev for the cross-development
 environment.
 
@@ -120,6 +126,8 @@ environment.
 - Option letters are folded so that the upper case command tail works.
 - The `%` case layer described above was added; it has no counterpart in the
   original.
+- The `-p` pause option was added because CP/M-86 has no pipes to a pager. It
+  reads its key through BDOS direct console I/O (function 6).
 
 ## Bugs
 
