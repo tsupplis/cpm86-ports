@@ -202,7 +202,7 @@ char  **argv;
 #ifdef UNIX
     cmdname = argv[0];
 #else
-    cmdname = "LUU";
+    cmdname = "LU86";
 
     printf ("\n%s - library maintenance utility, CP/M-86 version %d.%d\n\n",
      cmdname,VERS,REV);
