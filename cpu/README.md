@@ -1,12 +1,14 @@
-# cpm80
+# cpu
 
-Running 8080 code on CP/M-86 — by translating it, or by emulating the 8080.
+Processor tools for CP/M-86: running 8080 code — by translating it, or by
+emulating the 8080 — and identifying the CPU the system runs on.
 
 | File | What it does | Needs |
 | --- | --- | --- |
 | `80x86.cmd` | translates 8080 `.ASM` source to 8086 `.A86` source | — |
 | `vcpm.cmd` | runs CP/M-80 `.CPM` binaries in the V20's 8080 mode | NEC V20 / V30 |
 | `z80.cmd` | interprets 8080 binaries in software | — |
+| `cpuid.cmd` | reports the processor type: 8088, 8086, 286 or 386+ | — |
 
 The two emulators expect the 8-bit program renamed from `.COM` to `.CPM`, so it
 doesn't collide with CP/M-86's own `.CMD`.
@@ -91,9 +93,36 @@ assessment: *"has more bugs than the Jersey swamps."*
 RASM86 directives that DRI's ASM86 doesn't accept. Building it via the
 `RASM86` + `LINK86` path the Makefile already defines would be the fix.
 
+## CPUID — processor detection
+
+Richard C. Leinecker; rewritten as a stand-alone program and translated to
+CP/M-86 by Kirk Lawrence.
+
+    CPUID
+
+Prints which processor the machine contains, using the classic flag and
+prefetch-queue tests:
+
+- **8088 / 8086 vs 286+** — FLAGS bits 12–15 always read back as 1 on the
+  8088/8086, and can be cleared on a 286 or later
+- **8088 vs 8086** — self-modifying code 5 bytes ahead of IP takes effect only
+  on the 8088, whose prefetch queue is 4 bytes instead of 6
+- **286 vs 386+** — only a 386 or later keeps the NT/IOPL bits (`7000h`) set in
+  FLAGS
+
+A small 8080-model program (CS = DS = ES), built with a plain `GENCMD`.
+
+The source also contains an NEC V20/V30 check: Intel CPUs lose the `REP` prefix
+when a `REP LOCK LODSB` is interrupted, while NEC CPUs don't. **That check never
+runs as written.** It is only called on the 286+ branch, but a V20/V30 takes the
+8088/8086 branch because its FLAGS bits 12–15 behave like the 8086's. Its
+result is then overwritten, and the `veetwen` message is never printed. So a
+V20 is reported as an 8088 and a V30 as an 8086. Also, on a 386 or later,
+`LOCK LODSB` raises an invalid-opcode exception.
+
 ## Building
 
-    make            # 80x86.cmd, vcpm.cmd, z80.cmd
+    make            # 80x86.cmd, vcpm.cmd, z80.cmd, cpuid.cmd
     make test       # build a disk image and boot it under PCE
 
 `make test` needs `cpmtools` for the image and `pce-ibmpc` for the emulator;
@@ -118,6 +147,8 @@ None of this is open source; it is 1980s hobbyist code preserved as found.
 - **VCPM** — Copyright © 1988 Stephen Hunt. No grant, but no restrictions stated
   either.
 - **Z80** — no notice at all.
+- **CPUID** — marked freeware by its banner (Richard C. Leinecker, CP/M-86
+  version by Kirk Lawrence).
 
 Two other V20 emulators were considered and left out on licensing grounds:
 Thomas M. Langley's **SWV20** (1986), which supports Concurrent DOS and CompuPro

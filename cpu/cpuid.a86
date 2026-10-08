@@ -1,0 +1,192 @@
+;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;  Detect the Processor Type -- by Richard C. Leinecker                 ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;
+; This routine, as written by the original author, returned the processor
+; type as an integer value for use as a C language Prototype.
+;
+;  Rewritten to generic assembly language, redesigned as a stand-alone pro-
+;  cessor detection program, and translated to CP/M-86 by Kirk Lawrence.
+;
+        cseg                    ;start of code segment
+        org     100h            ;leave room for base page
+        jmp     start           ;go get to the good stuff
+;
+msg     db      '$'
+etyet   db      '8088$'
+etysx   db      '8086$'
+v20     db      'V20$'
+v30     db      'V30$'
+twoet   db      '286$'
+thret   db      '86$'
+noway   db      'Unknown$'
+;
+thatsall:
+        mov     cl,9            ;function 9 - print string
+        int     224             ;call BDOS
+        xor     cx,cx           ;function 0 - reset system
+        int     224             ;call BDOS
+start:
+        push    bp              ; Preserve bp
+        mov     bp,sp           ; bp = sp
+        push    ds              ; Preserve ds
+        push    di              ; and di
+        mov     ax,cs           ; Point ds
+        mov     ds,ax           ; to _PTEXT
+        call    IsItAn8088      ; Returns 0 or 2
+        cmp     al,2            ; 2 = 286 or better
+        je      AtLeast286      ; Go to 286 and above code
+        call    IsItAn8086      ; Returns 0 or 1
+        call    IsItANec        ; Adds 4 for a V20 or V30
+        jmp     ExitProcessor   ; Jump to exit code
+;
+AtLeast286:
+        call    IsItA286        ; See if it's a 286
+;
+ExitProcessor:
+        pop     di              ; Restore di,
+        pop     ds              ; ds,
+        pop     bp              ; and bp
+        push    ax
+        mov     cl,9
+        mov     dx,offset msg
+        int     224
+        pop     ax
+        cmp     ax,0            ;is it an 8088?
+        je      eightyeight     ;yes
+        cmp     ax,1            ;is it an 8086?
+        je      eightysix       ;yes
+        cmp     ax,2            ;is it a 286?
+        je      twoetysix       ;yes
+        cmp     ax,3            ;is it a 386 or higher?
+        je      threetysix      ;yes
+        cmp     ax,4            ;is it a V20?
+        je      veetwen         ;yes
+        cmp     ax,5            ;is it a V30?
+        je      veethirty       ;yes
+        mov     dx,offset noway ;odd value returned, unidentified
+        jmp     thatsall
+eightyeight:
+        mov     dx,offset etyet
+        jmp     thatsall
+eightysix:
+        mov     dx,offset etysx
+        jmp     thatsall
+twoetysix:
+        mov     dx,offset twoet
+        jmp     thatsall
+threetysix:
+        mov     dx,offset thret
+        jmp     thatsall
+veetwen:
+        mov     dx,offset v20
+        jmp     thatsall
+veethirty:
+        mov     dx,offset v30
+        jmp     thatsall
+;
+; Is It an 8088?
+; Returns al==0 for 8088/8086, al==2 for 80286 and above
+IsItAn8088:
+        pushf                   ; Preserve the flags
+        pushf                   ; Push the flags so
+        pop     bx              ; we can pop them into bx
+        and     bx,00fffh       ; Mask off bits 12-15
+        push    bx              ; and put it back on the stack
+        popf                    ; Pop value back into the flags
+        pushf                   ; Push it back. 8088/8086 will
+                                ; have bits 12-15 set
+        pop     bx              ; Get value into bx 
+        and     bx,0f000h       ; Mask all but bits 12-15
+        sub     ax,ax           ; Set ax to 8088 value
+        cmp     bx,0f000h       ; See if the bits are still set
+        je      Not286          ; Jump if not
+        mov     al,2            ; Set for 286 and above
+Not286:
+        popf                    ; Restore the flags
+        ret                     ; Return to caller
+;
+; Is It an 8086?
+; Returns ax==0 for 8088, ax==1 for 8086
+; Code takes advantage of the 8088's 4-byte prefetch queues and 8086's
+; 6-byte prefetch queues. By self-modifying the code at a location exactly 5 
+; bytes away from IP, and determining if the modification took effect,
+; you can differentiate between 8088s and 8086s.
+; The rep stosb overwrites EndLabel and the two bytes before it, the last
+; of which is the inc dx. The 8086 has already fetched the inc dx and runs
+; it; the 8088 hasn't, and runs the nop that replaced it.
+IsItAn8086:
+        mov     ax,cs           ; es == code segment
+        mov     es,ax
+        std                     ; Cause stosb to count backwards
+        mov     dx,0            ; dx is flag and we'll start at 0
+        mov     di,OFFSET EndLabel ; di==offset of code tail to modify
+        mov     al,090h         ; al==nop instruction opcode
+        mov     cx,3            ; Set for 3 repetitions
+        rep     stosb           ; Store the bytes
+        cld                     ; Clear the direction flag
+        nop                     ; Three nops in a row
+        nop                     ; provide dummy instructions
+        nop                     ;
+        inc     dx              ; 5th byte: increment flag (only with 8086)
+        nop                     ; dummy instruction--6 bytes
+EndLabel:
+        nop
+        mov     ax,dx           ; Store the flag in ax
+        ret                     ; Back to caller
+;
+; Is It an 80286?
+; Determines whether processor is a 286 or higher. Going into subroutine ax = 2
+; If the processor is a 386 or higher, ax will be 3 before returning. The
+; method is to set ax to 7000h which represent the 386/486 NT and IOPL bits
+; This value is pushed onto the stack and popped into the flags (with popf).
+; The flags are then pushed back onto the stack (with pushf). Only a 386 or 486
+; will keep the 7000h bits set. If it's a 286, those bits aren't defined and 
+; when the flags are pushed onto stack these bits will be 0. Now, when ax is 
+; popped these bits can be checked. If they're set, we have a 386 or 486.
+IsItA286:
+        pushf                   ; Preserve the flags
+        mov     ax,7000h        ; Set the NT and IOPL flag
+                                ; bits only available for
+                                ; 386 processors and above
+        push    ax              ; push ax so we can pop 7000h
+                                ; into the flag register
+        popf                    ; pop 7000h off of the stack
+        pushf                   ; push the flags back on
+        pop     ax              ; get the pushed flags
+                                ; into ax
+        and     ah,70h          ; see if the NT and IOPL
+                                ; flags are still set
+        mov     ax,2            ; set ax to the 286 value
+        jz      yes286          ; If NT and IOPL not set
+                                ; it's a 286
+        inc     ax              ; ax now is 3 to indicate
+                                ; 386 or higher
+;
+yes286:
+        popf                    ; Restore the flags
+        ret                     ; Return to caller
+;
+; The NEC V20/V30 run AAD with base 10 whatever its immediate operand is,
+; where every Intel CPU uses the operand. AAD 16 on ax==0101h leaves al==11h
+; on an Intel CPU and al==0Bh on an NEC one. This needs no timer interrupt
+; and, unlike REP LOCK LODSB, doesn't fault on a 386 or later.
+; Only called on the 8088/8086 branch: V20 and V30 have the same flags
+; behaviour and prefetch queues (4 and 6 bytes) as the 8088 and 8086.
+; on exit: ax + 4 if it's an NEC CPU, ax unchanged otherwise
+                                ;
+IsItANec:
+        push    ax              ; Save the 8088/8086 result
+        mov     ax,0101h        ; ah==1, al==1
+        db      0D5h,10h        ; aad 16
+        cmp     al,0Bh          ; 1*10+1 means the operand was ignored
+        pop     ax              ; Restore the 8088/8086 result
+        jne     NotANec         ; Intel CPU
+        add     ax,4            ; 4 == V20, 5 == V30
+NotANec:
+        ret                     ; Return to caller
+;
+end
+
+

@@ -5,9 +5,13 @@ GENCMD=cpm86_gencmd
 BIN2CMD=bin2cmd
 CMDINFO=cmdinfo
 
-BINARIES=vcpm.cmd 80x86.cmd z80.cmd
+BINARIES=vcpm.cmd 80x86.cmd z80.cmd cpuid.cmd
 
 all: $(BINARIES)
+
+cpuid.cmd: cpuid.h86
+	$(GENCMD) $< 
+	$(CMDINFO) $@
 
 vcpm.cmd: vcpm.h86
 	$(GENCMD) $< 'extra[M1000]'
@@ -29,13 +33,3 @@ z80.cmd: z80.h86
 
 clean:
 	rm -rf *.h86 *.lst *.sys *.cmd *.hex *.sym *.log
-
-cpmtest.img: binaries
-	cpmrm -f ibmpc-514ss cpmtest.img 0:*.*
-	cpmcp -f ibmpc-514ss cpmtest.img $(BINARIES) 0:
-	cpmcp -f ibmpc-514ss cpmtest.img samples/ver.* 0:
-	cpmcp -f ibmpc-514ss cpmtest.img samples/turbo.* 0:
-	cpmls -F -f ibmpc-514ss cpmtest.img 0:*.*
-
-test: cpmtest.img
-	./cpm86

@@ -20,11 +20,13 @@ Used as a soak testing and source for https://github.com/tsupplis/cpm86-crossdev
 | Project | What | From | License |
 | --- | --- | --- | --- |
 | ansi2kr | ANSI C to K&R C converter for BDS C and MSX-C | masakioba / upstream ansi2kr sources | BSD 2-Clause |
+| cpu | CPU tools: 80x86 (8080-to-8086 source translator), vcpm (V20 hardware 8080 emulator), z80 (software 8080 emulator) and cpuid (processor detection) | Harold V. McIntosh; Stephen Hunt; Pat Hester and Bill Earnest; Richard C. Leinecker and Kirk Lawrence | Mixed, no explicit grant / Freeware |
 | dc | Arbitrary precision reverse Polish desk calculator | Plan 9 / Unix Research Edition dc | MIT |
 | disk7 | DISK7, a full-screen file manager, translated from CP/M-80 with XLT86 | Frank Gaudé | Non-commercial (© 1984) |
 | filer | VFILER, a full-screen file manager | ZCPR2 VFILER by Rich Conn, CP/M-86 translation by H. M. Van Tassell | Public domain / Abandonware |
 | fv | FileView, view and amend a file in hex and ASCII | Stephen Hunt | Public domain |
 | grep | Search a file for a pattern | RetroBSD / DiscoBSD, originally Berkeley grep | BSD 3-Clause |
+| lbr | LU library (.LBR) tools: lbrdir lists a library, lbrtype types a (squeezed) member, delbr extracts all members | lbrdir/lbrtype by Charlie Godet-Ceraolo; delbr by Jeff Martin, with Jim Cathey, Peter A. Polansky and others, built with Aztec C | Public domain / Abandonware |
 | tinybas | Tiny BASIC interpreter | Classic Tiny BASIC sources | Public domain / Abandonware |
 | wash15 | WASH, a directory maintenance utility, translated from CP/M-80 with XLT86 | Michael J. Karas, Simon J. Ewins | Public domain, non-commercial |
 | vtl2 | VTL-2 interpreter port for CP/M, just for fun using xlt86, serves as a regression test for the translator | MITS VTL-2 source, adapted for CP/M | Public domain / Abandonware |

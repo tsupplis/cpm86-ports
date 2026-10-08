@@ -1,4 +1,4 @@
-SUBDIRS=ansi2kr tinybas xlisp yacc vtl2 filer dc grep cpm80 lbr \
+SUBDIRS=ansi2kr tinybas xlisp yacc vtl2 filer dc grep cpu lbr \
     edlin sokoban fv seemem disk7 wash15 xsq
 
 all:
@@ -23,6 +23,7 @@ cpmtest.img:  all
 	for i in */*.vtl;do cpmcp -f cpm86-320 tmp.img $$i 0:;done
 	for i in */*.hlp;do cpmcp -f cpm86-320 tmp.img $$i 0:;done
 	for i in */*.dat;do cpmcp -f cpm86-320 tmp.img $$i 0:;done
+	for i in cpu/samples/ver.cpm;do cpmcp -f cpm86-320 tmp.img $$i 0:;done
 	for i in xlisp/*.lsp;do cpmcp -f cpm86-320 tmp.img $$i 0:;done
 	cpmls -F -f cpm86-320 tmp.img 
 	python3 tools/cpm86twist.py twist tmp.img $@
