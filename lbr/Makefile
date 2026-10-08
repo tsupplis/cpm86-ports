@@ -10,10 +10,13 @@ GENCMD=cpm86_gencmd
 BIN2CMD=bin2cmd
 CMDINFO=cmdinfo
 
-BINARIES=lbrdir.cmd lbrtype.cmd  delbr.cmd
+BINARIES=lbrdir.cmd lbrtype.cmd delbr.cmd
 
 
 all: $(BINARIES) 
+
+luu.cmd: luu.o
+	$(LD) -o $@ luu.o $(LDFLAGS)
 
 delbr.cmd: delbr.o
 	$(LD) -o $@ delbr.o $(LDFLAGS)
