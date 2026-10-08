@@ -24,7 +24,6 @@ Used as a soak testing and source for https://github.com/tsupplis/cpm86-crossdev
 | filer | VFILER, a full-screen file manager | ZCPR2 VFILER by Rich Conn, CP/M-86 translation by H. M. Van Tassell | Public domain / Abandonware |
 | fv | FileView, view and amend a file in hex and ASCII | Stephen Hunt | Public domain |
 | grep | Search a file for a pattern | RetroBSD / DiscoBSD, originally Berkeley grep | BSD 3-Clause |
-| lispc | Minimal Lisp interpreter written in C | Johan Fjeldtvedt | MIT |
 | tinybas | Tiny BASIC interpreter | Classic Tiny BASIC sources | Public domain / Abandonware |
 | vtl2 | VTL-2 interpreter port for CP/M, just for fun using xlt86, serves as a regression test for the translator | MITS VTL-2 source, adapted for CP/M | Public domain / Abandonware |
 | xlisp | Lisp interpreter and runtime | David Betz |Public domain / Abandonware |

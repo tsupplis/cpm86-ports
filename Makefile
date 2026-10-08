@@ -1,4 +1,4 @@
-SUBDIRS=ansi2kr tinybas lispc xlisp yacc vtl2 filer dc grep cpm80 lbr \
+SUBDIRS=ansi2kr tinybas xlisp yacc vtl2 filer dc grep cpm80 lbr \
     edlin sokoban fv seemem
 
 all:
