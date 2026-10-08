@@ -26,6 +26,7 @@ Used as a soak testing and source for https://github.com/tsupplis/cpm86-crossdev
 | fv | FileView, view and amend a file in hex and ASCII | Stephen Hunt | Public domain |
 | grep | Search a file for a pattern | RetroBSD / DiscoBSD, originally Berkeley grep | BSD 3-Clause |
 | tinybas | Tiny BASIC interpreter | Classic Tiny BASIC sources | Public domain / Abandonware |
+| wash15 | WASH, a directory maintenance utility, translated from CP/M-80 with XLT86 | Michael J. Karas, Simon J. Ewins | Public domain, non-commercial |
 | vtl2 | VTL-2 interpreter port for CP/M, just for fun using xlt86, serves as a regression test for the translator | MITS VTL-2 source, adapted for CP/M | Public domain / Abandonware |
 | xlisp | Lisp interpreter and runtime | David Betz |Public domain / Abandonware |
 | yacc | YACC-compatible parser generator | RetroBSD / original yacc sources | BSD-style |

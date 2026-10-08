@@ -1,0 +1,43 @@
+--- orig.a86
++++ orig.a86
+@@ -216,7 +216,12 @@
+ 	ORG	0100H+BASE
+ ;
+ 	CLI
++; CP/M-86: the program starts on the CCP's stack, switch SS to our segment,
++; and turn interrupts back on (the 8080 original leaves them off)
++	MOV	AX,DS
++	MOV	SS,AX
+ 	MOV	SP,(Offset STCKK)	;SETUP LOCAL UTILITY STACK
++	STI
+ ;
+ RESTART:
+ 	CALL	MENU
+@@ -322,7 +327,11 @@
+ 	MOV	AL,Byte Ptr .FCB	;PUT DISK DRIVE NUMBER INTO NAME PLACE
+ 	OR	AL,AL			;SEE IF DEFAULT DRIVE
+ 	JNZ	NOTDEF			;SKIP SETTING IF NOT DEFAULT
+-	MOV	AL,Byte Ptr .LOGDRIV
++; CP/M-86: no logged drive at 0004h in the base page, ask BDOS 25
++	PUSH	BX
++	MOV	CL,25
++	INT	224
++	POP	BX
+ 	AND	AL,0FH			;GET RID OF USER NUMBER
+ 	INC	AL			;MAKE 1 = A:
+ NOTDEF:
+@@ -443,9 +452,12 @@
+ ;
+ 	MOV	Word Ptr LISTPOS,BX	;SAVE NEXT POSITION OF LISTING
+ ;
+-	MOV	AL,Byte Ptr PNAME	;MAKE DRIVE NAME PRINTABLE
++; ASM86 won't use the code label PNAME as a byte variable: go through DI,
++; which the translation leaves free (8080 model, so CS=DS)
++	MOV	DI,(Offset PNAME)
++	MOV	AL,[DI]			;MAKE DRIVE NAME PRINTABLE
+ 	ADD	AL,'A'-1		;THIS ONE O.K. SO MAKE DRIVE PRINTABLE
+-	MOV	Byte Ptr PNAME,AL
++	MOV	[DI],AL
+ ;
+ SAMEPOS:
+ 	CALL	PRTMSG			;PRINT CURRENT READY TO TRANSFER FILE NAME
