@@ -1,0 +1,449 @@
+;
+; SEEMEM - Version 0.1  [For 'CP/M-86 For The IBM']
+; CP/M-86 Memory Browser
+; Freeware from Frank Kotler and Kirk Lawrence
+;
+;    To assemble:   ASM86 SEEMEM $ SZ PZ
+;                  GENCMD SEEMEM
+;
+        cseg                            ;start of code segment
+        org     100h                    ;leave room for base page
+        jmp     start                   ;go start the program
+;
+line    db      ' pSpEpEpMpEpMp p0p.p1p p',221,'p pSpepgpmpepnptp:p p+p p-p p'
+        db      ' p pOpfpfpspeptp:p pPpgpDpnp pPpgpUppp p',25,'p p',24,'p p'
+        db      'Hpopmpep pEpnpdp p p pGp=pGpOpTpOp p p pEpSpCp=pQpupiptp p p'
+off     db      27,'0',27,'n',27,'E$'
+onn     db      27,'m',27,'1',27,'E'
+        db      'You''ve been using SEEMEM Version 0.1',13,10
+        db      'Freeware from Frank Kotler and Kirk Lawrence',13,10,'$'
+sgmt    dw      0
+ofst    dw      0
+;
+; Turn off the CP/M-86 status line and cursor, and clear the screen.
+;
+start:
+        mov     cl,9                    ;function 9 - print string
+        mov     dx,offset off           ;point to screen control sequence
+        int     224                     ;call BDOS services
+;
+        push    es                      ;preserve our Extra Segment
+        push    ds                      ;preserve our Data Segment
+;
+; Check for TTL monochrome video.  If found, set the appropriate address.
+;
+        mov     dx,0B800h               ;set color video address in DX
+        int     11h                     ;call BIOS equipment check
+        and     ax,30h                  ;test the return in AX
+        cmp     ax,30h                  ;do we have TTL monochrome video?
+        jne     not_ttl                 ;no, so assume color
+        mov     dx,0B000h               ;yes, so set monochrome video address
+not_ttl:
+        mov     es,dx                   ;set Extra Segment to video address
+;
+        call    prt_line                ;go print our program's status line
+;
+        xor     dx,dx                   ;zero DX
+        mov     ds,dx                   ;DS = memory segment
+        mov     si,00h                  ;SI = memory offset
+d0:
+        mov     di,0                    ;DI = screen location
+        mov     cx,24                   ;screen height
+d1:
+        mov     ax,0720h                ;'space' character
+        stosw                           ;move it to video memory
+;
+        mov     dl,15                   ;color for 'segment:offset' on screen
+        mov     ax,ds                   ;memory segment into AX
+        call    word2hex                ;go convert and print to screen
+        mov     al,':'                  ;colon
+        mov     ah,dl                   ;color attribute
+        stosw                           ;move it to video memory
+        mov     ax,si                   ;memory offset into AX
+        call    word2hex                ;go convert and print to screen
+        mov     ax,0720h                ;'space'
+        stosw                           ;move it to video memory
+        mov     ax,07B3h                ;white vertical line
+        stosw                           ;move it to video memory
+        mov     ax,0720h                ;'space'
+        stosw                           ;move it to video memory
+
+        mov     dl,2                    ;color for 'hex' display on screen
+        call    sdump                   ;
+;
+        add     si,10h                  ;
+        jnc     same_ds                 ;
+        mov     ax,ds                   ;
+        add     ax,1000h                ;
+        mov     ds,ax                   ;
+same_ds:
+        loop    d1                      ;
+;
+; Get a keypress from the user, and respond appropriately.
+; NOTE: we're checking =SCAN CODES= here; not ASCII codes.
+;
+pozz:
+        mov     ah,0                    ;function 0 - wait for keypress
+        int     16h                     ;call ROM BIOS keyboard services
+        cmp     ah,51h                  ;was PGDN pressed?
+        je      d0                      ;yes, so go display next screen
+        cmp     ah,49h                  ;was PGUP pressed?
+        je      pgup                    ;yes
+        cmp     ah,50h                  ;was DOWN-ARROW pressed?
+        je      down_arrow              ;yes
+        cmp     ah,48h                  ;was UP-ARROW pressed?
+        je      up_arrow                ;yes
+        cmp     ah,4Fh                  ;was END key pressed?
+        je      endkey                  ;yes
+        cmp     ah,47h                  ;was HOME pressed?
+        je      home                    ;yes
+        cmp     ah,4Eh                  ;was PLUS key pressed?
+        je      plus                    ;yes
+        cmp     ah,4Ah                  ;was MINUS key pressed?
+        je      minus                   ;yes
+        cmp     ah,22h                  ;was 'G' key pressed?
+        je      gee                     ;yes
+        cmp     ah,01h                  ;was ESC pressed?
+        je      lilypad2                ;yes, so go exit
+        jmp     pozz                    ;unrecognized key, go try again
+;
+; PGUP key pressed.  Move backward one screenful of data.
+;
+pgup:
+        cmp     si,0300h                ;are we two screens or less from 0?
+        jbe     fix_offset              ;yes, so go adjust memory offset
+skip_fix:
+        call    fix_seg                 ;go see if segment needs adjusting
+        sub     si,0300h                ;set memory offset back two screens
+        jmp     d0                      ;do it
+fix_offset:
+        cmp     si,0000h                ;are we at end of memory segment?
+        je      skip_fix                ;yes, so 'fix' isn't necessary
+        mov     si,0000h                ;set offset to start of mem. segment
+        jmp     d0                      ;do it
+;
+lilypad1:
+        jmp     pozz
+;
+lilypad2:
+        jmp     exit
+;
+; DOWN-ARROW key pressed.  Move forward one screen line.
+;
+down_arrow:
+        cmp     si,0000h                ;are we at end of memory segment?
+        je      pozz                    ;yes, so disallow the command
+        sub     si,0170h                ;add one screen line to offset
+        jmp     d0                      ;do it
+;
+; UP-ARROW key pressed.  Move backward one screen line.
+;
+up_arrow:
+        cmp     si,0180h                ;are we at beginning of memory segment?
+        je      pozz                    ;yes, so disallow the command
+        call    fix_seg                 ;go see if segment needs adjusting
+        sub     si,190h                 ;subtract one screen line from offset
+        jmp     d0                      ;do it
+;
+; END key pressed.  Go to end of current memory segment.
+;
+endkey:
+        cmp     si,0000h                ;are we already at end of segment?
+        je      pozz                    ;yes, so ignore keypress
+        mov     si,0FE80h               ;set offset to end of segment
+        jmp     d0                      ;do it
+;
+; HOME key pressed.  Go to beginning of current memory segment.
+;
+home:
+        cmp     si,0180h                ;are we already at start of segment?
+        je      lilypad1                ;yes, so ignore keypress
+        call    fix_seg                 ;go adjust segment
+        mov     si,0000h                ;set memory offset to 0
+        jmp     d0                      ;do it
+;
+; PLUS key pressed.  Go to start of next memory segment.
+;
+plus:
+        call    fix_seg                 ;go see if segment needs adjusting
+        mov     ax,ds                   ;DS into AX
+        add     ax,1000h                ;increase AX by 1000h
+        mov     ds,ax                   ;set new memory segment
+        mov     si,0000h                ;zero the memory offset
+        jmp     d0                      ;do it
+;
+; MINUS key pressed.  Go to start of previous memory segment.
+;
+minus:
+        call    fix_seg                 ;go see if segment needs adjusting
+        mov     ax,ds                   ;memory segment into AX
+        sub     ax,1000h                ;decrease by 1000h
+        mov     ds,ax                   ;set new memory segment
+        mov     si,0000h                ;zero the memory offset
+        jmp     d0                      ;do it
+;
+; G key pressed.  Go get user input for segment:offset.
+;
+gee:
+        call    get_address
+        jmp     d0
+;
+; Clear our program's status line; turn on the CP/M-86 status line and
+; cursor, and clear the screen; then exit to CP/M-86.
+;
+exit:
+        pop     ds                      ;restore our Data Segment
+        pop     es                      ;restore our Extra Segment
+        call    clr_line                ;go clear our program's status line
+        mov     cl,9                    ;function 9 - print string
+        mov     dx,offset onn           ;point to screen control sequence
+        int     224                     ;call BDOS services
+        xor     cx,cx                   ;function 0 - reset system
+        int     224                     ;call BDOS services
+;
+sdump:
+        push    ax                      ;preserve AX
+        push    bx                      ;preserve BX
+        push    cx                      ;preserve CX
+;
+        xor     bx,bx                   ;zero BX
+        mov     cx,10h                  ;count 16 characters
+sdump1:
+        mov     al,[si+bx]              ;base mem. offset + new offset
+        push    bx                      ;preserve BX
+        call    byte2hex                ;
+        pop     bx                      ;restore BX
+        mov     al,' '                  ;'space' character
+        mov     ah,dl                   ;video attribute
+        stosw                           ;move it to video memory
+        inc     bx                      ;increment BX
+        loop    sdump1                  ;
+;
+        mov     al,' '                  ;'space' character
+        mov     ah,dl                   ;video attribute
+;
+        mov     ax,07B3h                ;white vertical line
+        stosw                           ;move it to video memory
+        mov     ax,0720h                ;'space' character
+        stosw                           ;move it to video memory
+        xor     bx,bx                   ;zero BX
+        mov     cx,10h                  ;count 16 characters
+sdump2:
+        mov     al,[si+bx]              ;base mem offset + new offset
+;
+;This routine displays a '.' to the screen if the character is 20h or
+;lower.  The routine is currently commented out, and therefore is not
+;functional.  If you like this feature, you may un-comment this code
+;and re-assemble the program.
+;
+;        cmp     al,20h                  ;
+;        jnc     sdump3                  ;
+;        mov     al,'.'                  ;
+;
+sdump3:
+        mov     dl,7                    ;color for 'ASCII' part of screen
+        mov     ah,dl                   ;stuff it into AH
+        stosw                           ;move AX to screen
+        inc     bx                      ;increment BX
+        loop    sdump2                  ;
+        mov     al,' '                  ;'space'...
+        mov     ah,dl                   ; ...character
+        stosw                           ;move it to video memory
+;
+        pop     cx                      ;restore CX
+        pop     bx                      ;restore BX
+        pop     ax                      ;restore AX
+        ret                             ;return
+;
+; The following routine is from QSCGZ <qscgz@aol.com>
+; word2hex - call with word in ax
+; buffer in es:di
+; trashes ax,bx
+;
+word2hex:
+        push    cx                      ;
+        mov     bx,ax                   ;
+        mov     cl,12                   ;
+        shr     ax,cl                   ;
+        call    nyb2hex                 ;
+        mov     ax,bx                   ;
+        mov     cl,8                    ;
+        shr     ax,cl                   ;
+        pop     cx                      ;
+        call    nyb2hex                 ;
+        mov     ax,bx                   ;
+;
+byte2hex:
+        push    cx                      ;
+        mov     bx,ax                   ;
+        mov     cl,4                    ;
+        shr     ax,cl                   ;
+        pop     cx                      ;
+        call    nyb2hex                 ;
+        mov     ax,bx                   ;
+;
+nyb2hex:
+        and     al,0Fh                  ;
+        cmp     al,10                   ;
+        sbb     al,105                  ;
+        das                             ;
+        mov     ah,dl                   ;
+        stosw                           ;
+        ret                             ;
+;
+; Routine to display our program's status line, writing it directly
+; to video memory.  Assumes ES = video address.  This was already
+; set earlier in the program.
+;
+prt_line:
+        mov     cx,80                   ;we'll be moving 80 words
+        xor     dx,dx                   ;zero DX
+        mov     di,80*48                ;set screen location - row 24, column 0
+        mov     si,offset line          ;point SI to start of status line data
+        rep     movsw                   ;move the string at video RAM
+        ret                             ;return
+;
+; Routine to clear our program's status line (since CP/M-86
+; can't touch screen line 24 with an ordinary 'clear screen').
+;
+clr_line:
+        mov     ax,0700h                ;function 7 - scroll a 'window'
+        mov     bx,0700h                ;BH = foreground, BL = background color
+        mov     ch,24                   ;start at row 24
+        mov     cl,0                    ; ...and at column 0
+        mov     dh,24                   ;end at row 24
+        mov     dl,79                   ; ...and at column 79
+        int     10h                     ;call ROM BIOS video services
+        ret                             ;return
+;
+; This routine checks to see it we're at the end of a memory segment,
+; and if so, adjusts the segment backwards by 1000h.  This is needed
+; by some of the keypress processing routines, above.
+;
+fix_seg:
+        cmp     si,0000h                ;are we already at end of segment?
+        jne     return                  ;no, so fix isn't necessary
+        mov     ax,ds                   ;segment into AX
+        sub     ax,1000h                ;decrement one segment
+        mov     ds,ax                   ;reset segment value
+return:
+        ret                             ;return to caller
+;
+; Routines for handling the GOTO ('G') function.
+; (newly added in Version 0.1)
+;
+; Pop up a small on-screen 'window' for user input.
+;
+get_address:
+        mov     al,' '
+        mov     ah,70h
+        mov     di,80 * 25 - 18
+        mov     cx,11
+        rep     stosw
+        mov     di,80 * 25 - 8
+        mov     al, ':'
+        stosw
+;
+; Preserve DS and SI.  If the user decides to bail out of the
+; GOTO function, we'll need to restore these.  We could save
+; them on the stack, but -- what the hey...
+;
+        mov     sgmt,ds         ;save our current DS
+        mov     ofst,si         ;save our current SI
+;
+; get user input for the segment
+;
+        mov     di,80 * 25 - 16
+        call    get_hex_number
+        cmp     ah,01h          ;ESC pressed?
+        jz      escape          ;yes, go handle it
+        cmp     ah,0Eh          ;BACKSPACE pressed?
+        jz      back_sp         ;yes, go handle it
+        mov     ds,bx
+;
+; get user input for the offset
+;
+        inc     di
+        inc     di
+        call    get_hex_number
+        cmp     ah,01h          ;ESC pressed?
+        jz      escape          ;yes, go handle it
+        cmp     ah,0Eh          ;BACKSPACE pressed?
+        jz      back_sp         ;yes, go handle it
+        mov     si,bx
+;
+; adjust to SEEMEM's notation
+;
+        mov     bx,ds
+        mov     ax,ds
+        and     ax,0F000h
+        mov     ds,ax
+        push    cx
+        mov     cl,4
+        shl     bx,cl
+        pop     cx
+        add     si,bx
+        jnc     ds_ok
+        mov     ax,ds
+        add     ax,1000h
+        mov     ds,ax
+ds_ok:
+        ret
+;
+; Handle the ESC keypress (to abort the GOTO function).
+;
+escape:
+        mov     si,ofst                 ;restore our original SI
+        mov     ax,sgmt                 ;restore our original DS
+        mov     ds,ax                   ; "
+        call    fix_seg                 ;fix the segment, if required
+        sub     si,0180h                ;add one screen line to offset
+        ret                             ;return to caller
+;
+; Handle BACKSPACE key (clear the data entry window and start again).
+;
+back_sp:
+        mov     si,ofst                 ;restore our original SI
+        mov     ax,sgmt                 ;restore our original DS
+        mov     ds,ax                   ; "
+        jmp     get_address
+;
+; Convert user input to hex.
+;
+get_hex_number:
+        mov     cx,4
+get_key:
+        mov     ah,0
+        int     16h
+        cmp     ah,01h
+        jz      got_address
+        cmp     ah,0Eh
+        jz      got_address
+        cmp     al,'0'
+        jc      get_key
+        cmp     al,3Ah
+        jnc     not_dd
+        mov     ah,70h
+        stosw
+        sub     al,'0'
+        jmp     add_digit
+not_dd:
+        and     al,0DFh
+        cmp     al,'A'
+        jc      get_key
+        cmp     al,'G'
+        jnc     get_key
+        mov     ah,70h
+        stosw
+        sub     al,'A' - 10
+add_digit:
+        push    cx
+        mov     cl,4
+        shl     bx,cl
+        pop     cx
+        add     bl,al
+        loop    get_key
+got_address:
+        ret
+;
+end

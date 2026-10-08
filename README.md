@@ -19,6 +19,7 @@ Used as a soak testing and source for https://github.com/tsupplis/cpm86-crossdev
 | xlisp | Lisp interpreter and runtime | David Betz |Public domain / Abandonware |
 | yacc | YACC-compatible parser generator | RetroBSD / original yacc sources | BSD-style |
 | edlin | Edlin DOS editor port from PC DOS 1.1 | Microsoft sources sources | MIT |
+| seemem | Full-screen memory browser for CP/M-86 on the IBM PC | Frank Kotler and Kirk Lawrence | Freeware / Public domain |
 | sokoban | Small tty game for VT52 | CP/M-80 C sources | Freeware/Copyright |
 
 ## Build notes
