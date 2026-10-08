@@ -29,6 +29,7 @@ Used as a soak testing and source for https://github.com/tsupplis/cpm86-crossdev
 | wash15 | WASH, a directory maintenance utility, translated from CP/M-80 with XLT86 | Michael J. Karas, Simon J. Ewins | Public domain, non-commercial |
 | vtl2 | VTL-2 interpreter port for CP/M, just for fun using xlt86, serves as a regression test for the translator | MITS VTL-2 source, adapted for CP/M | Public domain / Abandonware |
 | xlisp | Lisp interpreter and runtime | David Betz |Public domain / Abandonware |
+| xsq | xsq, xusq and xtype: squeeze, unsqueeze and type squeezed (.?Q?) files, compatible with CP/M SQ and USQ | Richard Greenlaw, with Dick Greenlaw, Chuck Forsberg and W. Earnest | Public domain / Abandonware |
 | yacc | YACC-compatible parser generator | RetroBSD / original yacc sources | BSD-style |
 | edlin | Edlin DOS editor port from PC DOS 1.1 | Microsoft sources sources | MIT |
 | seemem | Full-screen memory browser for CP/M-86 on the IBM PC | Frank Kotler and Kirk Lawrence | Freeware / Public domain |

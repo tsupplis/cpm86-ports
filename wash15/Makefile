@@ -3,7 +3,7 @@ ASM86=cpm86_asm86
 GENCMD=cpm86_gencmd
 CMDINFO=cmdinfo
 
-all: wash15.cmd orig.cmd
+all: wash15.cmd
 
 # 8080 model; the copy buffer runs from the end of the file list to the top
 # of the segment: at least 16K, up to 64K
