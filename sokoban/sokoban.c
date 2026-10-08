@@ -78,6 +78,42 @@ void color_yellow()
 #endif
 }
 
+void color_bright_green()
+{
+#if defined(USE_COLOR)
+#if defined(USE_CONIO)
+    textcolor(COLOR_BRIGHT_GREEN);
+#endif
+#if defined(USE_ANSI)
+    printf("\033[92m");
+#endif
+#endif
+}
+
+void color_bright_cyan()
+{
+#if defined(USE_COLOR)
+#if defined(USE_CONIO)
+    textcolor(COLOR_BRIGHT_CYAN);
+#endif
+#if defined(USE_ANSI)
+    printf("\033[96m");
+#endif
+#endif
+}
+
+void color_bright_red()
+{
+#if defined(USE_COLOR)
+#if defined(USE_CONIO)
+    textcolor(COLOR_BRIGHT_RED);
+#endif
+#if defined(USE_ANSI)
+    printf("\033[91m");
+#endif
+#endif
+}
+
 void color_red()
 {
 #if defined(USE_COLOR)
@@ -169,6 +205,9 @@ void color_blue(void);
 void color_white(void);
 void color_green(void);
 void color_yellow(void);
+void color_bright_green(void);
+void color_bright_cyan(void);
+void color_bright_red(void);
 void color_red(void);
 void bg_green(void);
 void bg_yellow(void);
@@ -209,13 +248,13 @@ static object_t save = {'*', 193, 193, bg_red, color_yellow};
 static object_t ground = {' ', ' ', ' ', bg_default, color_default};
 static object_t wall = {'#', 230, 230, bg_green, color_green};
 #else
-static object_t player = {'@', 'x', 'o', bg_yellow, color_white};
-static object_t playerstore = {'+', 'x', 'o', bg_red, color_white};
-static object_t store = {'.', '.', '.', bg_red, color_white};
-static object_t packet = {'$', '[', ']', bg_purple, color_white};
-static object_t save = {'*', '<', '>', bg_red, color_white};
+static object_t player = {'@', 233, 233, bg_yellow, color_bright_red};
+static object_t playerstore = {'+', 233, 233, bg_red, color_bright_red};
+static object_t store = {'.', 249, 249, bg_red, color_bright_cyan};
+static object_t packet = {'$', 254, 254, bg_purple, color_yellow};
+static object_t save = {'*', 254, 254, bg_red, color_bright_green};
 static object_t ground = {' ', ' ', ' ', bg_default, color_default};
-static object_t wall = {'#', '#', '#', bg_green, color_green};
+static object_t wall = {'#', 219, 219, bg_green, color_green};
 #endif
 
 /*************************************************************************
@@ -336,8 +375,9 @@ int play()
                 continue;
             }
         }
-        else if (state == 2)
+        else if (state == 2 || (state == 1 && c >= 'A' && c <= 'D'))
         {
+            /* VT100/ANSI sends ESC [ A..D, VT52 sends ESC A..D */
             state = 0;
             switch (c)
             {
@@ -359,6 +399,7 @@ int play()
         }
         else
         {
+            state = 0;
             switch (c)
             {
 #if defined(__C64__)
@@ -793,7 +834,7 @@ void mapchar(char c, int i, int j)
 {
     object_t *obj;
     color_t col;
-    int offset_row = 0; /* (MAX_ROWS - rows) / 2; */
+    int offset_row = MAX_ROWS - rows < TOP_MARGIN ? MAX_ROWS - rows : TOP_MARGIN;
     int offset_col = MAX_COLS - cols;
 
     obj = get_obj_adr(c);

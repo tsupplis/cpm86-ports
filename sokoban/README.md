@@ -27,15 +27,24 @@ CP/M-86 disk. The help file, `sokoban.hlp`, is not used in this version.
 
 | ^R | Refresh screen | q | quit |
 
+The arrow keys also move the player. VT52 (`ESC A`..`ESC D`) and VT100
+(`ESC [ A`..`ESC [ D`) sequences are both accepted, as are the numeric keypad
+(`8` `2` `4` `6`) and `^E` `^X` `^S` `^D`.
+
 ## The game
 
-Characters on screen are:
+Characters in the level files, and how they are drawn on the IBM PC:
 
-| Symbol | Meaning                    | Symbol | Meaning                    |
-| ------ | -------------------------- | ------ | -------------------------- |
-| `@@` | player                     | `++` | player on saving position  |
-| `..` | saving position for packet | `$$` | packets                    |
-| `**` | saved packet               | `##` | wall                       |
+| Symbol | On screen | Colour | Meaning |
+| ------ | --------- | ------ | ------- |
+| `@` | `ΘΘ` | bright red | player |
+| `+` | `ΘΘ` | bright red | player on saving position |
+| `.` | `∙∙` | bright cyan | saving position for packet |
+| `$` | `■■` | bright yellow | packet |
+| `*` | `■■` | bright green | saved packet |
+| `#` | `██` | green | wall |
+
+The board is drawn two lines below the top of the screen.
 
 Your goal is to move all packets to the saving position by pushing them.
 

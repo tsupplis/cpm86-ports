@@ -23,6 +23,7 @@ cpmtest.img:  all
 	for i in */*.vtl;do cpmcp -f cpm86-320 tmp.img $$i 0:;done
 	for i in */*.hlp;do cpmcp -f cpm86-320 tmp.img $$i 0:;done
 	for i in */*.dat;do cpmcp -f cpm86-320 tmp.img $$i 0:;done
+	for i in xlisp/*.lsp;do cpmcp -f cpm86-320 tmp.img $$i 0:;done
 	cpmls -F -f cpm86-320 tmp.img 
 	python3 tools/cpm86twist.py twist tmp.img $@
 	rm -f tmp.img

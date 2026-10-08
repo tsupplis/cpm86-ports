@@ -4,6 +4,17 @@ A small collection of classic software tools adapted or ported for CP/M-86. The 
 
 Used as a soak testing and source for https://github.com/tsupplis/cpm86-crossdev ...
 
+<p align="center">
+<img src="images/filer.png" alt="filer" width="48%">
+<img src="images/fv.png" alt="fv" width="48%">
+<br><sub>filer (VFILER file manager) &nbsp;·&nbsp; fv (FileView hex/ASCII editor)</sub><br>
+<img src="images/seemem.png" alt="seemem" width="48%">
+<img src="images/sokoban.png" alt="sokoban" width="48%">
+<br><sub>seemem (memory browser) &nbsp;·&nbsp; sokoban</sub><br>
+<img src="images/xlisp.png" alt="xlisp" width="48%">
+<br><sub>xlisp</sub>
+</p>
+
 ## Included projects
 
 | Project | What | From | License |
