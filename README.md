@@ -12,12 +12,15 @@ In particular, those tools give a much more friendly user interaction with the o
 - development tools
 
 Further tools are available from companion projects:
-- unix like tools (mv, ls, wc, more, touch) [CP/M-86 Hacking Tools](https://github.com/tsupplis/cpm86-hacking)
-- submit tools (pause, cls, wait) [CP/M-86 Hacking Tools](https://github.com/tsupplis/cpm86-hacking)
-- general cli tools (copycon, mem, mode, tod, zpdump, rtc/at time, dump, conio demos) [CP/M-86 Hacking Tools](https://github.com/tsupplis/cpm86-hacking)
-- vi editor [CP/M-86 VI](https://github.com/tsupplis/cpm86-vi)
-- microsoft basic [CP/M-86 Hacking Tools](https://github.com/tsupplis/cpm86-msbasic)
-- vedit editor [VEDIT Project](https://github.com/johnsonjh/VEDIT)
+| Category | Tools | Project |
+|---|---|---|
+| unix like tools | mv, ls, wc, more, touch | [CP/M-86 Hacking Tools](https://github.com/tsupplis/cpm86-hacking) |
+| submit tools | pause, cls, wait | [CP/M-86 Hacking Tools](https://github.com/tsupplis/cpm86-hacking) |
+| general cli tools | copycon, mem, mode, tod, zpdump, rtc/at time, dump, conio demos | [CP/M-86 Hacking Tools](https://github.com/tsupplis/cpm86-hacking) |
+| vi editor | vi | [CP/M-86 VI](https://github.com/tsupplis/cpm86-vi) |
+| menus and submit orchestration | menu, msub | [CP/M-86 Menu](https://github.com/tsupplis/cpm86-menu) |
+| microsoft basic | msbasic | [CP/M-86 MS-BASIC](https://github.com/tsupplis/cpm86-msbasic) |
+| vedit editor | vedit | [VEDIT Project](https://github.com/johnsonjh/VEDIT) |
 
 Ancillary goals:
 - They also expose some practices of CPM/M-80 to CPM/M-86 translation. 
