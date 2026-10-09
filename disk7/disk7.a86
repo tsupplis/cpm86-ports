@@ -327,7 +327,6 @@ CPM@CCP:MOV	AL,Byte Ptr O@USR	;get and set original..
 	CALL	CRLF
 ; CP/M-86: terminate through BDOS 0 instead of returning to the CCP
 	MOV	CL,0
-	MOV	DL,0
 	INT	224
 ;not warmboot
 ; h e l p  (menu)

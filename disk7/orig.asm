@@ -166,7 +166,7 @@ TAB	EQU	09H		;..tab..
 LF	EQU	0AH		;..linefeed..
 CR	EQU	0DH		;..carriage return..
 EOFCHAR	EQU	1AH		;..end-of-file..
-ESC	EQU	1BH		;..and escape character.
+ESCCHR	EQU	1BH		;..and escape character.
 
 ; macros to provide z80 (or 8080) extensions
 
@@ -177,82 +177,17 @@ ESC	EQU	1BH		;..and escape character.
 ; jrnz	- jump relative if not zero
 ; djnz	- decrement b and jump relative if not zero
 
-$-MACRO 		;first turn off expansions
 
 ; '@gendd' macro for checking and generating 8-bit relative displacements
 
-@GENDD	MACRO	?DD
-	 IF (?DD GT 7FH) AND (?DD LT 0FF80H)
-	DB	100H	;range error on jump relative
-	 ELSE
-	DB	?DD
-	 ENDIF
-	ENDM
-
-; z80 macro extensions
-
-JR	MACRO	?N	;jump relative
-	 IF	Z80
-	DB	18H
-	@GENDD	?N-$-1
-	 ELSE
-	JMP	?N
-	 ENDIF
-	ENDM
-
-JRC	MACRO	?N	;jump relative on carry
-	 IF	Z80
-	DB	38H
-	@GENDD	?N-$-1
-	 ELSE
-	JC	?N
-	 ENDIF
-	ENDM
-
-JRNC	MACRO	?N	;jump relative on not carry
-	 IF	Z80
-	DB	30H
-	@GENDD	?N-$-1
-	 ELSE
-	JNC	?N
-	 ENDIF
-	ENDM
-
-JRZ	MACRO	?N	;jump relative on zero
-	 IF	Z80
-	DB	28H
-	@GENDD	?N-$-1
-	 ELSE
-	JZ	?N
-	 ENDIF
-	ENDM
-
-JRNZ	MACRO	?N	;jump relative on not zero
-	 IF	Z80
-	DB	20H
-	@GENDD	?N-$-1
-	 ELSE
-	JNZ	?N
-	 ENDIF
-	ENDM
-
-DJNZ	MACRO	?N	;decrement b and jump relative on not zero
-	 IF	Z80
-	DB	10H
-	@GENDD	?N-$-1
-	 ELSE
-	DCR	B
-	JNZ	?N
-	 ENDIF
-	ENDM
 
 ; even-page base of filename ring storage
 
-RING	SET	LAST+100H AND 0FF00H
 
 ; assembly origin (load address) and program beginning
 
-SOURCE	ORG	CPM$BASE+TPA
+	ORG	CPM$BASE+TPA
+SOURCE	EQU	$
 	JMP	DISK7
 
 ; highest disk drive letter in system (at 103h in 'com' file)
@@ -279,7 +214,7 @@ DISK7	 IF	NOT WARMBOOT
 	STA	O$USR		;..as original for exit.
 	LDA	FCB		;default drive?
 	ORA	A
-	JRZ	EMBARK		;if so, branch.
+	JZ	EMBARK	;if so, branch.
 	DCR	A
 	STA	C$DR		;store 0 --> 'a', 1 --> 'b', etc.
 	CALL	SET$DR		;select requested drive as current
@@ -289,10 +224,10 @@ DISK7	 IF	NOT WARMBOOT
 EMBARK	CALL	FRESTOR		;get bytes remaining on drive (decode default)
 	LDA	FCB+1		;check if a filename was entered
 	CPI	' '		;filename a space?
-	JRNZ	PLUNGE		;no, name was entered.
+	JNZ	PLUNGE	;no, name was entered.
 	LDA	FCB+9		;filetype also space?
 	CPI	' '		;if so, then..
-	JRNZ	PLUNGE
+	JNZ	PLUNGE
 	LXI	H,JOKER		;..treat as '*.*' with 'joker'..
 	LXI	D,FCB+1		;..loaded here.
 	MVI	B,11		; # of characters to move
@@ -357,32 +292,32 @@ DEF$D$U	LXI	H,CMDBUF+2
 	STA	R$U$A		;..user area to zero.
 	LDA	CMDBUF+3	; 1st digit of user area?
 	CPI	':'		;allow ':' after drive declaration
-	JRZ	SETEXIT
+	JZ	SETEXIT
 	CPI	'0'		;if no valid user area request..
-	JRC	SETEXIT		;..then to new drive and ring list.
+	JC	SETEXIT	;..then to new drive and ring list.
 	CPI	'9'+1
-	JRNC	ERRET		;error, not a user area.
+	JNC	ERRET	;error, not a user area.
 	SUI	30H		;convert to binary and..
 	CPI	1		;..test if 10's digit.
-	JRNZ	SETUSER		;if none, then set user area now.
+	JNZ	SETUSER	;if none, then set user area now.
 	LDA	CMDBUF+4	;a second user area digit?
 	CPI	':'		;allow ':' here
-	JRZ	SETUONE
+	JZ	SETUONE
 	CPI	'0'		;test for 1's digit
-	JRC	SETUONE
+	JC	SETUONE
 	CPI	'5'+1		;if user area >15, go..
-	JRNC	ERRET		;..error msg, show file line.
+	JNC	ERRET	;..error msg, show file line.
 	SUI	30H-10		;make 1 --> 11, 2 --> 12, etc.
 	STA	R$U$A		;save as 'requested user area' here..
-	JR	SETEXIT
+	JMP	SETEXIT
 
 SETUONE	MVI	A,1		;set to user area 'one'
 SETUSER	MOV	B,A
 	LDA	CMDBUF+4
 	CPI	':'		;double dot (colon)?
-	JRZ	DDPASS
+	JZ	DDPASS
 	CPI	'0'		;if >19 user area, go error msg.
-	JRNC	ERRET
+	JNC	ERRET
 DDPASS	MOV	A,B
 	STA	R$U$A		;..and here.
 SETEXIT	LDA	MAXDR		;check if system maximum and..
@@ -390,10 +325,10 @@ SETEXIT	LDA	MAXDR		;check if system maximum and..
 	MOV	B,A
 	LDA	CMDBUF+2	;..requested drive are compatible.
 	CMP	B		;if input too big..
-	JRNC	ERRET		;..or..
+	JNC	ERRET	;..or..
 	MVI	B,'A'-1		;..too..
 	CMP	B		;..small, show..
-	JRC	ERRET		;..error msg.
+	JC	ERRET	;..error msg.
 	SUI	'A'-1		;ready for fcb use
 	STA	FCB		;store 1 --> a:, 2 --> b:, etc.
 	DCR	A
@@ -439,15 +374,18 @@ HELP	CALL	CLS		;show menu but 'clear-screen' first
 
 	 IF	NOT OSBORNE
 	DB	CR,'                 DISK '
-	 ELSE			;not osborne
+	 ENDIF
+	 IF	NOT (NOT OSBORNE)
 	DB	CR,'  DISK '
 	 ENDIF			;osborne
 
 	DB	VERS/10+'0','.',VERS MOD 10+'0'
 
 	 IF	NOT OSBORNE
-	DB	' -- File Manipulation Program -- '
-	 ELSE			;not osborne
+	DB	' -- File Manipulation Program --'
+	DB	' '
+	 ENDIF
+	 IF	NOT (NOT OSBORNE)
 	DB	' -- File Manipulator -- '
 	 ENDIF			;osborne
 
@@ -457,23 +395,43 @@ HELP	CALL	CLS		;show menu but 'clear-screen' first
 	DB	CR,LF
 
 	 IF	NOT OSBORNE
-	DB	'   C - Copy file     | D - Delete file   | L - Length of Fil'
+	DB	'   C - Copy file     | D - Delet'
+	DB	'e file   | L - Length of Fil'
 	DB	'e | G - Goto fn.ft',CR,LF
-	DB	'   J - Jump 22 files | M - Mass transfer | N - New DIRectory'
+	DB	'   J - Jump 22 files | M - Mass '
+	DB	'transfer | N - New DIRectory'
 	DB	'  | P - Print text',CR,LF
-	DB	'   R - Rename file   | S - Stat of disk  | T - Tag file     '
+	DB	'   R - Rename file   | S - Stat '
+	DB	'of disk  | T - Tag file     '
 	DB	'  | U - Untag file',CR,LF
-	DB	'   V - View text     | X - Exit to CP/M  | <SP> advances cur'
+	DB	'   V - View text     | X - Exit '
+	DB	'to CP/M  | <SP> advances cur'
 	DB	'sor -- B backs up'
-	 ELSE			;not osborne
-	DB	'   C - Copy file         D - Delete file',CR,LF
-	DB	'   G - Goto filename     J - Jump 22 files',CR,LF
-	DB	'   L - Length of file    M - Mass transfer',CR,LF
-	DB	'   N - New DIRectory     P - Print text file',CR,LF
-	DB	'   R - Rename file       S - Stat of disk',CR,LF
-	DB	'   T - Tag file          U - Untag file',CR,LF
-	DB	'   V - View text file    X - Exit to CP/M',CR,LF
-	DB	'     <SP> advances cursor -- B backs up'
+	 ENDIF
+	 IF	NOT (NOT OSBORNE)
+	DB	'   C - Copy file         D - Del'
+	DB	'ete file'
+	DB	CR,LF
+	DB	'   G - Goto filename     J - Jum'
+	DB	'p 22 files'
+	DB	CR,LF
+	DB	'   L - Length of file    M - Mas'
+	DB	's transfer'
+	DB	CR,LF
+	DB	'   N - New DIRectory     P - Pri'
+	DB	'nt text file'
+	DB	CR,LF
+	DB	'   R - Rename file       S - Sta'
+	DB	't of disk'
+	DB	CR,LF
+	DB	'   T - Tag file          U - Unt'
+	DB	'ag file'
+	DB	CR,LF
+	DB	'   V - View text file    X - Exi'
+	DB	't to CP/M'
+	DB	CR,LF
+	DB	'     <SP> advances cursor -- B b'
+	DB	'acks up'
 	 ENDIF			;osborne
 
 	DB	CR,LF,LF,0
@@ -514,7 +472,7 @@ TO$RING	DCR	A		;un-do 'inr' from above and below
 	LXI	D,FCB		;filename address field
 	CALL	BDOS
 	INR	A		;if all done, 0ffh --> 00h.
-	JRNZ	TO$RING		;if not, put next name into ring.
+	JNZ	TO$RING	;if not, put next name into ring.
 
 ; all filenames in ring -- setup ring size and copy-buffer start point
 
@@ -539,14 +497,15 @@ SORT$LP	LHLD	RINGJ		;compare names 'i & j'
 
 CMPSTR	LDAX	D		;get an 'a' string character and..
 	CMP	M		;..check against 'b' string character.
-	JRNZ	NOCMP		;if not equal, set flag.
+	JNZ	NOCMP	;if not equal, set flag.
 	INX	H		;bump compare..
 	INX	D		;..pointers and.. (if compare, set as equal.)
-	DJNZ	CMPSTR		;..do next character.
+	DCR	B
+	JNZ	CMPSTR	;..do next character.
 NOCMP	POP	D
 	POP	H
 	MVI	B,13
-	JRNC	NOSWAP
+	JNC	NOSWAP
 
 ; swap if 'j' string larger than 'i'
 
@@ -557,7 +516,8 @@ SWAP	MOV	C,M		;get character from one string..
 	STAX	D
 	INX	H		;bump swap pointers
 	INX	D
-	DJNZ	SWAP		;all bytes swapped yet?
+	DCR	B
+	JNZ	SWAP	;all bytes swapped yet?
 NOSWAP	LHLD	RINGJ		;increment 'j' pointer
 	LXI	D,13
 	DAD	D
@@ -565,7 +525,7 @@ NOSWAP	LHLD	RINGJ		;increment 'j' pointer
 	XCHG			;see if end of 'j' loop
 	LHLD	RINGEND
 	CALL	CMPDEHL
-	JRNZ	SORT$LP		;no, so more 'j' looping.
+	JNZ	SORT$LP	;no, so more 'j' looping.
 	LHLD	RINGI		;bump 'i' pointer
 	LXI	D,13
 	DAD	D
@@ -575,7 +535,7 @@ NOSWAP	LHLD	RINGJ		;increment 'j' pointer
 	XCHG			;see if end of 'i' loop
 	LHLD	RINGEND
 	CALL	CMPDEHL
-	JRNZ	SORT$LP		;must be more 'i' loop to do
+	JNZ	SORT$LP	;must be more 'i' loop to do
 
 ; sort done -- initialize tables for fast crc calculations
 
@@ -600,14 +560,14 @@ B$SIZE2	INX	B		;increase record count by one
 	DAD	D		;buffer address + record size
 	POP	D
 	CALL	CMPDEHL		;compare for all done
-	JRNC	B$SIZE2		;more will fit?
+	JNC	B$SIZE2	;more will fit?
 	DCX	B		;set maximum record count less one
 	MOV	A,B		;memory available for copy?
 	ORA	C
-	JRNZ	B$SIZE3		;yes, buffer memory space available.
+	JNZ	B$SIZE3	;yes, buffer memory space available.
 	CALL	ILPRT
 	DB	CR,LF,'No Buffer Space',0
-	JR	NEUTRAL
+	JMP	NEUTRAL
 
 B$SIZE3	MOV	L,C		;store..
 	MOV	H,B		;..maximum..
@@ -617,39 +577,41 @@ B$SIZE3	MOV	L,C		;store..
 
 CMDLOOP	LXI	H,RING		;set start point of listing
 	SHLD	RINGPOS
-LOOP	CALL	ILPRT
+DLOOP	CALL	ILPRT
 	DB	CR,LF,'   ',0
 LOOP2	LHLD	RINGPOS		;ring filename location
 	MOV	A,M		;move 'fcb' to a-reg and..
 	ADI	'A'-1		;..make drive printable (a - p).
-	CALL	TYPE
+	CALL	TYPECHR
 	LDA	C$U$A		;get current (last requested) user area
 	ORA	A		;branch if 'user..
-	JRZ	UAZ		;..area zero'.
+	JZ	UAZ	;..area zero'.
 	CPI	10		;less then ten?
-	JRC	LT$TEN		;if yes, branch.
+	JC	LT$TEN	;if yes, branch.
 	SUI	10		;if not, suppress leading 10's digit.
 	PUSH	PSW
 	MVI	A,'1'		;print 10's digit as 'one'
-	CALL	TYPE
+	CALL	TYPECHR
 	POP	PSW
 LT$TEN	ADI	'0'		;make 1's digit printable
-	CALL	TYPE
+	CALL	TYPECHR
 UAZ	CALL	ILPRT		;fence between 'drive/user' and..
 	DB	': ',0		;..'fn.ft'.
 	INX	H		;beginning of 'fn.ft' string
 	MVI	B,8		; 8 filename characters
 PRT$FN	MOV	A,M
-	CALL	TYPE
+	CALL	TYPECHR
 	INX	H
-	DJNZ	PRT$FN
+	DCR	B
+	JNZ	PRT$FN
 	MVI	A,'.'		;period between 'fn' and 'ft'
-	CALL	TYPE
+	CALL	TYPECHR
 	MVI	B,3		; 3 filetype characters
 PRT$FT	MOV	A,M
-	CALL	TYPE
+	CALL	TYPECHR
 	INX	H
-	DJNZ	PRT$FT
+	DCR	B
+	JNZ	PRT$FT
 	MOV	A,M		;get tag (*) and..
 	STA	TAG+2		;..put after colon.
 	INX	H
@@ -667,7 +629,7 @@ NEUTRAL	LHLD	RINGPOS		;stay..
 	LXI	D,-13		;..in..
 	DAD	D		;..the..
 	SHLD	RINGPOS		;..same..
-	JR	LOOP		;..position.
+	JMP	DLOOP	;..position.
 
 ; command-table processor
 	
@@ -677,11 +639,11 @@ CTPR1	MOV	A,M		;get table character and..
 	ORA	A
 	RZ			;..return if at table end.
 	CMP	B
-	JRZ	CTPR2		;branch on command character match..
+	JZ	CTPR2	;branch on command character match..
 	INX	H
 	INX	H
 	INX	H
-	JR	CTPR1		;..else try again.
+	JMP	CTPR1	;..else try again.
 
 CTPR2	INX	H		;point to command routine address and..
 	MOV	A,M
@@ -701,7 +663,7 @@ UNTAG	XRA	A		;set tag/untag..
 	MOV	A,M		;if file previously tagged, remove..
 	CPI	'*'		;..size from..
 	MVI	M,' '		; (untag character, to next ring position.)
-	JRZ	FS2		;..summation.
+	JZ	FS2	;..summation.
 	JMP	FORWARD
 
 ; t a g
@@ -716,7 +678,7 @@ TAG$EM	LHLD	RINGPOS
 	MVI	A,TRUE		;set..
 	STA	T$UN$FG		;..tag/untag and..
 	STA	FS$FLG		;..file size flags to tag.
-	JR	FS2		;get file size
+	JMP	FS2	;get file size
 
 ; f i l e   s i z e
 
@@ -726,7 +688,7 @@ TAG$EM	LHLD	RINGPOS
 FIL$SIZ	XRA	A		;set file size/tagged..
 	STA	FS$FLG		;..file flag to file size.
 FS2	MVI	A,BS		;backspace over..
-	CALL	TYPE		;..command character.
+	CALL	TYPECHR		;..command character.
 	CALL	RINGFCB		;move name to 's$fcb'
 
 ; determine file record count and save in 'rcnt'
@@ -759,19 +721,19 @@ FS2	MVI	A,BS		;backspace over..
 	MOV	L,A		;hl-pair contains # of kilobytes
 	LDA	FS$FLG
 	ORA	A
-	JRZ	D$F$SIZ		;branch if 'f' function
+	JZ	D$F$SIZ	;branch if 'f' function
 
 ; tagged file size summation
 
 	XCHG			;file size to de-pair
 	LDA	T$UN$FG
 	ORA	A
-	JRZ	TAKE		;if untag, take size from total.
+	JZ	TAKE	;if untag, take size from total.
 	LHLD	TAG$TOT		;accumulate..
 	DAD	D		;..sum of..
 	SHLD	TAG$TOT		;..tagged file sizes.
 	XCHG			;file size to hl-pair
-	JR	D$F$SIZ		;branch to display sizes
+	JMP	D$F$SIZ	;branch to display sizes
 
 TAKE	LHLD	TAG$TOT		;subtract..
 	MOV	A,L		;..file..
@@ -794,7 +756,7 @@ D$F$SIZ	CALL	DET$BCD		;determine # of bcd digits in hl-pair
 	DB	'k',0
 	LDA	FS$FLG
 	ORA	A
-	JRZ	FORWARD 	;show next file if not tagging
+	JZ	FORWARD	;show next file if not tagging
 
 ; determine # of digits in tagged summation
 
@@ -807,14 +769,15 @@ D$F$SIZ	CALL	DET$BCD		;determine # of bcd digits in hl-pair
 	SUB	B
 	MOV	B,A
 	MVI	A,' '		;adjust..
-ADD$SP	CALL	TYPE		;..to achieve..
-	DJNZ	ADD$SP		;..right justification.
+ADD$SP	CALL	TYPECHR		;..to achieve..
+	DCR	B
+	JNZ	ADD$SP	;..right justification.
 	MVI	A,'('
-	CALL	TYPE
+	CALL	TYPECHR
 	CALL	DECOUT		;print tagged file summation
 	CALL	ILPRT
 	DB	'k)',0          ;to next file..
-	JR	FORWARD		;..cursor line.
+	JMP	FORWARD	;..cursor line.
 
 ; jump forward 22 files
 
@@ -822,7 +785,7 @@ PRE$FOR	LDA	J$CNT		;adjust jump..
 	INR	A		;..counter..
 	STA	J$CNT		;..until..
 	CPI	22		;..at top limit.
-	JRNZ	FORWARD
+	JNZ	FORWARD
 	MVI	A,TRUE		;at top, so..
 	STA	J$FLG		;..turn off jump switch and..
 	JMP	K$WAIT		;..wait for next keyboard input.
@@ -839,18 +802,18 @@ FORWARD	LHLD	RINGPOS		;at end of loop yet?
 	XCHG
 	LHLD	RINGEND
 	CALL	CMPDEHL		;compare 'present' to 'end'
-	JNZ	LOOP		;to next print position
+	JNZ	DLOOP		;to next print position
 	CALL	CRLF		;end-of-directory shows with fresh line
 	LXI	H,RING		;set position pointer to beginning and..
 	SHLD	RINGPOS
-	JMP	LOOP		;..redisplay start entry.
+	JMP	DLOOP		;..redisplay start entry.
 
 ; r e v e r s e
 
 REVERSE	LHLD	RINGPOS		;see if at beginning of ring
 	LXI	D,RING+13
 	CALL	CMPDEHL
-	JRNZ	REV1		;skip position pointer reset if not..
+	JNZ	REV1	;skip position pointer reset if not..
 	CALL	CRLF		;..at beginning.  skip line at junction.
 	LHLD	RINGEND		;set to end +1 to backup to end
 	LXI	D,13
@@ -896,7 +859,7 @@ DELETE	CALL	RINGFCB		;move name from ring to 'rename fcb'
 	MVI	C,ERASE		;erase function
 	CALL	BDOS
 	INR	A
-	JRNZ	DEL2		;file deleted okay
+	JNZ	DEL2	;file deleted okay
 FNF$MSG	CALL	ILPRT		;show error message
 	DB	CR,LF,'++ NO FILE FOUND ++',0
 	JMP	NEUTRAL
@@ -916,10 +879,10 @@ MOVUP	XCHG
 	CALL	CMPDEHL		;check against current end location
 	POP	H
 	XCHG
-	JRZ	MOVDONE		;must be at end of ring
+	JZ	MOVDONE	;must be at end of ring
 	MVI	B,13		;one name size
 	CALL	MOVE		;move one name up
-	JR	MOVUP		;go check end parameters
+	JMP	MOVUP	;go check end parameters
 
 MOVDONE	XCHG
 	SHLD	RINGEND		;set new ring end if all moved
@@ -954,8 +917,9 @@ RENAME	LHLD	RINGPOS		;move name from ring to rename 'fcb'
 WILDCHK	MOV	A,M		;get char
 	INX	H		;pt to next
 	CPI	'?'		;wild?
-	JRZ	WILDFND
-	DJNZ	WILDCHK
+	JZ	WILDFND
+	DCR	B
+	JNZ	WILDCHK
 
 ; copy old file status bit ($r/o or $sys) to new filename
 
@@ -971,7 +935,8 @@ CBITS1	LDAX	D		;fetch bit of old name character
 	MOV	M,A		;copy new byte back
 	INX	H		;bump copy pointers
 	INX	D
-	DJNZ	CBITS1
+	DCR	B
+	JNZ	CBITS1
 
 ; check if new filename already exists; if so, say so.	then go
 ; to command loop without moving ring position.
@@ -988,7 +953,7 @@ CBITS1	LDAX	D		;fetch bit of old name character
 	MVI	C,SRCHF		; 'search first' function
 	CALL	BDOS
 	INR	A		; 0ffh --> 00h if file not found
-	JRZ	RENFILE		;rename, if duplicate doesn't exists.
+	JZ	RENFILE	;rename, if duplicate doesn't exists.
 	CALL	ILPRT		;announce the situation
 	DB	CR,LF,'++ FILE ALREADY EXISTS ++',BELL,0
 	JMP	NEUTRAL		;try again?
@@ -1056,12 +1021,13 @@ SCAN1	CALL	CKLEGAL		;get and see if legal character
 	CPI	' '		;see if end of parameter field
 	RZ			;rename file
 	CPI	'.'		;at end of filename
-	JRZ	SCAN2		;process filetype field
+	JZ	SCAN2	;process filetype field
 	CPI	'*'		;rest wild?
-	JRZ	SCAN1B
+	JZ	SCAN1B
 	MOV	M,A		;put character into destination 'fcb'
 	INX	H
-	DJNZ	SCAN1
+	DCR	B
+	JNZ	SCAN1
 
 ; entry if eight characters without a 'period'
 
@@ -1070,46 +1036,51 @@ SCAN1A	CALL	CKLEGAL		;scan buffer up to period or end
 	CPI	' '		;end of parameter field?
 	RZ
 	CPI	'.'
-	JRNZ	SCAN1A		;do till end or period
-	JR	SCAN2A		;continue at correct place
+	JNZ	SCAN1A	;do till end or period
+	JMP	SCAN2A	;continue at correct place
 
 ; make rest of entry wild
 
 SCAN1B	MVI	M,'?'		;fill with ?'s
 	INX	H
-	DJNZ	SCAN1B
+	DCR	B
+	JNZ	SCAN1B
 	LDAX	D		;get next char
 	INX	D		;pt to after dot
 	CPI	'.'		;must be dot
 	JNZ	COMCAN		;cancel if not
-	JR	SCAN2A
+	JMP	SCAN2A
 
 ; build filetype field
 
 SCAN2	INX	H		;advance ptr to file type field
-	DJNZ	SCAN2
+	DCR	B
+	JNZ	SCAN2
 SCAN2A	MVI	B,3		;length of filetype field
 SCAN3	CALL	CKLEGAL		;get and check character
-	JRC	SCAN4		;name done if illegal
+	JC	SCAN4	;name done if illegal
 	CPI	' '		;end of parameter field?
-	JRZ	SCAN4
+	JZ	SCAN4
 	CPI	'.'		;check if another period
-	JRZ	SCAN4
+	JZ	SCAN4
 	CPI	'*'		;rest wild?
-	JRZ	SCAN4B
+	JZ	SCAN4B
 	MOV	M,A
 	INX	H
-	DJNZ	SCAN3		;get next character
-	JR	SCAN4A
+	DCR	B
+	JNZ	SCAN3	;get next character
+	JMP	SCAN4A
 
 SCAN4	INX	H		;advance to end of filetype field..
-	DJNZ	SCAN4
+	DCR	B
+	JNZ	SCAN4
 SCAN4A	JMP	INITFCB		;..and zero counter fields.  return.
 
 SCAN4B	MVI	M,'?'		;make wild
 	INX	H
-	DJNZ	SCAN4B
-	JR	SCAN4A		;complete rest
+	DCR	B
+	JNZ	SCAN4B
+	JMP	SCAN4A	;complete rest
 
 ; g o t o   f i l e
 
@@ -1120,7 +1091,7 @@ GOTO	CALL	ILPRT
 	LXI	H,RING		;point to ring beginning and..
 	SHLD	RINGPOS		;..set position.
 GOTO$LP	CALL	GOTOCMP		;compare?
-	JZ	LOOP		;found it, we are there.
+	JZ	DLOOP		;found it, we are there.
 	LHLD	RINGPOS		;advance..
 	LXI	D,13		;..to..
 	DAD	D		;..next entry.
@@ -1128,7 +1099,7 @@ GOTO$LP	CALL	GOTOCMP		;compare?
 	XCHG			;..in de-pair.
 	LHLD	RINGEND		;check for list ending
 	CALL	CMPDEHL		;compare current position with end of ring
-	JRNZ	GOTO$LP		;branch if more to process, else..
+	JNZ	GOTO$LP	;branch if more to process, else..
 	LXI	H,RING+13	;..point to beginning and..
 	SHLD	RINGPOS		;..show 1st filename after..
 	JMP	FNF$MSG		;..showing file-not-found message.
@@ -1139,12 +1110,13 @@ GOTOCMP	LHLD	RINGPOS		;pt to current entry
 	MVI	B,11		; 11 bytes
 GOTOC1	LDAX	D		;get char
 	CPI	'?'		;match?
-	JRZ	GOTOC2
+	JZ	GOTOC2
 	CMP	M		;match?
 	RNZ			;no match
 GOTOC2	INX	D		;pt to next
 	INX	H
-	DJNZ	GOTOC1
+	DCR	B
+	JNZ	GOTOC1
 	RET
 
 ; v i e w
@@ -1154,13 +1126,15 @@ GOTOC2	INX	D		;pt to next
 
 VIEW	CALL	CLS
 	CALL	ILPRT
-	DB	CR,LF,'<CTRL-C> cancels, <SP> turns up one line, '
+	DB	CR,LF
+	DB	'<CTRL-C> cancels, <SP> turns up '
+	DB	'one line, '
 	DB	'other keys page screen',CR,LF,LF,0
 	MVI	A,1		;initialize..
 	STA	LPSCNT		;..lines-per-screen counter.
 	STA	VIEWFLG		;'view' paginate if not zero
 	MVI	A,WRCON		;write console out function
-	JR	CURRENT		;to common i/o processing
+	JMP	CURRENT	;to common i/o processing
 
 ; p r i n t e r
 
@@ -1177,7 +1151,7 @@ LSTFILE	CALL	ILPRT
 	STA	VIEWFLG		;..output to printer.
 	DCR	A		;zero for..
 	STA	LPSCNT		;..lines-per-page counter
-	MVI	A,LIST		;out to 'list' device function and fall thru
+	MVI	A,LISTDEV		;out to 'list' device function and fall thru
 
 ; output character for console/list processing
 
@@ -1195,7 +1169,7 @@ CURRENT	STA	CON$LST		;save bdos function
 	MVI	C,OPEN		;file open function code
 	CALL	BDOS
 	INR	A		; 0ffh --> 00h if open not okay
-	JRNZ	ZERO$CR		;if not okay, show error message.
+	JNZ	ZERO$CR	;if not okay, show error message.
 	CALL	ILPRT
 	DB	CR,LF,'Unable to Open File',0
 	JMP	NEUTRAL
@@ -1223,7 +1197,7 @@ READLP	MOV	A,M		;get a character
 	MOV	C,A
 	MOV	A,E		;check char
 	CPI	TAB		;tabulate?
-	JRNZ	NOTAB
+	JNZ	NOTAB
 	MVI	E,' '		;space over
 TABL	PUSH	B		;save key regs
 	PUSH	D
@@ -1232,8 +1206,8 @@ TABL	PUSH	B		;save key regs
 	POP	B
 	CALL	INCCCNT		;increment char count
 	ANI	7		;check for done at every 8
-	JRNZ	TABL
-	JR	TABDN
+	JNZ	TABL
+	JMP	TABDN
 
 NOTAB	CALL	BDOS		;send character
 	CALL	INCCCNT		;increment char count
@@ -1249,8 +1223,9 @@ TABDN	LDA	VIEWFLG		;if 'view'..
 	ANI	7FH		;if character there, then abort.
 	CNZ	CANVIEW		;already got char
 	INX	H		;if not, bump buffer pointer.
-	DJNZ	READLP		;no, more in present record.
-	JR	READMR		;yes, get next record.
+	DCR	B
+	JNZ	READLP	;no, more in present record.
+	JMP	READMR	;yes, get next record.
 
 PAGER	MOV	A,E		;(character in e-reg)
 	CPI	LF
@@ -1258,8 +1233,8 @@ PAGER	MOV	A,E		;(character in e-reg)
 	XRA	A		;zero char count
 	STA	CHARCNT
 	LDA	CON$LST		;printer or console?
-	CPI	LIST		;check for printer
-	JRZ	PAGEP
+	CPI	LISTDEV		;check for printer
+	JZ	PAGEP
 	MVI	B,CTPP		;get number of lines of text per screen
 	LDA	LPSCNT		;is counter..
 	INR	A		;..at..
@@ -1275,7 +1250,7 @@ PAGER	MOV	A,E		;(character in e-reg)
 	PUSH	PSW
 	CALL	CLR$L		;clear above msg line
 	POP	PSW
-	JRNZ	CANVIEW		;..if not, see if cancel.
+	JNZ	CANVIEW	;..if not, see if cancel.
 	MVI	A,CTPP-1	;set for single line..
 	STA	LPSCNT		;..scroll and..
 	RET			;..return for one more line.
@@ -1289,14 +1264,15 @@ PAGEP	MVI	B,LTPP		;get number of lines-of-text-per-page
 	XRA	A		;else, zero..
 	STA	LPSCNT		;..lines-per-page counter.
 	MVI	B,LSPP		;number of lines to skip
-	MVI	C,LIST		;lst: output
+	MVI	C,LISTDEV		;lst: output
 PAGELST	CALL	LCRLF		;new line to lst:
-	DJNZ	PAGELST
-	JR	PHEAD		;print heading, then done.
+	DCR	B
+	JNZ	PAGELST
+	JMP	PHEAD	;print heading, then done.
 
 CANVIEW	CPI	CTRLC		; ^c?
 	JZ	COMCAN
-	CPI	ESC		; 'esc'ape?
+	CPI	ESCCHR		; 'esc'ape?
 	JZ	COMCAN
 	RET			;return for another page
 
@@ -1306,15 +1282,15 @@ INCCCNT	LDA	CHARCNT		;increment char count
 	RET
 
 PHEAD	LDA	CON$LST		;printing to printer?
-	CPI	LIST
+	CPI	LISTDEV
 	RNZ
 	LXI	H,HEADMSG	;print heading
 PHEAD1	MOV	A,M		;get char
 	ORA	A		;done?
-	JRZ	PHEAD2
+	JZ	PHEAD2
 	CALL	LOUT		;send to printer
 	INX	H		;pt to next
-	JR	PHEAD1
+	JMP	PHEAD1
 
 PHEAD2	LXI	H,S$FCB+1	;pt to file name
 	MVI	B,8		; 8 chars
@@ -1330,7 +1306,8 @@ PHEAD2	LXI	H,S$FCB+1	;pt to file name
 PHEAD3	MOV	A,M		;get char
 	CALL	LOUT		; 'lst:' it
 	INX	H		;pt to next
-	DJNZ	PHEAD3
+	DCR	B
+	JNZ	PHEAD3
 	RET
 
 HEADMSG DB	'File: ',0
@@ -1346,13 +1323,13 @@ MASS$LP	MVI	A,'*'
 	CMP	M
 	INX	H		;get in filename synchronization
 	SHLD	RINGPOS
-	JRZ	MCOPY		;copy filename with tag character (*)
+	JZ	MCOPY	;copy filename with tag character (*)
 M$LP	LHLD	RINGPOS		;re-entry point for next file mass-copy
 	XCHG			;at ring..
 	LHLD	RINGEND		;..end yet?
 	CALL	CMPDEHL		; (compare present position with end)
 	LHLD	RINGPOS
-	JRNZ	MASS$LP		;no, loop 'till thru ring list.
+	JNZ	MASS$LP	;no, loop 'till thru ring list.
 	XRA	A		;reset flags..
 	STA	FIRST$M		;..for..
 	CMA			;..next..
@@ -1382,14 +1359,14 @@ COPY	LXI	H,0		;initialize storage for..
 	MVI	C,OPEN		;..for reading.
 	CALL	BDOS
 	INR	A		; 0ffh --> 00h if bad open
-	JRNZ	COPY2		;if okay, skip error message.
+	JNZ	COPY2	;if okay, skip error message.
 	CALL	ILPRT
 	DB	CR,LF,'Can''t Open Source',BELL,0
 	JMP	NEUTRAL
 
 COPY2	LDA	FIRST$M		;by-pass prompt, drive/user compatibility..
 	ORA	A		;..test, and disk reset after..
-	JRNZ	COPY3M		;..1st time thru in mass-copy mode.
+	JNZ	COPY3M	;..1st time thru in mass-copy mode.
 	CALL	ILPRT		;prompt for drive selection
 	DB	BS,'Copy to DIRectory: ',0
 	CALL	DEF$D$U
@@ -1400,15 +1377,17 @@ COPY2	LDA	FIRST$M		;by-pass prompt, drive/user compatibility..
 	MOV	B,A		;..put into b-reg for..
 	LDA	S$FCB		;..comparison.
 	CMP	B
-	JRNZ	COPY3		;branch if different
+	JNZ	COPY3	;branch if different
 	LDA	R$U$A		;requested user area --> rua
 	MOV	B,A
 	LDA	C$U$A		;current user area --> cua
 	CMP	B
-	JRNZ	COPY3
+	JNZ	COPY3
 	CALL	ILPRT		;if not, show error condition:
 	DB	CR,LF,BELL
-	DB	'++ Drives or User Areas must be different ++',0
+	DB	'++ Drives or User Areas must be '
+	DB	'different ++'
+	DB	0
 	JMP	NEUTRAL		;try again?
 
 COPY3	CALL	RESET		;make sure disk is read/write
@@ -1418,17 +1397,20 @@ COPY3M	LDA	FCB		;put requested drive into..
 	CALL	SET$USR		;..requested user area.
 	LDA	MFLAG		;auto-erase..
 	ORA	A		;..if..
-	JRZ	COPY4M		;..in mass-copy mode.
+	JZ	COPY4M	;..in mass-copy mode.
 	LXI	D,D$FCB		;search for duplicate
 	MVI	C,SRCHF		; 'search first' function
 	CALL	BDOS
 	INR	A		;if not found, 0ffh --> 00h.  then..
-	JRZ	COPY5		;go to 'make' function for new file.
+	JZ	COPY5	;go to 'make' function for new file.
 	CALL	ILPRT		;if found, ask to replace:
-	DB	CR,LF,' ---> Copy exists, erase? (y/n): ',0
+	DB	CR,LF
+	DB	' ---> Copy exists, erase? (y/n):'
+	DB	' '
+	DB	0
 	CALL	KEYIN		;get answer
 	CPI	'Y'		;if yes, then..
-	JRZ	COPY4M		;..delete and overlay.
+	JZ	COPY4M	;..delete and overlay.
 	LDA	C$U$A		;reset to..
 	CALL	SET$USR		;..current user area.
 	JMP	FORWARD		;if re-copy not wanted, to next position.
@@ -1440,7 +1422,7 @@ COPY5	LXI	D,D$FCB		;create new file and open for writing
 	MVI	C,MAKE		;make function
 	CALL	BDOS
 	INR	A		;if directory full, 0ffh --> 00h.
-	JRNZ	COPY6		;if not, branch.
+	JNZ	COPY6	;if not, branch.
 	CALL	ILPRT
 	DB	CR,LF,'Destination Directory Full',BELL,0
 	JMP	NEUTRAL		;if error, back to ring processor.
@@ -1455,7 +1437,7 @@ COPY6	MVI	B,8		;show filename and..
 	LDA	FIRST$M		;if 1st time thru mass-copy..
 	ORA	A		;..mode, add..
 	MVI	A,LF		;..a line feed.
-	CZ	TYPE
+	CZ	TYPECHR
 	CALL	CLR$L		;clear line
 	CALL	ILPRT
 	DB	CR,' ---> Copying file '
@@ -1480,9 +1462,9 @@ COPY7	LHLD	BUF$PT		;set dma address to buffer pointer
 	MVI	C,READ		;record read function
 	CALL	BDOS
 	ORA	A		; 00h --> read okay
-	JRZ	S$RD$OK
+	JZ	S$RD$OK
 	DCR	A		;eof?
-	JRZ	COPY8		;yes, end-of-file, set 'eof' flag.
+	JZ	COPY8	;yes, end-of-file, set 'eof' flag.
 	CALL	ILPRT
 	DB	CR,LF,'Source Read Error',BELL,0
 	JMP	NEUTRAL
@@ -1492,7 +1474,8 @@ S$RD$OK	LHLD	BUF$PT
 COPY7A	MOV	A,M		;get character and..
 	CALL	UPDCRC		;..add to 'crc' value.
 	INX	H
-	DJNZ	COPY7A		;loop 'till record read finished
+	DCR	B
+	JNZ	COPY7A	;loop 'till record read finished
 	LHLD	BUF$PT		;bump buffer pointer..
 	LXI	D,128		;..by..
 	DAD	D		;..one..
@@ -1503,8 +1486,8 @@ COPY7A	MOV	A,M		;get character and..
 	XCHG			;ready to compare to..
 	LHLD	REC$MAX		;..maximum record count (full-buffer).
 	CALL	CMPDEHL		;compare
-	JRNZ	COPY7    	;if not full, get next record.
-	JR	COPY9		;full, start first write session.
+	JNZ	COPY7	;if not full, get next record.
+	JMP	COPY9	;full, start first write session.
 
 ; indicate end-of-file read
 
@@ -1520,7 +1503,7 @@ COPY9	LDA	R$U$A		;set user to requested..
 COPY10	LHLD	REC$CNT		;buffer empty?
 	MOV	A,H
 	ORA	L
-	JRZ	COPY11		;buffer empty, check 'eof' flag.
+	JZ	COPY11	;buffer empty, check 'eof' flag.
 	DCX	H		;dec buffer record count for each write
 	SHLD	REC$CNT
 	LHLD	BUF$PT		;set up dma address
@@ -1536,7 +1519,7 @@ COPY10	LHLD	REC$CNT		;buffer empty?
 	MVI	C,WRITE		;write record function
 	CALL	BDOS
 	ORA	A		; 00h --> write okay
-	JRZ	COPY10		;okay, do next record.	else..
+	JZ	COPY10	;okay, do next record.	else..
 	CALL	ILPRT		;..say disk write error.
 	DB	CR,LF,'++ COPY DISK FULL ++',BELL,0
 C$ERA	LXI	D,D$FCB		;delete..
@@ -1553,10 +1536,10 @@ COPY11	LDA	EOFLAG		;buffer all written, check for 'eof'.
 	MVI	C,CLOSE
 	CALL	BDOS
 	INR	A		;if no-close-error then..
-	JRNZ	CRC$CMP		;..compare file crc's.
+	JNZ	CRC$CMP	;..compare file crc's.
 	CALL	ILPRT
 	DB	CR,LF,'Copy Close Error',BELL,0
-	JR	C$ERA
+	JMP	C$ERA
 
 ; read destination 'written-file' and compare crc's
 
@@ -1580,9 +1563,9 @@ CRCWF1	LXI	D,D$FCB
 	MVI	C,READ
 	CALL	BDOS
 	ORA	A		;read okay?
-	JRZ	D$RD$OK		;yes, read more.
+	JZ	D$RD$OK	;yes, read more.
 	DCR	A		;eof?
-	JRZ	FINCRC		;yes, finish up and make 'crc' comparison.
+	JZ	FINCRC	;yes, finish up and make 'crc' comparison.
 	CALL	ILPRT
 	DB	CR,LF,'Copy Read Error',BELL,0
 	JMP	NEUTRAL
@@ -1592,8 +1575,9 @@ D$RD$OK	LXI	H,TBUF
 CRCWF2	MOV	A,M		;get character to..
 	CALL	UPDCRC		;..add to 'crc' value. 
 	INX	H
-	DJNZ	CRCWF2
-	JR	CRCWF1
+	DCR	B
+	JNZ	CRCWF2
+	JMP	CRCWF1
 
 ; crc subroutines
 
@@ -1627,7 +1611,7 @@ FINCRC	LDA	C$U$A		;reset user from 'requested'..
 	XCHG			;..de-pair.
 	LHLD	CRCVAL2		;put read-file 'crc' and..
 	CALL	CMPDEHL		;..compare 'de/hl' for equality.
-	JRNZ	BADCRC		;if not zero, show copy-error message.
+	JNZ	BADCRC	;if not zero, show copy-error message.
 	CALL	ILPRT		;if zero, show 'verified' message.
 	DB	CR,' ---> File copy certified       ',0
 	LDA	MFLAG		;if not mass-copy mode, return..
@@ -1655,14 +1639,15 @@ GLOOP	XCHG
 	XRA	H
 	MOV	H,A
 LLOOP	DAD	H
-	JRNC	LSKIP
+	JNC	LSKIP
 	MVI	A,10H		;generator is x^16 + x^12 + x^5 + x^0 as..
 	XRA	H		;..recommended by ccitt for asynchronous..
 	MOV	H,A		;..communications.  produces same results..
 	MVI	A,21H		;..as popular programs chek, comm7, mdm7,..
 	XRA	L		;..and modem7.
 	MOV	L,A
-LSKIP	DJNZ	LLOOP
+LSKIP	DCR	B
+	JNZ	LLOOP
 	POP	B
 	XCHG			;de-pair has 'crc', hl-pair points to table.
 	MOV	M,D		;store high..
@@ -1671,7 +1656,7 @@ LSKIP	DJNZ	LLOOP
 	DCR	H
 	INX	H		;move to next table entry
 	INR	C		;next index
-	JRNZ	GLOOP
+	JNZ	GLOOP
 	RET
 
 ; w o r k h o r s e   r o u t i n e s
@@ -1682,9 +1667,9 @@ ILPRT	XTHL			;save hl, get msg pointer.
 ILPLP	MOV	A,M		;get character
 	INX	H		;pt to next
 	ANI	7FH		;strip type bits
-	JRZ	ILPLP1
-	CALL	TYPE		;show on console
-	JR	ILPLP
+	JZ	ILPLP1
+	CALL	TYPECHR		;show on console
+	JMP	ILPLP
 
 ILPLP1	XTHL			;set hl-pair and..
 	RET			;..return past message.
@@ -1692,12 +1677,12 @@ ILPLP1	XTHL			;set hl-pair and..
 ; output 'crlf' to console
 
 CRLF	MVI	A,CR
-	CALL	TYPE
+	CALL	TYPECHR
 	MVI	A,LF
 
 ; conout routine (re-entrant)
 
-TYPE	PUSH	PSW
+TYPECHR	PUSH	PSW
 	PUSH	B
 	PUSH	D
 	PUSH	H
@@ -1715,13 +1700,14 @@ TYPE	PUSH	PSW
 CLR$L	CALL	CRONLY
 	MVI	B,30		; # of characters to blank on line
 	MVI	A,' '
-CL$LP	CALL	TYPE
-	DJNZ	CL$LP
+CL$LP	CALL	TYPECHR
+	DCR	B
+	JNZ	CL$LP
 
 ; output 'cr' to console
 
 CRONLY	MVI	A,CR
-	JR	TYPE
+	JMP	TYPECHR
 
 ; output 'crlf' to printer
 
@@ -1736,7 +1722,7 @@ LOUT	PUSH	PSW
 	PUSH	D
 	PUSH	H
 	MOV	E,A
-	MVI	C,LIST
+	MVI	C,LISTDEV
 	CALL	BDOS
 	POP	H
 	POP	D
@@ -1748,7 +1734,7 @@ LOUT	PUSH	PSW
 
 DKEYIN	CALL	CIN		;get character from 'bios'
 	ANI	7FH		;mask 'msb'
-	JR	UCASE		;capitalize
+	JMP	UCASE	;capitalize
 
 ; CP/M-86: no BIOS jump table at 0001h, poll BDOS 6 (direct console input)
 CIN	MVI	C,6
@@ -1783,14 +1769,16 @@ CONVLP	INX	H		;point at character to capitalize
 	MOV	A,M
 	CALL	UCASE
 	MOV	M,A		;put back into buffer
-	DJNZ	CONVLP
+	DCR	B
+	JNZ	CONVLP
 	RET
 
 ; fill buffer with 'spaces' with count in b-reg
 
 FILL	MVI	M,' '		;put in space character
 	INX	H
-	DJNZ	FILL		;no, branch.
+	DCR	B
+	JNZ	FILL	;no, branch.
 	RET
 
 ; ignore leading spaces (ls) in buffer, length in c-reg.
@@ -1801,7 +1789,7 @@ UNSPACE	LDAX	D		;get character
 	INX	D		;to next character
 	DCR	C
 	JZ	COMCAN		;all spaces --> command recovery error
-	JR	UNSPACE
+	JMP	UNSPACE
 
 ; check for legal cp/m filename character -- return with carry set if illegal
 
@@ -1812,13 +1800,14 @@ CKLEGAL	LDAX	D		;get character from de-pair
 	PUSH	H
 	PUSH	B
 	CPI	'['		;if greater than 'z', exit with..
-	JRNC	CKERR		;..carry set.
+	JNC	CKERR	;..carry set.
 	MVI	B,CHR$TEND-CHR$TBL
 	LXI	H,CHR$TBL
 CHR$LP	CMP	M
-	JRZ	CKERR
+	JZ	CKERR
 	INX	H
-	DJNZ	CHR$LP
+	DCR	B
+	JNZ	CHR$LP
 	ORA	A		;clear carry for good character
 	POP	B
 	POP	H
@@ -1837,13 +1826,14 @@ CHR$TEND DS	0
 CLS	 IF	NOT HZ19
 	MVI	B,24		;output lf's (fully clear screen)
 	MVI	A,LF 
-LFLP	CALL	TYPE
-	DJNZ	LFLP		;bump b-reg down to zero
+LFLP	CALL	TYPECHR
+	DCR	B
+	JNZ	LFLP	;bump b-reg down to zero
 	 ENDIF			;not hz19
 
 	 IF	HZ19
 	CALL	ILPRT		;clear screen and home..
-	DB	ESC,'E',0	;..cursor for h/z19 terminal.
+	DB	ESCCHR,'E',0	;..cursor for h/z19 terminal.
 	 ENDIF			;hz19
 
 	RET
@@ -1863,7 +1853,8 @@ MOVE	MOV	A,M		;get hl-pair referenced source byte
 	STAX	D		;put to de-pair referenced destination
 	INX	H		;fix pointers..
 	INX	D		;..for next movement.
-	DJNZ	MOVE		;dec byte count and test if done
+	DCR	B
+	JNZ	MOVE	;dec byte count and test if done
 	RET
 
 ; initialize 'fcb' cp/m system fields (entry with hl-pair pointing to 'fcb')
@@ -1871,7 +1862,8 @@ MOVE	MOV	A,M		;get hl-pair referenced source byte
 INITFCB	MVI	B,4		;fill ex, s1, s2, rc counters with zeros.
 INITLP	MVI	M,0		;put zero (null) in memory
 	INX	H
-	DJNZ	INITLP
+	DCR	B
+	JNZ	INITLP
 	RET
 
 ; disk system reset -- login requested drive
@@ -1912,7 +1904,7 @@ SHIFTLP	DCR	B
 	MOV	A,L
 	RAR
 	MOV	L,A
-	JR	SHIFTLP
+	JMP	SHIFTLP
 
 ; decimal pretty print (h-reg contains msb; l-reg, the lsb.)
 
@@ -1924,7 +1916,7 @@ DECOUT	PUSH	PSW
 	LXI	D,-1
 DECOU2	DAD	B		;sets..
 	INX	D
-	JRC	DECOU2		;..carry.	
+	JC	DECOU2	;..carry.	
 	LXI	B,10
 	DAD	B
 	XCHG
@@ -1933,7 +1925,7 @@ DECOU2	DAD	B		;sets..
 	CNZ	DECOUT		; (recursive)
 	MOV	A,E
 	ADI	'0'		;make ascii
-	CALL	TYPE
+	CALL	TYPECHR
 	POP	H
 	POP	D
 	POP	B
@@ -1985,7 +1977,7 @@ FRESTOR	MVI	C,INQDISK	;determine current drive
 	CALL	BDOS
 	MOV	A,L		;get version #
 	CPI	30H		; 3.x?
-	JRC	FREE20		;use old method if not
+	JC	FREE20	;use old method if not
 	LDA	FCB		;get drive #
 	DCR	A
 	MOV	E,A		;use new compute free space bdos call
@@ -1999,11 +1991,12 @@ FRE3L2	MOV	A,M
 	RAR
 	MOV	M,A
 	DCX	H
-	DJNZ	FRE3L2		;loop for 3 bytes
+	DCR	B
+	JNZ	FRE3L2	;loop for 3 bytes
 	DCR	C
-	JRNZ	FRE3L1		;shift 3 times
+	JNZ	FRE3L1	;shift 3 times
 	LHLD	CPM$BASE+80H	;now get result in k
-	JR	PRT$FRE		;go store it
+	JMP	PRT$FRE	;go store it
 
 FREE20	MVI	C,INQALC	;address of cp/m allocation vector
 	CALL	BDOS
@@ -2015,29 +2008,29 @@ GSPBYT	PUSH	D		;save allocation address
 	LDAX	D
 	MVI	E,8		;set to process 8 bits (blocks)
 GSPLUP	RAL			;test bit
-	JRC	NOT$FRE
+	JC	NOT$FRE
 	INX	B
 NOT$FRE	MOV	D,A		;save bits
 	DCX	H
 	MOV	A,L
 	ORA	H
-	JRZ	END$ALC		;quit if out of blocks
+	JZ	END$ALC	;quit if out of blocks
 	MOV	A,D		;restore bits
 	DCR	E		;count down 8 bits
-	JRNZ	GSPLUP		;branch to do another bit
+	JNZ	GSPLUP	;branch to do another bit
 	POP	D		;bump to next count..
 	INX	D		;..of allocation vector.
-	JR	GSPBYT		;process it
+	JMP	GSPBYT	;process it
 
 END$ALC	POP	D		;clear alloc vector pointer from stack
 	MOV	L,C		;copy # blocks to hl-pair
 	MOV	H,B
 	LDA	BSHIFTF		;get block shift factor
 	SUI	3		;convert from sectors to thousands (k)
-	JRZ	PRT$FRE		;skip shifts if 1k blocks
+	JZ	PRT$FRE	;skip shifts if 1k blocks
 FREK$LP	DAD	H		;multiply blocks by k-bytes per block
 	DCR	A		;multiply by 2, 4, 8, or 16.
-	JRNZ	FREK$LP
+	JNZ	FREK$LP
 PRT$FRE	CALL	DECOUT		; # of free k-bytes in hl-pair
 	CALL	ILPRT
 	DB	'k bytes free on DIRectory '
@@ -2086,7 +2079,7 @@ CMD$TBL	DB	' '		;if 'space' or..
 	DW	VIEW
 	DB	'X'		;if exit, then to cp/m ccp.
 	DW	CPM$CCP
-	DB	ESC		; 'esc' exits to cp/m ccp also.
+	DB	ESCCHR		; 'esc' exits to cp/m ccp also.
 	DW	CPM$CCP
 	DB	0		;table ending
 
@@ -2141,7 +2134,7 @@ VIEWFLG	 DS	1		; 00h --> to 'print' else to crt 'view'
 RDCON	EQU	1		;console input function
 WRCON	EQU	2		;write character to console..
 PUNCH	EQU	4		;..punch and..
-LIST	EQU	5		;..to list logical devices.
+LISTDEV	EQU	5		;..to list logical devices.
 DIRCON	EQU	6		;direct console i/o
 RDBUF	EQU	10		;read input string
 CONST	EQU	11		;get console status
@@ -2176,5 +2169,7 @@ TBUF	 EQU	CPM$BASE+80H	;default cp/m buffer
 ; assembled 'com' and 'ram-loaded' file size (0c00h = 3k)
 
 COMFILE	 EQU	(CMDBUF+2)-256	; 'prn' listing shows 'com'..
-LAST	 END	SOURCE		;..and loaded file size.
-
+LASTADR	EQU	$
+RING	EQU	LASTADR+100H AND 0FF00H
+	END
+

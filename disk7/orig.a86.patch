@@ -13,38 +13,7 @@
  	CALL	HELP			;show 'menu'
  	MOV	DL,GET			;determine..
  	CALL	GET@USR			;..user area then..
-@@ -320,9 +325,10 @@
- 	MOV	CL,SETDMA		;..before going home.
- 	INT	224
- 	CALL	CRLF
--	MOV	BX,Word Ptr STACK	;put cp/m's pointer..
--	MOV	SP,BX			;..back to 'sp'.
--	RET				;return to cp/m ccp
-+; CP/M-86: terminate through BDOS 0 instead of returning to the CCP
-+	MOV	CL,0
-+	MOV	DL,0
-+	INT	224
- ;not warmboot
- ; h e l p  (menu)
- HELP:	CALL	CLS			;show menu but 'clear-screen' first
-@@ -1650,9 +1656,13 @@
- DKEYIN:	CALL	CIN			;get character from 'bios'
- 	AND	AL,7FH			;mask 'msb'
- 	JMPS	UCASE			;capitalize
--CIN:	MOV	BX,Word Ptr .CPM@BASE+1	;get 'bios' base address
--	MOV	BL,9			;console input routine
--	JMP	BX			; 'jump' to it
-+; CP/M-86: no BIOS jump table at 0001h, poll BDOS 6 (direct console input)
-+CIN:	MOV	CL,6
-+	MOV	DL,0FFH
-+	INT	224
-+	OR	AL,AL
-+	JZ	CIN
-+	RET
- ; conin routine (waits for response)
- KEYIN:	MOV	CL,RDCON
- 	INT	224
-@@ -1875,19 +1885,19 @@
+@@ -1875,19 +1875,19 @@
  	ADD	AL,'A'-1		;make printable and..
  	MOV	Byte Ptr DRNAME,AL	;..use as drive designator.
  	MOV	CL,GETPARM		;current disk parameter block
@@ -69,7 +38,7 @@
  	XCHG	BX,DX
  	MOV	Word Ptr B@MAX,BX	; 'dsm'
  	MOV	CL,GETVERS		;get cp/m version in hl-pair
-@@ -1917,14 +1927,14 @@
+@@ -1917,14 +1917,14 @@
  	MOV	BX,Word Ptr .CPM@BASE+80H	;now get result in k
  	JMPS	PRT@FRE			;go store it
  FREE20:	MOV	CL,INQALC		;address of cp/m allocation vector
