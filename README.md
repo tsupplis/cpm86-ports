@@ -2,18 +2,23 @@
 
 A small collection of classic software tools adapted or ported for CP/M-86. The repository contains language interpreters, compilers, conversion utilities, and other retro-computing experiments assembled for the CP/M environment. All are rebuilt some source, and cleansed, and tested and curated progressively. Please do not hesitate to raise issues.
 
-In particular, they cover:
+In particular, those tools give a much more friendly user interaction with the old and crude CP/M-86 1.1 that is otherwise reminiscent of CP/M-80 2.2 which is its base.
+
 - file compression
 - library management
 - disk sweepers
 - emulation
-- unix tools
+- unix like tools
 - development tools
 
-They also expose some practices of cp/m-80 to cp/m-86 translation. 
+Further tools are available at  [CP/M-86 Hacking Tools](https://github.com/tsupplis/cpm86-hacking)
+- unix like tools (mv, ls, wc, more, touch)
+- submit tools (pause, cls, wait)
+- general cli tools (copycon, mem, mode, tod, zpdump, rtc/at time, dump, conio demos)
 
-
-Used as a soak testing and source for https://github.com/tsupplis/cpm86-crossdev ...
+Ancillary goals:
+- They also expose some practices of CPM/M-80 to CPM/M-86 translation. 
+- This project is also used as a soak testing and source for [CP/M-86 Cross Developement Environment] (https://github.com/tsupplis/cpm86-crossdev] ...
 
 <p align="center">
 <img src="images/filer.png" alt="filer" width="48%">
@@ -23,7 +28,8 @@ Used as a soak testing and source for https://github.com/tsupplis/cpm86-crossdev
 <img src="images/sokoban.png" alt="sokoban" width="48%">
 <br><sub>seemem (memory browser) &nbsp;·&nbsp; sokoban</sub><br>
 <img src="images/xlisp.png" alt="xlisp" width="48%">
-<br><sub>xlisp</sub>
+<img src="images/disk7.png" alt="disk7" width="48%">
+<br><sub>xlisp &nbsp;·&nbsp; disk7 (DISK7 full-screen file manager)</sub>
 </p>
 
 ## Included projects
