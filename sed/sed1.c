@@ -705,6 +705,16 @@ union reptr	*ipc;
 
 }
 
+/* CP/M pads the last record with NUL or ^Z: drop trailing padding */
+int
+trimpad(nr)
+int	nr;
+{
+	while(nr > 0 && (ibuf[nr - 1] == 0 || ibuf[nr - 1] == 0x1a))
+		nr--;
+	return(nr);
+}
+
 char *
 gline(addr, fin)
 char	*addr;
@@ -718,6 +728,8 @@ FILE	*fin;
 	for (;;) {
 		if (p2 >= ebp) {
 			nr = fread(ibuf, 1, BUFSIZ, fin);
+			if (nr > 0)
+				nr = trimpad(nr);
 			if (nr <= 0) {
 				return(badp);
 			}
@@ -728,6 +740,8 @@ FILE	*fin;
 			if(p2 >= ebp) {
 				/* buffer exhausted after newline — refill */
 				nr = fread(ibuf, 1, BUFSIZ, fin);
+				if(nr > 0)
+					nr = trimpad(nr);
 				if(nr <= 0) {
 					if(eargc == 0)
 						dolflag = 1;
