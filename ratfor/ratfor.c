@@ -1434,15 +1434,51 @@ void outdon(void)
 /*
  * outline - write a line to output, upper cased if requested
  *
+ * Character constants ('...' or "...") and Hollerith constants (nHtext)
+ * keep their case.  The state is kept across calls because a constant
+ * can be split over continuation lines.
  */
 void outline(char *str)
 {
+	static char quote = EOS;	/* open quote character, if any */
+	static int holl = 0;		/* Hollerith characters still to copy */
 	char *p;
+	int n;
 
-	if (upcase == YES)
-		for (p = str; *p != EOS; p++)
-			if (*p >= LETA && *p <= LETZ)
-				*p = *p - LETA + BIGA;
+	if (upcase == YES) {
+		if (str[0] == 'C' || str[0] == 'c') {	/* comment line */
+			quote = EOS;
+			holl = 0;
+			for (p = str; *p != EOS; p++)
+				if (*p >= LETA && *p <= LETZ)
+					*p = *p - LETA + BIGA;
+		} else {
+			for (p = str; *p != EOS && *p != NEWLINE; p++) {
+				if (holl > 0)
+					holl--;
+				else if (quote != EOS) {
+					if (*p == quote)
+						quote = EOS;
+				}
+				else if (*p == SQUOTE || *p == DQUOTE)
+					quote = *p;
+				else if (*p >= '0' && *p <= '9' &&
+					 (p == str || !((p[-1] >= '0' && p[-1] <= '9') ||
+					   (p[-1] >= LETA && p[-1] <= LETZ) ||
+					   (p[-1] >= BIGA && p[-1] <= BIGZ)))) {
+					for (n = 0; *p >= '0' && *p <= '9'; p++)
+						n = n * 10 + *p - '0';
+					if (*p == 'h' || *p == 'H') {
+						holl = n;
+						continue;
+					}
+					p--;
+				}
+				else if (*p >= LETA && *p <= LETZ)
+					*p = *p - LETA + BIGA;
+			}
+		}
+	}
 	fputs(str, stdout);
 }
 

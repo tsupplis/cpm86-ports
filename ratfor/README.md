@@ -10,6 +10,8 @@ Use `-u` to emit upper case output, as required by DR Fortran-77:
     ratfor -u -o fib.f77 fib.r
     fc fib.f77
 
+Character constants (`'...'`, `"..."`) and Hollerith constants keep their case.
+
 Below is the README I found in the source package.
 
 Notes:  as of now, the '-O' switch is broken. 
