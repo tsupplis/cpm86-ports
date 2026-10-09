@@ -837,16 +837,19 @@ int main (argc, argv)
 	if (argc > 1 && argv[1][0] == '-') {
 		switch(argv[1][1]) {
 		case 'w':
+		case 'W':
 			width = atoi(&argv[1][2]);
 			if (width == 0)
 				width = 80;
 			break;
 		case 'p':
+		case 'P':
 			punch = &argv[1][2];
 			if (*punch == 0)
 				punch = DPUNCH;
 			break;
 		case 't':
+		case 'T':
 			trace++;
 			break;
 		default:

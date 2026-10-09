@@ -77,7 +77,7 @@ char **argv;
 
 	/* optional input file argument */
 	if (argc > 1) {
-		if ((in = fopen(argv[0], "rb")) == 0) {
+		if ((in = fopen(argv[0], "r")) == 0) {
 			fprintf(stderr, "uuencode: cannot open %s\n", argv[0]);
 			exit(1);
 		}

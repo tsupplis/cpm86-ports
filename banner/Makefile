@@ -1,30 +1,23 @@
-TOPSRC!=cd ../..; pwd
-include ${TOPSRC}/share/mk/sys.mk
+CC=aztec42_cc
+LD=aztec42_link
+CFLAGS=
+CPM_LDFLAGS=-lc86
+DOS_LDFLAGS=-lc
 
-BINDIR=		/usr/games
-MANDIR=		/usr/share/man/cat6
+all: binaries
 
-PROG=		banner
+OBJS=banner.o
 
-OBJS=		${PROG}.o
+binaries: banner.cmd banner.com
 
-MAN=		${PROG}.0
-MANSRC=		${PROG}.6
+%.o: %.c
+	$(CC) $(CFLAGS) -c -o $@ $<
 
-all:		${PROG} ${MAN}
+banner.com: $(OBJS)
+	$(LD) -o $@ $(OBJS) $(DOS_LDFLAGS)
 
-${PROG}:	${OBJS}
-		${CC} ${CFLAGS} ${LDFLAGS} -o $@.elf ${OBJS} ${LIBS}
-		${OBJDUMP} -S $@.elf > $@.dis
-		${SIZE} $@.elf
-		${ELF2AOUT} $@.elf $@ && rm $@.elf
-
-${MAN}:		${MANSRC}
-		${MANROFF} ${MANSRC} > $@
+banner.cmd: $(OBJS)
+	$(LD) -o $@ $(OBJS) $(CPM_LDFLAGS)
 
 clean:
-		rm -f *.o *.elf ${PROG} *.0 *.dis tags *~
-
-install:	all
-		${INSTALL} ${PROG} ${DESTDIR}${BINDIR}/${PROG}
-		${INSTALL} -m 444 ${MAN} ${DESTDIR}${MANDIR}/${MAN}
+	rm -rf *.o *.cmd *.com

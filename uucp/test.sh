@@ -1,12 +1,8 @@
 #!/bin/sh
 # Regression tests for the CP/M-86 uuencode/uudecode port.
 #
-# Strategy: encode a known binary with uuencode.com (DOS, reliable),
-# then decode it with uudecode.cmd (CP/M-86 target under test), and
-# vice versa.  Also round-trip both .cmd binaries together.
-#
-# The CCP uppercases the command tail; filenames are already upper case.
-# emu2 does not fold the tail, so we write arguments in upper case.
+# emu2 does NOT fold the command tail (unlike the real CCP), so filenames
+# and arguments are passed as-is.  We use lowercase throughout.
 
 cd "$(dirname "$0")" || exit 1
 
@@ -23,7 +19,7 @@ for binary in uuencode.cmd uuencode.com uudecode.cmd uudecode.com; do
 	fi
 done
 
-trap 'rm -f IN.BIN ENC.TXT OUT.BIN out.tmp err.tmp' EXIT INT TERM
+trap 'rm -f in.bin enc.txt out.bin out.tmp err.tmp testfile' EXIT INT TERM
 
 pass() { printf 'PASS  %s\n' "$1"; }
 blame() {
@@ -32,51 +28,44 @@ blame() {
 	fail=1
 }
 
-# create a known binary test file: 256 bytes, values 0x00..0xff
-python3 -c "import sys; sys.stdout.buffer.write(bytes(range(256)))" > IN.BIN
+# 256-byte binary: all byte values 0x00..0xff
+python3 -c "import sys; sys.stdout.buffer.write(bytes(range(256)))" > in.bin
 
 echo "== uuencode.com | uudecode.cmd =="
-# encode with the DOS binary (known good)
-emu2 uuencode.com IN.BIN TESTFILE > ENC.TXT 2>/dev/null
-# decode with the CP/M-86 binary
-timeout $TIMEOUT emu2 uudecode.cmd -o OUT.BIN ENC.TXT > out.tmp 2>/dev/null < /dev/null
-if cmp -s IN.BIN OUT.BIN; then
-	pass "uudecode.cmd round-trips 256-byte binary"
+emu2 uuencode.com in.bin testfile > enc.txt 2>/dev/null
+timeout $TIMEOUT emu2 uudecode.cmd -o out.bin enc.txt > out.tmp 2>/dev/null < /dev/null
+if cmp -s in.bin out.bin; then
+	pass "uudecode.cmd decodes uuencode.com output correctly"
 else
-	blame "uudecode.cmd round-trips 256-byte binary" "output differs from input"
+	blame "uudecode.cmd decodes uuencode.com output correctly" "output differs from input"
 fi
 
 echo "== uuencode.cmd | uudecode.com =="
-# encode with the CP/M-86 binary
-timeout $TIMEOUT emu2 uuencode.cmd IN.BIN TESTFILE > ENC.TXT 2>/dev/null < /dev/null
-# decode with the DOS binary (known good)
-emu2 uudecode.com -o OUT.BIN ENC.TXT 2>/dev/null
-if cmp -s IN.BIN OUT.BIN; then
-	pass "uuencode.cmd round-trips 256-byte binary"
+timeout $TIMEOUT emu2 uuencode.cmd in.bin testfile > enc.txt 2>/dev/null < /dev/null
+emu2 uudecode.com -o out.bin enc.txt 2>/dev/null
+if cmp -s in.bin out.bin; then
+	pass "uuencode.cmd output decoded correctly by uudecode.com"
 else
-	blame "uuencode.cmd round-trips 256-byte binary" "output differs from input"
+	blame "uuencode.cmd output decoded correctly by uudecode.com" "output differs from input"
 fi
 
 echo "== uuencode.cmd | uudecode.cmd =="
-timeout $TIMEOUT emu2 uuencode.cmd IN.BIN TESTFILE > ENC.TXT 2>/dev/null < /dev/null
-timeout $TIMEOUT emu2 uudecode.cmd -o OUT.BIN ENC.TXT > out.tmp 2>/dev/null < /dev/null
-if cmp -s IN.BIN OUT.BIN; then
-	pass "uuencode.cmd + uudecode.cmd full CP/M-86 round-trip"
+timeout $TIMEOUT emu2 uuencode.cmd in.bin testfile > enc.txt 2>/dev/null < /dev/null
+timeout $TIMEOUT emu2 uudecode.cmd -o out.bin enc.txt > out.tmp 2>/dev/null < /dev/null
+if cmp -s in.bin out.bin; then
+	pass "full CP/M-86 round-trip"
 else
-	blame "uuencode.cmd + uudecode.cmd full CP/M-86 round-trip" "output differs from input"
+	blame "full CP/M-86 round-trip" "output differs from input"
 fi
 
 echo "== begin line filename =="
-# uudecode.cmd should create the file named in the begin line
-rm -f TESTFILE
-timeout $TIMEOUT emu2 uuencode.cmd IN.BIN TESTFILE > ENC.TXT 2>/dev/null < /dev/null
-timeout $TIMEOUT emu2 uudecode.cmd ENC.TXT > out.tmp 2>/dev/null < /dev/null
-if cmp -s IN.BIN TESTFILE 2>/dev/null; then
-	pass "uudecode.cmd uses filename from begin line"
+timeout $TIMEOUT emu2 uuencode.cmd in.bin testfile > enc.txt 2>/dev/null < /dev/null
+timeout $TIMEOUT emu2 uudecode.cmd enc.txt > out.tmp 2>/dev/null < /dev/null
+if cmp -s in.bin testfile 2>/dev/null; then
+	pass "uudecode.cmd creates file named in begin line"
 else
-	blame "uudecode.cmd uses filename from begin line" "TESTFILE missing or wrong"
+	blame "uudecode.cmd creates file named in begin line" "testfile missing or wrong"
 fi
-rm -f TESTFILE
 
 echo
 if [ $fail -eq 0 ]; then

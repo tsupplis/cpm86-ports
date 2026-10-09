@@ -82,7 +82,7 @@ char **argv;
 	if (outfile != 0)
 		strcpy(dest, outfile);
 
-	out = fopen(dest, "wb");
+	out = fopen(dest, "w");
 	if (out == 0) {
 		fprintf(stderr, "uudecode: cannot create %s\n", dest);
 		exit(4);

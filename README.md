@@ -44,10 +44,13 @@ Ancillary goals:
 
 | Project | What | From | License |
 | --- | --- | --- | --- |
+| banner | Print large-text banners | RetroBSD / Vadim Antonov, ported by Serge Vakulenko | Public domain |
 | dc | Arbitrary precision reverse Polish desk calculator | Plan 9 / Unix Research Edition dc | MIT |
 | diff | Compare two files line by line | RetroBSD / BSD Unix diff | BSD 3-Clause |
 | grep | Search a file for a pattern | RetroBSD / DiscoBSD, originally Berkeley grep | BSD 3-Clause |
 | sed | Stream editor | RetroBSD / BSD Unix sed | BSD 3-Clause |
+| uudecode | Decode a uuencoded file | BSD Unix uudecode | BSD 3-Clause |
+| uuencode | Encode a binary file for mail transfer | BSD Unix uuencode | BSD 3-Clause |
 
 
 ### CP/M-80 culture
