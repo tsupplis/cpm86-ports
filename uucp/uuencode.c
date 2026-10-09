@@ -57,7 +57,7 @@ char **argv;
 				fprintf(stderr, "uuencode: -o requires a filename\n");
 				exit(2);
 			}
-			if (freopen(*++argv, "w", stdout) == NULL) {
+			if (freopen(*++argv, "w", stdout) == 0) {
 				fprintf(stderr, "uuencode: cannot open %s\n", *argv);
 				exit(2);
 			}
@@ -77,7 +77,7 @@ char **argv;
 
 	/* optional input file argument */
 	if (argc > 1) {
-		if ((in = fopen(argv[0], "rb")) == NULL) {
+		if ((in = fopen(argv[0], "rb")) == 0) {
 			fprintf(stderr, "uuencode: cannot open %s\n", argv[0]);
 			exit(1);
 		}
