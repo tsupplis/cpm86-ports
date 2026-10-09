@@ -82,7 +82,7 @@ Ancillary goals:
 | xlisp | Lisp interpreter and runtime | David Betz | Public domain / Abandonware | |
 | yacc | YACC-compatible parser generator | RetroBSD / original yacc sources | BSD-style | |
 
-### Archaeology
+### Archeology
 
 | Project | What | From | License |
 | --- | --- | --- | --- |
