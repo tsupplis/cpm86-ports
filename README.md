@@ -69,6 +69,7 @@ Ancillary goals:
 
 | Project | What | From | License |
 | --- | --- | --- | --- |
+| life | Conway's Game of Life for VT52 terminals, 20×60 grid | Kevin Boone, May 2021 | Public domain |
 | sokoban | Sokoban puzzle game for VT52 terminals | CP/M-80 C sources | Freeware / Copyright |
 
 ### Development tools and interpreters
@@ -88,7 +89,7 @@ Ancillary goals:
 | --- | --- | --- | --- |
 | ndbm | Hashed key/value database library (ndbm) with `keydb` CLI tool (add, get, del, list) | 2.11BSD ndbm by UC Berkeley | BSD |
 
-### Archaeology
+### Archeology
 
 | Project | What | From | License |
 | --- | --- | --- | --- |
