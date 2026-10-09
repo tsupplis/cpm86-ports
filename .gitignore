@@ -23,6 +23,7 @@ rom
 **/ccpm86*.img
 **/cpmbase.img
 **/cpmtest*.img
+tmp.img
 **/*.sym
 **/*.lst
 **/*.prn

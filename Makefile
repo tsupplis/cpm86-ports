@@ -1,6 +1,6 @@
-SUBDIRS1=filer lbr fv seemem disk7 wash15 xsq uucp ratfor
+SUBDIRS1=filer lbr fv seemem disk7 wash15 xsq uucp ratfor banner diff
 
-SUBDIRS2=ansi2kr tinybas xlisp yacc vtl2 dc grep sed cpu edlin sokoban diff banner
+SUBDIRS2=ansi2kr tinybas xlisp yacc vtl2 dc grep sed cpu edlin sokoban 
 
 SUBDIRS=$(SUBDIRS1) $(SUBDIRS2)
 all:
