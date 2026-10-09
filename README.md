@@ -82,6 +82,12 @@ Ancillary goals:
 | xlisp | Lisp interpreter and runtime | David Betz | Public domain / Abandonware | |
 | yacc | YACC-compatible parser generator | RetroBSD / original yacc sources | BSD-style | |
 
+### Libraries
+
+| Project | What | From | License |
+| --- | --- | --- | --- |
+| ndbm | Hashed key/value database library (ndbm) with `keydb` CLI tool (add, get, del, list) | 2.11BSD ndbm by UC Berkeley | BSD |
+
 ### Archaeology
 
 | Project | What | From | License |

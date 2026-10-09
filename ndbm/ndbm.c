@@ -2,29 +2,60 @@
  * Copyright (c) 1983 Regents of the University of California.
  * All rights reserved.  The Berkeley software License Agreement
  * specifies the terms and conditions for redistribution.
+ *
+ * Adapted for Aztec C86 / CP/M-86:
+ *   - removed sys/ and POSIX headers not available under Aztec C86
+ *   - bzero -> memset, bcopy -> memcpy
+ *   - L_SET -> 0 (seek-from-start constant)
+ *   - fstat replaced by lseek probe (fstat not in Aztec c86 libc)
+ *   - memmove replaced by manual byte loop (not in Aztec c86 libc)
  */
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/file.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
-#include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
-#include <ndbm.h>
+#include "ndbm.h"
+
+/* Aztec C86 errno.h may not define these */
+#ifndef ENOMEM
+#define ENOMEM  12
+#endif
+#ifndef EPERM
+#define EPERM   1
+#endif
+#ifndef ENOSPC
+#define ENOSPC  28
+#endif
 
 #define BYTESIZ 8
 #undef setbit
 
-static  int hitab[16]
-/* ken's
+/* fstat is not in Aztec c86 libc.  Probe the file size with lseek. */
+static long _filesize(fd)
+    int fd;
 {
-	055,043,036,054,063,014,004,005,
-	010,064,077,000,035,027,025,071,
-};
-*/
+    long cur = lseek(fd, 0L, 1);   /* SEEK_CUR = 1 */
+    long end = lseek(fd, 0L, 2);   /* SEEK_END = 2 */
+    lseek(fd, cur, 0);             /* restore */
+    return end;
+}
+
+/* memmove is not in Aztec c86 libc.  Byte loop handles overlap correctly. */
+static void _memmove(dst, src, n)
+    char *dst;
+    char *src;
+    int   n;
+{
+    if (dst < src) {
+        while (n--) *dst++ = *src++;
+    } else {
+        dst += n; src += n;
+        while (n--) *--dst = *--src;
+    }
+}
+
+static  int hitab[16]
  = {    61, 57, 53, 49, 45, 41, 37, 33,
 	29, 25, 21, 17, 13,  9,  5,  1,
 };
@@ -80,7 +111,7 @@ makdatum(buf, n)
 	datum item;
 
 	sp = (short *)buf;
-	if ((unsigned)n >= sp[0]) {
+	if ((unsigned)n >= (unsigned)sp[0]) {
 		item.dptr = NULL;
 		item.dsize = 0;
 		return (item);
@@ -98,7 +129,6 @@ dbm_open(file, flags, mode)
 	char *file;
 	int flags, mode;
 {
-	struct stat statb;
 	register DBM *db;
 
 	if ((db = (DBM *)malloc(sizeof *db)) == 0) {
@@ -118,8 +148,7 @@ dbm_open(file, flags, mode)
 	db->dbm_dirf = open(db->dbm_pagbuf, flags, mode);
 	if (db->dbm_dirf < 0)
 		goto bad1;
-	fstat(db->dbm_dirf, &statb);
-	db->dbm_maxbno = statb.st_size*BYTESIZ-1;
+	db->dbm_maxbno = _filesize(db->dbm_dirf)*BYTESIZ-1;
 	db->dbm_pagbno = db->dbm_dirbno = -1;
 	return (db);
 bad1:
@@ -133,7 +162,6 @@ void
 dbm_close(db)
 	DBM *db;
 {
-
 	(void) close(db->dbm_dirf);
 	(void) close(db->dbm_pagf);
 	free((char *)db);
@@ -148,15 +176,15 @@ getbit(db)
 
 	if (db->dbm_bitno > db->dbm_maxbno)
 		return (0);
-	n = db->dbm_bitno % BYTESIZ;
+	n = (int)(db->dbm_bitno % BYTESIZ);
 	bn = db->dbm_bitno / BYTESIZ;
-	i = bn % DBLKSIZ;
+	i = (int)(bn % DBLKSIZ);
 	b = bn / DBLKSIZ;
 	if (b != db->dbm_dirbno) {
 		db->dbm_dirbno = b;
-		(void) lseek(db->dbm_dirf, b*DBLKSIZ, L_SET);
+		(void) lseek(db->dbm_dirf, b*DBLKSIZ, 0);
 		if (read(db->dbm_dirf, db->dbm_dirbuf, DBLKSIZ) != DBLKSIZ)
-			bzero(db->dbm_dirbuf, DBLKSIZ);
+			memset(db->dbm_dirbuf, 0, DBLKSIZ);
 	}
 	return (db->dbm_dirbuf[i] & (1<<n));
 }
@@ -183,7 +211,6 @@ dbm_access(db, hash)
 	register DBM *db;
 	long hash;
 {
-
 	for (db->dbm_hmask=0;; db->dbm_hmask=(db->dbm_hmask<<1)+1) {
 		db->dbm_blkno = hash & db->dbm_hmask;
 		db->dbm_bitno = db->dbm_blkno + db->dbm_hmask;
@@ -192,13 +219,9 @@ dbm_access(db, hash)
 	}
 	if (db->dbm_blkno != db->dbm_pagbno) {
 		db->dbm_pagbno = db->dbm_blkno;
-		(void) lseek(db->dbm_pagf, db->dbm_blkno*PBLKSIZ, L_SET);
+		(void) lseek(db->dbm_pagf, db->dbm_blkno*PBLKSIZ, 0);
 		if (read(db->dbm_pagf, db->dbm_pagbuf, PBLKSIZ) != PBLKSIZ)
-			bzero(db->dbm_pagbuf, PBLKSIZ);
-#ifdef DEBUG
-		else if (chkblk(db->dbm_pagbuf) < 0)
-			db->dbm_flags |= _DBM_IOERR;
-#endif
+			memset(db->dbm_pagbuf, 0, PBLKSIZ);
 	}
 }
 
@@ -216,7 +239,7 @@ finddatum(buf, item)
 		n -= sp[i+1];
 		if (n != item.dsize)
 			continue;
-		if (n == 0 || bcmp(&buf[sp[i+1]], item.dptr, n) == 0)
+		if (n == 0 || memcmp(&buf[sp[i+1]], item.dptr, n) == 0)
 			return (i);
 	}
 	return (-1);
@@ -244,9 +267,6 @@ err:
 	return (item);
 }
 
-/*
- * Delete pairs of items (n & n+1).
- */
 static int
 delitem(buf, n)
 	char buf[PBLKSIZ];
@@ -257,7 +277,7 @@ delitem(buf, n)
 
 	sp = (short *)buf;
 	i2 = sp[0];
-	if ((unsigned)n >= i2 || (n & 1))
+	if ((unsigned)n >= (unsigned)i2 || (n & 1))
 		return (0);
 	if (n == i2-2) {
 		sp[0] -= 2;
@@ -269,7 +289,7 @@ delitem(buf, n)
 	i1 -= sp[n+2];
 	if (i1 > 0) {
 		i2 = sp[i2];
-		bcopy(&buf[i2], &buf[i2 + i1], sp[n+2] - i2);
+		_memmove(&buf[i2 + i1], &buf[i2], sp[n+2] - i2);
 	}
 	sp[0] -= 2;
 	for (sp1 = sp + sp[0], sp += n+1; sp <= sp1; sp++)
@@ -296,7 +316,7 @@ dbm_delete(db, key)
 	if (!delitem(db->dbm_pagbuf, i))
 		goto err;
 	db->dbm_pagbno = db->dbm_blkno;
-	(void) lseek(db->dbm_pagf, db->dbm_blkno*PBLKSIZ, L_SET);
+	(void) lseek(db->dbm_pagf, db->dbm_blkno*PBLKSIZ, 0);
 	if (write(db->dbm_pagf, db->dbm_pagbuf, PBLKSIZ) != PBLKSIZ) {
 	err:
 		db->dbm_flags |= _DBM_IOERR;
@@ -314,26 +334,23 @@ setbit(db)
 
 	if (db->dbm_bitno > db->dbm_maxbno)
 		db->dbm_maxbno = db->dbm_bitno;
-	n = db->dbm_bitno % BYTESIZ;
+	n = (int)(db->dbm_bitno % BYTESIZ);
 	bn = db->dbm_bitno / BYTESIZ;
-	i = bn % DBLKSIZ;
+	i = (int)(bn % DBLKSIZ);
 	b = bn / DBLKSIZ;
 	if (b != db->dbm_dirbno) {
 		db->dbm_dirbno = b;
-		(void) lseek(db->dbm_dirf, b*DBLKSIZ, L_SET);
+		(void) lseek(db->dbm_dirf, b*DBLKSIZ, 0);
 		if (read(db->dbm_dirf, db->dbm_dirbuf, DBLKSIZ) != DBLKSIZ)
-			bzero(db->dbm_dirbuf, DBLKSIZ);
+			memset(db->dbm_dirbuf, 0, DBLKSIZ);
 	}
 	db->dbm_dirbuf[i] |= 1<<n;
 	db->dbm_dirbno = b;
-	(void) lseek(db->dbm_dirf, (long)b*DBLKSIZ, L_SET);
+	(void) lseek(db->dbm_dirf, (long)b*DBLKSIZ, 0);
 	if (write(db->dbm_dirf, db->dbm_dirbuf, DBLKSIZ) != DBLKSIZ)
 		db->dbm_flags |= _DBM_IOERR;
 }
 
-/*
- * Add pairs of items (item & item1).
- */
 static int
 additem(buf, item, item1)
 	char buf[PBLKSIZ];
@@ -352,9 +369,9 @@ additem(buf, item, item1)
 		return (0);
 	sp[0] += 2;
 	sp[++i2] = i1 + item1.dsize;
-	bcopy(item.dptr, &buf[i1 + item1.dsize], item.dsize);
+	memcpy(&buf[i1 + item1.dsize], item.dptr, item.dsize);
 	sp[++i2] = i1;
-	bcopy(item1.dptr, &buf[i1], item1.dsize);
+	memcpy(&buf[i1], item1.dptr, item1.dsize);
 	return (1);
 }
 
@@ -387,7 +404,7 @@ loop:
 	if (!additem(db->dbm_pagbuf, key, dat))
 		goto split;
 	db->dbm_pagbno = db->dbm_blkno;
-	(void) lseek(db->dbm_pagf, db->dbm_blkno*PBLKSIZ, L_SET);
+	(void) lseek(db->dbm_pagf, db->dbm_blkno*PBLKSIZ, 0);
 	if (write(db->dbm_pagf, db->dbm_pagbuf, PBLKSIZ) != PBLKSIZ) {
 		db->dbm_flags |= _DBM_IOERR;
 		return (-1);
@@ -395,12 +412,12 @@ loop:
 	return (0);
 
 split:
-	if (key.dsize+dat.dsize+3*sizeof(short) >= PBLKSIZ) {
+	if (key.dsize+dat.dsize+3*(int)sizeof(short) >= PBLKSIZ) {
 		db->dbm_flags |= _DBM_IOERR;
 		errno = ENOSPC;
 		return (-1);
 	}
-	bzero(ovfbuf, PBLKSIZ);
+	memset(ovfbuf, 0, PBLKSIZ);
 	for (i=0;;) {
 		item = makdatum(db->dbm_pagbuf, i);
 		if (item.dptr == NULL)
@@ -422,12 +439,12 @@ split:
 		i += 2;
 	}
 	db->dbm_pagbno = db->dbm_blkno;
-	(void) lseek(db->dbm_pagf, db->dbm_blkno*PBLKSIZ, L_SET);
+	(void) lseek(db->dbm_pagf, db->dbm_blkno*PBLKSIZ, 0);
 	if (write(db->dbm_pagf, db->dbm_pagbuf, PBLKSIZ) != PBLKSIZ) {
 		db->dbm_flags |= _DBM_IOERR;
 		return (-1);
 	}
-	(void) lseek(db->dbm_pagf, (db->dbm_blkno+db->dbm_hmask+1)*PBLKSIZ, L_SET);
+	(void) lseek(db->dbm_pagf, (db->dbm_blkno+db->dbm_hmask+1)*PBLKSIZ, 0);
 	if (write(db->dbm_pagf, ovfbuf, PBLKSIZ) != PBLKSIZ) {
 		db->dbm_flags |= _DBM_IOERR;
 		return (-1);
@@ -440,7 +457,6 @@ datum
 dbm_firstkey(db)
 	DBM *db;
 {
-
 	db->dbm_blkptr = 0L;
 	db->dbm_keyptr = 0;
 	return (dbm_nextkey(db));
@@ -450,24 +466,22 @@ datum
 dbm_nextkey(db)
 	register DBM *db;
 {
-	struct stat statb;
 	datum item;
+	int nr;
 
-	if (dbm_error(db) || fstat(db->dbm_pagf, &statb) < 0)
+	if (dbm_error(db))
 		goto err;
-	statb.st_size /= PBLKSIZ;
 	for (;;) {
 		if (db->dbm_blkptr != db->dbm_pagbno) {
 			db->dbm_pagbno = db->dbm_blkptr;
-			(void) lseek(db->dbm_pagf, db->dbm_blkptr*PBLKSIZ, L_SET);
-			if (read(db->dbm_pagf, db->dbm_pagbuf, PBLKSIZ) != PBLKSIZ)
-				bzero(db->dbm_pagbuf, PBLKSIZ);
-#ifdef DEBUG
-			else if (chkblk(db->dbm_pagbuf) < 0)
-				db->dbm_flags |= _DBM_IOERR;
-#endif
+			(void) lseek(db->dbm_pagf, db->dbm_blkptr*PBLKSIZ, 0);
+			nr = read(db->dbm_pagf, db->dbm_pagbuf, PBLKSIZ);
+			if (nr <= 0)
+				break;
+			if (nr < PBLKSIZ)
+				memset(db->dbm_pagbuf + nr, 0, PBLKSIZ - nr);
 		}
-		if (db->dbm_pagbuf[0] != 0 && db->dbm_pagbuf[1] != 0) {
+		if (*(short *)db->dbm_pagbuf != 0) {
 			item = makdatum(db->dbm_pagbuf, db->dbm_keyptr);
 			if (item.dptr != NULL) {
 				db->dbm_keyptr += 2;
@@ -475,32 +489,10 @@ dbm_nextkey(db)
 			}
 			db->dbm_keyptr = 0;
 		}
-		if (++db->dbm_blkptr >= statb.st_size)
-			break;
+		++db->dbm_blkptr;
 	}
 err:
 	item.dptr = NULL;
 	item.dsize = 0;
 	return (item);
 }
-
-#ifdef DEBUG
-static
-chkblk(buf)
-	char buf[PBLKSIZ];
-{
-	register short *sp;
-	register t, i;
-
-	sp = (short *)buf;
-	t = PBLKSIZ;
-	for (i=0; i<sp[0]; i++) {
-		if (sp[i+1] > t)
-			return (-1);
-		t = sp[i+1];
-	}
-	if (t < (sp[0]+1)*sizeof(short))
-		return (-1);
-	return (0);
-}
-#endif
