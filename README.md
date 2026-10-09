@@ -40,25 +40,50 @@ Ancillary goals:
 
 ## Included projects
 
+### Unix-like tools
+
 | Project | What | From | License |
 | --- | --- | --- | --- |
-| ansi2kr | ANSI C to K&R C converter for BDS C and MSX-C | masakioba / upstream ansi2kr sources | BSD 2-Clause |
-| cpu | CPU tools: 80x86 (8080-to-8086 source translator), vcpm (V20 hardware 8080 emulator), z80 (software 8080 emulator) and cpuid (processor detection) | Harold V. McIntosh; Stephen Hunt; Pat Hester and Bill Earnest; Richard C. Leinecker and Kirk Lawrence | Mixed, no explicit grant / Freeware |
 | dc | Arbitrary precision reverse Polish desk calculator | Plan 9 / Unix Research Edition dc | MIT |
+| diff | Compare two files line by line | RetroBSD / BSD Unix diff | BSD 3-Clause |
+| grep | Search a file for a pattern | RetroBSD / DiscoBSD, originally Berkeley grep | BSD 3-Clause |
+| sed | Stream editor | RetroBSD / BSD Unix sed | BSD 3-Clause |
+
+
+### CP/M-80 culture
+
+| Project | What | From | License |
+| --- | --- | --- | --- |
 | disk7 | DISK7, a full-screen file manager, translated from CP/M-80 with XLT86 | Frank Gaudé | Non-commercial (© 1984) |
 | filer | VFILER, a full-screen file manager | ZCPR2 VFILER by Rich Conn, CP/M-86 translation by H. M. Van Tassell | Public domain / Abandonware |
 | fv | FileView, view and amend a file in hex and ASCII | Stephen Hunt | Public domain |
-| grep | Search a file for a pattern | RetroBSD / DiscoBSD, originally Berkeley grep | BSD 3-Clause |
-| lbr | LU library (.LBR) tools: luu creates and maintains libraries (add, list, extract, print, delete, reorganize, with wildcards), lbrdir lists a library, lbrtype types a (squeezed) member, delbr extracts all members | lu86 from Stephen C. Hemminger's lar, CP/M-86 port by Bill Bolton, with fixes from the lar ports by T. Bonfield, R. McVay and P.H. Mack; lbrdir/lbrtype by Charlie Godet-Ceraolo; delbr by Jeff Martin, with Jim Cathey, Peter A. Polansky and others; C tools built with Aztec C | Public domain / Abandonware |
-| tinybas | Tiny BASIC interpreter | Classic Tiny BASIC sources | Public domain / Abandonware |
-| wash15 | WASH, a directory maintenance utility, translated from CP/M-80 with XLT86 | Michael J. Karas, Simon J. Ewins | Public domain, non-commercial |
-| vtl2 | VTL-2 interpreter port for CP/M, just for fun using xlt86, serves as a regression test for the translator | MITS VTL-2 source, adapted for CP/M | Public domain / Abandonware |
-| xlisp | Lisp interpreter and runtime | David Betz |Public domain / Abandonware |
-| xsq | xsq, xusq and xtype: squeeze, unsqueeze and type squeezed (.?Q?) files, compatible with CP/M SQ and USQ | Richard Greenlaw, with Dick Greenlaw, Chuck Forsberg and W. Earnest | Public domain / Abandonware |
-| yacc | YACC-compatible parser generator | RetroBSD / original yacc sources | BSD-style |
-| edlin | Edlin DOS editor port from PC DOS 1.1 | Microsoft sources sources | MIT |
+| lbr | LU library (.LBR) tools: luu creates and maintains libraries (add, list, extract, print, delete, reorganize), lbrdir lists a library, lbrtype types a member, delbr extracts all members | lu86 / Stephen C. Hemminger, Bill Bolton; lbrdir/lbrtype by Charlie Godet-Ceraolo; delbr by Jeff Martin | Public domain / Abandonware |
 | seemem | Full-screen memory browser for CP/M-86 on the IBM PC | Frank Kotler and Kirk Lawrence | Freeware / Public domain |
-| sokoban | Small tty game for VT52 | CP/M-80 C sources | Freeware/Copyright |
+| wash15 | WASH, a directory maintenance utility, translated from CP/M-80 with XLT86 | Michael J. Karas, Simon J. Ewins | Public domain, non-commercial |
+| xsq | xsq, xusq and xtype: squeeze, unsqueeze and type squeezed (.?Q?) files | Richard Greenlaw, with Dick Greenlaw, Chuck Forsberg and W. Earnest | Public domain / Abandonware |
+
+### Games
+
+| Project | What | From | License |
+| --- | --- | --- | --- |
+| sokoban | Sokoban puzzle game for VT52 terminals | CP/M-80 C sources | Freeware / Copyright |
+
+### Development tools and interpreters
+
+| Project | What | From | License |
+| --- | --- | --- | --- |
+| ansi2kr | ANSI C to K&R C converter for BDS C and MSX-C | masakioba / upstream ansi2kr sources | BSD 2-Clause |
+| cpu | CPU tools: 80x86 (8080-to-8086 source translator), vcpm (V20 hardware 8080 emulator), z80 (software 8080 emulator) and cpuid (processor detection) | Harold V. McIntosh; Stephen Hunt; Pat Hester and Bill Earnest; Richard C. Leinecker and Kirk Lawrence | Mixed / Freeware |
+| tinybas | Tiny BASIC interpreter | Classic Tiny BASIC sources | Public domain / Abandonware |
+| xlisp | Lisp interpreter and runtime | David Betz | Public domain / Abandonware |
+| yacc | YACC-compatible parser generator | RetroBSD / original yacc sources | BSD-style |
+
+### Archaeology
+
+| Project | What | From | License |
+| --- | --- | --- | --- |
+| edlin | Edlin line editor port from PC DOS 1.1 | Microsoft sources | MIT |
+| vtl2 | VTL-2 interpreter; regression test for the XLT86 CP/M-80→86 translator | MITS VTL-2 source, adapted for CP/M | Public domain / Abandonware |
 
 ## Build notes
 
