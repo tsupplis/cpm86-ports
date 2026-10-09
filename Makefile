@@ -1,4 +1,4 @@
-SUBDIRS1=filer lbr fv seemem disk7 wash15 xsq uucp ratfor banner diff ndbm
+SUBDIRS1=filer lbr fv seemem disk7 wash15 xsq uucp ratfor banner diff ndbm life
 
 SUBDIRS2=ansi2kr tinybas xlisp yacc vtl2 dc grep sed cpu edlin sokoban 
 

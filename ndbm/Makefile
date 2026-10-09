@@ -6,10 +6,6 @@ CFLAGS  = -I. +F +0
 CPM_LDFLAGS = -lc86
 DOS_LDFLAGS = -lc
 
-# emu2 (used internally by the Aztec wrappers) needs a PTY.
-# Wrap every invocation that drives emu2 with expect -c spawn.
-PTY = expect -c
-
 all: ndbm.lib keydb.cmd keydb.com
 
 # --------------------------------------------------------------------
@@ -17,23 +13,23 @@ all: ndbm.lib keydb.cmd keydb.com
 # --------------------------------------------------------------------
 ndbm.lib: ndbm.o
 	rm -f ndbm.lib
-	$(PTY) 'spawn $(LIB) ndbm.lib ndbm.o; expect eof'
+	$(LIB) ndbm.lib ndbm.o
 
 # --------------------------------------------------------------------
 # Binaries
 # --------------------------------------------------------------------
 keydb.cmd: keydb.o ndbm.lib
-	$(PTY) 'spawn $(LD) -o $@ keydb.o ndbm.lib $(CPM_LDFLAGS); expect eof'
+	$(LD) -o $@ keydb.o ndbm.lib $(CPM_LDFLAGS)
 
 keydb.com: keydb.o ndbm.lib
-	$(PTY) 'spawn $(LD) -o $@ keydb.o ndbm.lib $(DOS_LDFLAGS); expect eof'
+	$(LD) -o $@ keydb.o ndbm.lib $(DOS_LDFLAGS)
 
 # --------------------------------------------------------------------
 # Compile rules
 # --------------------------------------------------------------------
 %.o: %.c
-	$(PTY) 'spawn $(CC) $(CFLAGS) -o $@ $<; expect eof'
-	$(PTY) 'spawn $(STRIP) $@; expect eof'
+	$(CC) $(CFLAGS) -o $@ $<
+	$(STRIP) $@
 
 # --------------------------------------------------------------------
 # Test
