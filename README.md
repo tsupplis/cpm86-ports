@@ -73,14 +73,14 @@ Ancillary goals:
 
 ### Development tools and interpreters
 
-| Project | What | From | License |
-| --- | --- | --- | --- |
-| ansi2kr | ANSI C to K&R C converter for BDS C and MSX-C | masakioba / upstream ansi2kr sources | BSD 2-Clause |
-| cpu | CPU tools: 80x86 (8080-to-8086 source translator), vcpm (V20 hardware 8080 emulator), z80 (software 8080 emulator) and cpuid (processor detection) | Harold V. McIntosh; Stephen Hunt; Pat Hester and Bill Earnest; Richard C. Leinecker and Kirk Lawrence | Mixed / Freeware |
-| ratfor | RATFOR v1.05 preprocessor — translates structured Fortran to standard Fortran 77; use `-u` for DR Fortran-77 compatible upper-case output | Brian Gaeke / oz (UofA), compiled with z88dk | Public domain |
-| tinybas | Tiny BASIC interpreter | Classic Tiny BASIC sources | Public domain / Abandonware |
-| xlisp | Lisp interpreter and runtime | David Betz | Public domain / Abandonware |
-| yacc | YACC-compatible parser generator | RetroBSD / original yacc sources | BSD-style |
+| Project | What | From | License | Notes |
+| --- | --- | --- | --- | --- |
+| ansi2kr | ANSI C to K&R C converter for BDS C and MSX-C | masakioba / upstream ansi2kr sources | BSD 2-Clause | Used by [cpm86-crossdev](https://github.com/tsupplis/cpm86-crossdev) |
+| cpu | CPU tools: 80x86 (8080-to-8086 source translator), vcpm (V20 hardware 8080 emulator), z80 (software 8080 emulator) and cpuid (processor detection) | Harold V. McIntosh; Stephen Hunt; Pat Hester and Bill Earnest; Richard C. Leinecker and Kirk Lawrence | Mixed / Freeware | |
+| ratfor | RATFOR v1.05 preprocessor — translates structured Fortran to standard Fortran 77; use `-u` for DR Fortran-77 compatible upper-case output | Brian Gaeke / oz (UofA), compiled with z88dk | Public domain | Used by [cpm86-crossdev](https://github.com/tsupplis/cpm86-crossdev) |
+| tinybas | Tiny BASIC interpreter | Classic Tiny BASIC sources | Public domain / Abandonware | |
+| xlisp | Lisp interpreter and runtime | David Betz | Public domain / Abandonware | |
+| yacc | YACC-compatible parser generator | RetroBSD / original yacc sources | BSD-style | |
 
 ### Archaeology
 
