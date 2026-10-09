@@ -5,6 +5,11 @@ The output is not compatible with Microsoft fortran.
 
 RATFOR v 1.05 from linux.  Runs on CP/M
 
+Use `-u` to emit upper case output, as required by DR Fortran-77:
+
+    ratfor -u -o fib.f77 fib.r
+    fc fib.f77
+
 Below is the README I found in the source package.
 
 Notes:  as of now, the '-O' switch is broken. 

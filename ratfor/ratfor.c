@@ -9,6 +9,7 @@
   l - flag [-l n]  user sets starting label n
   o - flag [-o output]  specify output file, otherwise it is stdout
   C - flag [-C] keep comments in (useful for compiler directives)
+  u - flag [-u] emit upper case output (for DR Fortran-77)
 
 	
   
@@ -186,6 +187,7 @@ extern char ngetch(char *c, FILE *fd);
 char *progname;
 int startlab = 23000;		/* default start label */
 int leaveC = NO;		/* Flag for handling comments */
+int upcase = NO;		/* Flag for upper case output */
 
 /* prototypes */
 int alldig(const char *str);
@@ -225,6 +227,7 @@ void outch(char c);
 void outcmnt(FILE *fd);
 void outcon(int n);
 void outdon(void);
+void outline(char *str);
 void outgo(int n);
 void outnum(int n);
 void outstr(const char *str);
@@ -261,10 +264,13 @@ int main(int argc,char **argv)
 	progname = argv[0];
 
 /* ECL	while ((c=our_getopt(argc, argv, "Chn:l:o:6:")) != EOF) */
-	while ((c=our_getopt(argc, argv, "c?n:l:o:s:")) != EOF)
+	while ((c=our_getopt(argc, argv, "c?n:l:o:s:u")) != EOF)
 	switch (c) {
 		case 'c':
 			leaveC = YES; /* keep comments in src */
+			break;
+		case 'u':
+			upcase = YES; /* upper case output */
 			break;
 		case 'h':
 				/* not written yet */
@@ -307,7 +313,7 @@ int main(int argc,char **argv)
 	if (errflg) {
 		fprintf(stderr,
 /* ECL		"usage: %s [-C][-hx][-l n][-o file][-6x] [file...]\n",progname); */
-		"usage: %s [-?] [-c] [-l n] [-o file] [file...]\n",progname);
+		"usage: %s [-?] [-c] [-u] [-l n] [-o file] [file...]\n",progname);
 		exit(1);
 	}
 
@@ -348,7 +354,8 @@ void initvars(void)
 	install(bdef, deftyp);
 	fcname[0] = EOS;	/* current function name */
 	label = startlab;	/* next generated label */
-	printf("C Output from Public domain Ratfor, version %s\n", VERSION);
+	sprintf(outbuf, "C Output from Public domain Ratfor, version %s\n", VERSION);
+	outline(outbuf);
 }
 
 /*
@@ -911,6 +918,19 @@ int lex(char *lexstr)
 }
 
 /*
+ * rdch - read a char; NUL is treated as EOF because the CP/M record padding
+ * of a file lacking a ^Z terminator may be NUL filled (e.g. under emu2)
+ */
+static int rdch(FILE *fd)
+{
+	int c = getc(fd);
+
+	if (c == 0)
+		return(EOF);
+	return(c);
+}
+
+/*
  * ngetch - get a (possibly pushed back) character
  *
  */
@@ -922,7 +942,7 @@ char ngetch(char *c, FILE *fd)
 		bp--;
 	}
 	else
-		*c = (char) getc(fd);
+		*c = (char) rdch(fd);
 
 /*
  *					check for a continuation '_\n'
@@ -936,7 +956,7 @@ char ngetch(char *c, FILE *fd)
 			bp--;
 		}
 		else
-			*c = (char) getc(fd);
+			*c = (char) rdch(fd);
 
 		if (*c != NEWLINE)
 		{
@@ -953,7 +973,7 @@ char ngetch(char *c, FILE *fd)
 					bp--;
 				}
 				else
-					*c = (char) getc(fd);
+					*c = (char) rdch(fd);
 			}
 		}
 	}
@@ -1407,8 +1427,23 @@ void outdon(void)
 {
 	outbuf[outp] = NEWLINE;
 	outbuf[outp+1] = EOS;
-	printf("%s", outbuf);
+	outline(outbuf);
 	outp = 0;
+}
+
+/*
+ * outline - write a line to output, upper cased if requested
+ *
+ */
+void outline(char *str)
+{
+	char *p;
+
+	if (upcase == YES)
+		for (p = str; *p != EOS; p++)
+			if (*p >= LETA && *p <= LETZ)
+				*p = *p - LETA + BIGA;
+	fputs(str, stdout);
 }
 
 /*
@@ -1427,7 +1462,7 @@ void outcmnt(FILE *fd)
            if (comoutp > 79) {
               comout[80]=NEWLINE;
               comout[81]=EOS;
-              printf("%s",comout);
+              outline(comout);
               comoutp=0;
               comout[comoutp]='C';
               comoutp++;
@@ -1437,7 +1472,7 @@ void outcmnt(FILE *fd)
         }
         comout[comoutp]=NEWLINE;
         comout[comoutp+1]=EOS;
-        printf("%s",comout);
+        outline(comout);
 }
 
 /*
