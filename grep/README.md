@@ -10,7 +10,7 @@ provided; there is no `egrep` or `fgrep` in this port.
 ## Synopsis
 
 ```
-grep [-bcehilnpsvwy?] expression [file ...]
+grep [-bcehilnopsvwy?] expression [file ...]
 ```
 
 With no file argument the console is read.
@@ -26,7 +26,8 @@ With no file argument the console is read.
 | `-i` | Ignore the case of letters when comparing (same as `-y`). |
 | `-l` | List the names of the files that contain a match, once each. |
 | `-n` | Each line is preceded by its line number in the file. |
-| `-p` | Pause after 23 lines of output until a key is pressed (`^C` quits); CP/M-86 has no pipes to a pager. |
+| `-o` | Write all output to *file* instead of the screen; CP/M-86 has no pipes. Incompatible with `-p` — if both are given, `-o` wins and `-p` is ignored. |
+| `-p` | Pause after 23 lines of output until a key is pressed (`^C` quits); CP/M-86 has no pipes to a pager. Ignored if `-o` is also given. |
 | `-s` | Silent: print nothing, only set the exit status. |
 | `-v` | Print all lines *except* those matching. |
 | `-w` | Search for the expression as a whole word. |
@@ -128,6 +129,9 @@ environment.
   original.
 - The `-p` pause option was added because CP/M-86 has no pipes to a pager. It
   reads its key through BDOS direct console I/O (function 6).
+- The `-o outfile` option was added for the same no-pipe reason: it redirects
+  stdout to a file via `freopen`. The two options are mutually exclusive; `-o`
+  wins if both are supplied.
 
 ## Bugs
 

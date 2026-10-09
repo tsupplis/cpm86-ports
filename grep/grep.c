@@ -56,6 +56,7 @@ int sflag;
 int yflag;
 int wflag;
 int pflag;
+int oflag;
 int plines;
 int retcode = 0;
 int circf;
@@ -138,6 +139,17 @@ char **argv;
             --argc;
             ++argv;
             goto out;
+
+        case 'o':
+            --argc;
+            ++argv;
+            if (argc <= 0)
+                errexit("grep: -o requires a filename\n", (char *)NULL);
+            if (freopen(*argv, "w", stdout) == NULL)
+                errexit("grep: cannot open output file\n", (char *)NULL);
+            oflag++;
+            pflag = 0;  /* -o and -p are incompatible; -o wins */
+            continue;
 
         default:
             errexit("grep: unknown flag\n", (char *)NULL);
@@ -646,13 +658,14 @@ usage(rc)
 int rc;
 {
     fprintf(stderr, "grep - print lines matching a pattern\n");
-    fprintf(stderr, "usage: grep [-bchilnpsvwy] [-e] pattern [file ...]\n\n");
+    fprintf(stderr, "usage: grep [-bchilnopsvwy] [-e] pattern [file ...]\n\n");
     fprintf(stderr, "-b  show the block number of each match\n");
     fprintf(stderr, "-c  print only a count of matching lines\n");
     fprintf(stderr, "-h  never prefix output lines with the file name\n");
     fprintf(stderr, "-i  ignore case (same as -y)\n");
     fprintf(stderr, "-l  print only the names of files that match\n");
     fprintf(stderr, "-n  prefix each line with its line number\n");
+    fprintf(stderr, "-o  write output to file (CP/M-86: no pipes; incompatible with -p)\n");
     fprintf(stderr, "-p  pause after %d lines until a key is pressed\n", PAGELEN);
     fprintf(stderr, "-s  print nothing, only set the exit status\n");
     fprintf(stderr, "-v  print the lines that do NOT match\n");
