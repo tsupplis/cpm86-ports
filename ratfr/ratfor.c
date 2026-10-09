@@ -261,9 +261,9 @@ int main(int argc,char **argv)
 	progname = argv[0];
 
 /* ECL	while ((c=our_getopt(argc, argv, "Chn:l:o:6:")) != EOF) */
-	while ((c=our_getopt(argc, argv, "C?n:l:O:s:")) != EOF)
+	while ((c=our_getopt(argc, argv, "c?n:l:o:s:")) != EOF)
 	switch (c) {
-		case 'C':
+		case 'c':
 			leaveC = YES; /* keep comments in src */
 			break;
 		case 'h':
@@ -278,7 +278,7 @@ int main(int argc,char **argv)
 				exit(1);
 			}
 			break;
-		case 'O':
+		case 'o':
 			if ((freopen(optarg, "w", stdout)) == NULL)
 				error("can't write %s\n", optarg);
 			break;
@@ -307,7 +307,7 @@ int main(int argc,char **argv)
 	if (errflg) {
 		fprintf(stderr,
 /* ECL		"usage: %s [-C][-hx][-l n][-o file][-6x] [file...]\n",progname); */
-		"usage: %s [-?] [-C] [-l n] [-o file] [file...]\n",progname);
+		"usage: %s [-?] [-c] [-l n] [-o file] [file...]\n",progname);
 		exit(1);
 	}
 
@@ -1475,7 +1475,7 @@ void outnum(int n)
 	char chars[MAXCHARS];
 	int i, m;
 
-	m = abs(n);
+	m = n<0?-n:n;
 	i = -1;
 	do {
 		i++;

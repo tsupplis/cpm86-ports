@@ -1,16 +1,26 @@
-all:	ratfor
+CC=aztec42_cc
+LD=aztec42_link
+CFLAGS=-DHAVE_CONFIG_H
+CPM_LDFLAGS=-lc86
+DOS_LDFLAGS=-lc
 
-getopt.o: getopt.c
-	zcc +cpm -DHAVE_CONFIG_H -I. -O2 -c -o getopt.o getopt.c
+all: binaries
 
-lookup.o: lookup.c
-	zcc +cpm -DHAVE_CONFIG_H -I. -O2 -c -o lookup.o lookup.c
+OBJS=ratfor.o lookup.o getopt.o
 
-ratfor.o: ratfor.c
-	zcc +cpm -DHAVE_CONFIG_H -I. -O2 -c -o ratfor.o ratfor.c
+binaries: ratfor.cmd ratfor.com
 
-ratfor: ratfor.o lookup.o getopt.o
-	zcc +cpm -O2 -o ratfor getopt.o lookup.o ratfor.o
+%.o: %.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+ratfor.com: $(OBJS)
+	$(LD) -o $@ $(OBJS) $(DOS_LDFLAGS)
+
+ratfor.cmd: $(OBJS)
+	$(LD) -o $@ $(OBJS) $(CPM_LDFLAGS)
+
+test: binaries
+	sh test.sh
 
 clean:
-	rm *.o
+	rm -rf *.o *.cmd *.com

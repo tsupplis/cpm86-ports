@@ -34,6 +34,8 @@ int our_getopt(int argc, char **argv, const char *optstring)
 	}
 
 	c = *scan++;
+	/* CP/M-86 CCP uppercases the command tail; fold to lower for matching */
+	if (c >= 'A' && c <= 'Z') c = c - 'A' + 'a';
 	place = strchr(optstring, (int) c);
 
 	if (place == NULL || c == ':') {

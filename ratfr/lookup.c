@@ -30,10 +30,10 @@ struct hashlist *lookup(const char *s)
 {
 	struct hashlist *np;
 
-	for (np = hashtab[hash(s)]; np != NULL; np = np->next)
+	for (np = hashtab[hash(s)]; np != 0; np = np->next)
 		if (strcmp(s, np->name) == 0)
 			return(np);	/* found     */
-	return(NULL);		/* not found */
+	return(0);		/* not found */
 }
 
 /*
@@ -45,19 +45,19 @@ struct hashlist *install(const char *name, char *def)
 	int hashval;
 	struct hashlist *np;
 
-	if ((np = lookup(name)) == NULL) {	/* not found.. */
+	if ((np = lookup(name)) == 0) {	/* not found.. */
 		np = (struct hashlist *) malloc(sizeof(*np));
-		if (np == NULL)
-			return(NULL);
-		if ((np->name = strsave(name)) == NULL)
-			return(NULL);
+		if (np == 0)
+			return(0);
+		if ((np->name = strsave(name)) == 0)
+			return(0);
 		hashval = hash(np->name);
 		np->next = hashtab[hashval];
 		hashtab[hashval] = np;
 	} else					/* found..     */
 		free(np->def);			/* free prev.  */
-	if ((np->def = strsave(def)) == NULL)
-		return(NULL);
+	if ((np->def = strsave(def)) == 0)
+		return(0);
 	return(np);
 }
 
@@ -69,7 +69,7 @@ static char *strsave(const char *s)
 {
 	char *p;
 
-	if ((p = malloc(strlen(s)+1)) != NULL)
+	if ((p = malloc(strlen(s)+1)) != 0)
 		strcpy(p, s);
 	return(p);
 }
