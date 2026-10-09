@@ -214,6 +214,8 @@ commnds(void)
 		case ' ':
 		case '\t':
 		case '\n':
+		case '\0':
+		case 0x1a:	/* CP/M ^Z EOF pad */
 		case 0377:
 		case -1:
 			continue;

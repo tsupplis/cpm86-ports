@@ -8,7 +8,7 @@ all: binaries
 
 OBJS=dc.o
 
-binaries: dc.cmd 
+binaries: dc.cmd dc.com
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -18,6 +18,9 @@ dc.com: $(OBJS)
 
 dc.cmd: $(OBJS)
 	$(LD) -o $@ $(OBJS) $(CPM_LDFLAGS)
+
+test: binaries
+	sh test.sh
 
 clean:
 	rm -rf *.o *.cmd *.com
