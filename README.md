@@ -64,6 +64,8 @@ Ancillary goals:
 | seemem | Full-screen memory browser for CP/M-86 on the IBM PC | Frank Kotler and Kirk Lawrence | Freeware / Public domain |
 | wash15 | WASH, a directory maintenance utility, translated from CP/M-80 with XLT86 | Michael J. Karas, Simon J. Ewins | Public domain, non-commercial |
 | xsq | xsq, xusq and xtype: squeeze, unsqueeze and type squeezed (.?Q?) files | Richard Greenlaw, with Dick Greenlaw, Chuck Forsberg and W. Earnest | Public domain / Abandonware |
+| kermit (WIP) | Kermit-86 v2.9 file transfer, IBM PC/XT port (COM1/COM2, 8250 UART, interrupt-driven) | Columbia University Kermit-86 v2.9 | Public domain |
+
 
 ### Games
 
