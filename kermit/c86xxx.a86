@@ -1,0 +1,608 @@
+; * * * * * * * * * * * * * * *  version 1.0  * * * * * * * * * * * * * * *
+; IBM PC/XT system-dependent I/O module for CP/M-86 Kermit.
+;
+; Derived from:
+;   - c86xrb.a86  (DEC Rainbow -- ring-buffer interrupt framework)
+;   - pckermit.asm (IBM PC DOS Kermit -- 8250 UART port addresses and init)
+;
+; Supports SET PORT COM1 / COM2 and SET BAUD 300..9600.
+; Uses interrupt-driven receive into a circular ring buffer (same design
+; as the Rainbow module).  Transmit is polled via the LSR THRE bit.
+;
+; 8250 register map (base = 03F8h for COM1, 02F8h for COM2):
+;   base+0  THR (write) / RBR (read) / DLL (baud, DLAB=1)
+;   base+1  IER          / DLM (baud, DLAB=1)
+;   base+2  IIR (read-only)
+;   base+3  LCR          (bit7 = DLAB)
+;   base+4  MCR
+;   base+5  LSR
+;   base+6  MSR
+;
+; 8259 IRQ assignments: COM1 = IRQ4 (int 0Ch), COM2 = IRQ3 (int 0Bh)
+
+	CSEG $
+
+; ---------------------------------------------------------------------------
+; 8250 port addresses
+
+com1dat	equ	03F8H		; COM1 data / divisor latch low
+com1ier	equ	03F9H		; COM1 interrupt enable / divisor latch high
+com1lcr	equ	03FBH		; COM1 line control register
+com1mcr	equ	03FCH		; COM1 modem control register
+com1lsr	equ	03FDH		; COM1 line status register
+
+com2dat	equ	02F8H		; COM2 data / divisor latch low
+com2ier	equ	02F9H		; COM2 interrupt enable / divisor latch high
+com2lcr	equ	02FBH		; COM2 line control register
+com2mcr	equ	02FCH		; COM2 modem control register
+com2lsr	equ	02FDH		; COM2 line status register
+
+; 8259 interrupt controller
+pic_ocw1 equ	021H		; 8259 OCW1 (interrupt mask register)
+pic_ocw2 equ	020H		; 8259 OCW2 (end-of-interrupt)
+eoi	equ	020H		; Non-specific EOI command
+
+; IRQ vectors in low memory (segment 0)
+com1vec	equ	030H		; IRQ4 vector offset  (int 0Ch = 4*0Ch)
+com2vec	equ	02CH		; IRQ3 vector offset  (int 0Bh = 4*0Bh)
+irq4mask equ	010H		; Bit to mask IRQ4 in 8259
+irq3mask equ	008H		; Bit to mask IRQ3 in 8259
+
+; LSR bits
+lsr_dr	equ	001H		; Data ready
+lsr_thre equ	020H		; Transmit holding register empty
+
+; LCR values: 8N1 = 00000011b = 03h
+lcr_8n1	equ	003H
+lcr_dlab equ	080H		; Divisor latch access bit
+
+; MCR: DTR + RTS + OUT2 (OUT2 enables IRQ on PC)
+mcr_on	equ	00BH		; DTR=1, RTS=1, OUT2=1
+mcr_off	equ	000H
+
+; IER: receive data available interrupt only
+ier_rda	equ	001H
+
+; Baud rate divisors (1.8432 MHz / (16 * baud))
+b300	equ	0180H
+b1200	equ	0060H
+b2400	equ	0030H
+b4800	equ	0018H
+b9600	equ	000CH
+
+; Ring buffer size
+mnchnd	equ	256		; Must be power of 2
+
+; ---------------------------------------------------------------------------
+; inchr -- get next char from ring buffer into AL.
+;          Called only when instat has already returned skip (char available).
+;          Preserves all registers except AL.
+
+inchr:	push	bx
+	cli
+	dec	mnchrn
+	mov	bx, mnchop
+	inc	bx
+	cmp	bx, offset mnchrs+mnchnd
+	jb	inch2
+	mov	bx, offset mnchrs
+inch2:	mov	mnchop, bx
+	mov	al, [bx]
+	sti
+	pop	bx
+	cmp	parflg, parnon	; strip parity bit?
+	je	inch3
+	and	al, 7Fh
+inch3:	ret
+
+
+; ---------------------------------------------------------------------------
+; instat -- test if a character is available in the ring buffer.
+;           Returns normal ret if none, jmp rskp if one is ready.
+
+instat:	cmp	mnchrn, 0
+	jnz	inst2
+	 ret
+inst2:	jmp	rskp
+
+
+; ---------------------------------------------------------------------------
+; outchr -- write AL to the 8250 transmit holding register (internal).
+;           Trashes DX.
+
+outchr:	mov	dx, mndat
+	out	dx, al
+	ret
+
+
+; ---------------------------------------------------------------------------
+; outwt -- wait until the UART transmit holding register is empty.
+;          Returns normal ret if not ready, jmp rskp if ready.
+;          Trashes AX, DX.
+
+outwt:	push	ax
+	mov	dx, mnlsr
+	in	al, dx
+	test	al, lsr_thre
+	pop	ax
+	jnz	owt2
+	 ret
+owt2:	jmp	rskp
+
+
+; ---------------------------------------------------------------------------
+; prtout -- send the character in AL to the serial port.
+;           Polls LSR up to outlmt times before giving up.
+
+outlmt	equ	04000H
+
+prtout:	call	dopar
+	push	cx
+	push	dx
+	mov	cx, outlmt
+prou2:	call	outwt
+	 loop	prou2
+	 nop
+	call	outchr
+	pop	dx
+	pop	cx
+	ret
+
+
+; ---------------------------------------------------------------------------
+; mnint -- 8250 receive interrupt service routine.
+;          Saves registers, reads RBR into ring buffer, sends EOI.
+
+mnax	dw	0
+mnsp	dw	0
+mnsseg	dw	0
+mndseg	dw	0
+
+mnint:	cli
+	mov	cs:mnax, ax
+	mov	ax, sp
+	mov	cs:mnsp, ax
+	mov	ax, ss
+	mov	cs:mnsseg, ax
+	mov	ax, cs:mndseg
+	mov	ss, ax
+	mov	sp, offset mnstk
+	push	ds
+	push	es
+	push	bp
+	push	di
+	push	si
+	push	dx
+	push	cx
+	push	bx
+	mov	ds, ax
+	call	mnproc
+	; Send non-specific EOI to 8259
+	mov	al, eoi
+	out	pic_ocw2, al
+	pop	bx
+	pop	cx
+	pop	dx
+	pop	si
+	pop	di
+	pop	bp
+	pop	es
+	pop	ds
+	mov	ax, cs:mnsp
+	mov	sp, ax
+	mov	ax, cs:mnsseg
+	mov	ss, ax
+	mov	ax, cs:mnax
+	iret
+
+
+; ---------------------------------------------------------------------------
+; mnproc -- called from mnint; reads one char from 8250 RBR into ring buffer.
+
+mnproc:	mov	dx, mnlsr
+	in	al, dx
+	test	al, lsr_dr	; data ready?
+	jz	mnpend		; no -- spurious interrupt
+	mov	dx, mndat
+	in	al, dx		; read the character
+	cmp	mnchrn, mnchnd	; buffer full?
+	je	mnperr
+	inc	mnchrn
+	mov	bx, mnchip
+	inc	bx
+	cmp	bx, offset mnchrs+mnchnd
+	jb	mnpr2
+	mov	bx, offset mnchrs
+mnpr2:	mov	mnchip, bx
+	mov	[bx], al
+	ret
+mnpend:	ret
+mnperr:	ret
+
+
+; ---------------------------------------------------------------------------
+; prtbrk -- send a BREAK (250 ms).
+
+prtbrk:	mov	dx, mnlcr
+	in	al, dx
+	or	al, 040H	; set break bit
+	out	dx, al
+	mov	ax, 250		; 250 milliseconds
+	call	mswait
+	mov	dx, mnlcr
+	in	al, dx
+	and	al, 0BFH	; clear break bit
+	out	dx, al
+	ret
+
+
+; ---------------------------------------------------------------------------
+; mswait -- busy-wait AX milliseconds.  Trashes AX, CX.
+
+mswait:	mov	cx, 5*clckrt
+mswai1:	sub	cx, 1
+	jnz	mswai1
+	dec	ax
+	jnz	mswait
+	ret
+
+
+; ---------------------------------------------------------------------------
+; serini -- initialise the 8250 and hook the receive interrupt vector.
+
+serini:	mov	ax, ds
+	mov	cs:mndseg, ax	; save DS for ISR to use
+
+	; hook interrupt vector (in absolute segment 0)
+	push	ds
+	mov	ax, 0
+	mov	ds, ax
+	cli
+	mov	bx, mnvec	; vector address (0Bh*4 or 0Ch*4)
+	mov	ax, [bx]
+	mov	mnoldo, ax	; save original offset
+	mov	ax, 2[bx]
+	mov	mnolds, ax	; save original segment
+	mov	ax, offset mnint
+	mov	[bx], ax
+	mov	ax, cs
+	mov	2[bx], ax
+	sti
+	pop	ds
+
+	; enable IRQ in 8259
+	in	al, pic_ocw1
+	and	al, mnien	; clear the mask bit (enable IRQ)
+	out	pic_ocw1, al
+
+	; init 8250: set baud rate then 8N1, enable RDA interrupt, MCR on
+	call	dobaud
+
+	mov	dx, mnlcr
+	mov	al, lcr_8n1
+	out	dx, al		; 8 bits, no parity, 1 stop bit
+
+	mov	dx, mnier
+	mov	al, ier_rda
+	out	dx, al		; enable receive interrupt
+
+	mov	dx, mnmcr
+	mov	al, mcr_on
+	out	dx, al		; DTR, RTS, OUT2 on
+
+	; flush any stale char in RBR
+	mov	dx, mndat
+	in	al, dx
+	ret
+
+
+; ---------------------------------------------------------------------------
+; serfin -- restore the interrupt vector and shut down the 8250.
+
+serfin:	cli
+	; restore 8259 mask (disable IRQ)
+	in	al, pic_ocw1
+	or	al, mnidis	; set the mask bit (disable IRQ)
+	out	pic_ocw1, al
+
+	; turn off 8250 interrupts and MCR
+	mov	dx, mnier
+	mov	al, 0
+	out	dx, al
+	mov	dx, mnmcr
+	mov	al, mcr_off
+	out	dx, al
+
+	; restore interrupt vector
+	push	ds
+	mov	ax, 0
+	mov	ds, ax
+	mov	bx, mnvec
+	mov	ax, mnoldo
+	mov	[bx], ax
+	mov	ax, mnolds
+	mov	2[bx], ax
+	pop	ds
+	sti
+	call	clrscr
+	ret
+
+
+; ---------------------------------------------------------------------------
+; cfibf -- clear the receive ring buffer.
+
+cfibf:	mov	mnchrn, 0
+	mov	mnchip, offset mnchrs-1+mnchnd
+	mov	mnchop, offset mnchrs-1+mnchnd
+	ret
+
+
+; ---------------------------------------------------------------------------
+; dobaud -- program 8250 baud rate divisor from current baud variable.
+;           Trashes AX, DX.
+
+dobaud:	mov	dx, mnlcr
+	in	al, dx
+	push	ax		; save LCR
+	or	al, lcr_dlab	; set DLAB
+	out	dx, al
+	mov	ax, baud	; divisor word
+	mov	dx, mndat	; DLL
+	out	dx, al
+	mov	al, ah
+	inc	dx		; DLM
+	out	dx, al
+	mov	dx, mnlcr
+	pop	ax		; restore LCR (clears DLAB)
+	out	dx, al
+	ret
+
+
+; ---------------------------------------------------------------------------
+; bdset -- SET BAUD command handler.
+
+bdset:	mov	dx, offset bdtab
+	mov	bx, offset bdhlp
+	mov	ah, cmkey
+	call	comnd
+	 jmp	r
+	push	bx
+	mov	ah, cmcfm
+	call	comnd
+	 jmp	r
+	pop	bx
+	mov	baud, bx
+	call	dobaud
+	jmp	rskp
+
+
+; ---------------------------------------------------------------------------
+; prtset -- SET PORT command handler (COM1 / COM2).
+
+prtset:	mov	dx, offset potab
+	mov	bx, offset pohlp
+	mov	ah, cmkey
+	call	comnd
+	 jmp	r
+	push	bx
+	mov	ah, cmcfm
+	call	comnd
+	 jmp	r
+	pop	bx		; 1 = COM1, 2 = COM2
+	cmp	bx, 1
+	jne	prts2
+	; COM1
+	mov	mndat,  com1dat
+	mov	mnier,  com1ier
+	mov	mnlcr,  com1lcr
+	mov	mnmcr,  com1mcr
+	mov	mnlsr,  com1lsr
+	mov	mnvec,  com1vec
+	mov	mnien,  not irq4mask and 0FFH
+	mov	mnidis, irq4mask
+	mov	comflg, 1
+	jmp	prtsd
+prts2:	; COM2
+	mov	mndat,  com2dat
+	mov	mnier,  com2ier
+	mov	mnlcr,  com2lcr
+	mov	mnmcr,  com2mcr
+	mov	mnlsr,  com2lsr
+	mov	mnvec,  com2vec
+	mov	mnien,  not irq3mask and 0FFH
+	mov	mnidis, irq3mask
+	mov	comflg, 2
+prtsd:	jmp	rskp
+
+
+; ---------------------------------------------------------------------------
+; shobd -- SHOW BAUD (display current baud rate).
+
+shobd:	mov	dx, offset bdmsg
+	call	tmsg
+	mov	bx, offset bdtab+1	; skip count byte
+shobd1:	mov	al, [bx]		; name length
+	mov	ah, 0
+	add	bx, ax
+	inc	bx			; skip to the '$'
+	inc	bx			; skip '$'
+	mov	ax, [bx]		; divisor value
+	inc	bx
+	inc	bx			; point to next entry
+	cmp	ax, baud
+	jne	shobd1			; not this one
+	; bx now points past the matched entry -- back up to name
+	sub	bx, 4			; back over dw + '$'
+shobd2:	dec	bx
+	cmp	byte ptr [bx], '$'
+	jne	shobd2
+	inc	bx
+	mov	dx, bx
+	call	tmsg
+	ret
+
+
+; ---------------------------------------------------------------------------
+; shoprt -- SHOW PORT (display current port).
+
+shoprt:	mov	dx, offset prtmsg
+	call	tmsg
+	cmp	comflg, 1
+	jne	shprt2
+	mov	dx, offset cm1st
+	jmp	shprt3
+shprt2:	mov	dx, offset cm2st
+shprt3:	call	tmsg
+	ret
+
+
+; ---------------------------------------------------------------------------
+; Screen control -- ANSI escape sequences (IBM PC with ANSI.SYS or compatible)
+
+; poscur -- position cursor to row,col pointed to by DX (1 byte each)
+poscur:	mov	bx, dx
+	mov	cl, 10
+	mov	al, [bx]
+	sub	ah, ah
+	div	cl
+	add	ax, '00'
+	mov	word ptr anspos+2, ax
+	mov	al, 1[bx]
+	sub	ah, ah
+	div	cl
+	add	ax, '00'
+	mov	word ptr anspos+5, ax
+	mov	dx, offset anspos
+	call	tmsg
+	ret
+
+; clrscr -- home cursor and clear screen
+clrscr:	mov	dx, offset anscls
+	call	tmsg
+	ret
+
+; clrlin -- clear from start of line to cursor (CR then clreol)
+clrlin:	mov	dl, cr
+	call	bout
+clreol:	mov	dx, offset ansclr
+	call	tmsg
+	ret
+
+; revon -- reverse video on
+revon:	mov	dx, offset ansron
+	call	tmsg
+	ret
+
+; revoff -- reverse video off
+revoff:	mov	dx, offset ansrof
+	call	tmsg
+	ret
+
+; bldon -- bold on
+bldon:	mov	dx, offset ansbon
+	call	tmsg
+	ret
+
+; bldoff -- bold off
+bldoff:	mov	dx, offset ansbof
+	call	tmsg
+	ret
+
+; dotab -- tab handling (pass through, let terminal handle it)
+dotab:	jmp	rskp
+
+
+	DSEG $
+
+; ---------------------------------------------------------------------------
+; Flow control (XON/XOFF disabled -- IBM PC uses hardware handshake)
+
+floctl	db	0		; 0 = no XON/XOFF flow control
+
+; ---------------------------------------------------------------------------
+; Ring buffer and ISR state
+
+mnchrn	dw	0			; chars in buffer
+mnchrs	rb	mnchnd			; circular buffer
+mnchip	dw	mnchrs-1+mnchnd		; input pointer
+mnchop	dw	mnchrs-1+mnchnd		; output pointer
+
+mnoldo	rw	1			; saved interrupt vector offset
+mnolds	rw	1			; saved interrupt vector segment
+
+	rw	32			; interrupt stack
+mnstk	dw	0
+
+; ---------------------------------------------------------------------------
+; Port configuration (defaults to COM1)
+
+mndat	dw	com1dat			; data register
+mnier	dw	com1ier			; interrupt enable register
+mnlcr	dw	com1lcr			; line control register
+mnmcr	dw	com1mcr			; modem control register
+mnlsr	dw	com1lsr			; line status register
+mnvec	dw	com1vec			; interrupt vector address (seg 0)
+mnien	db	not irq4mask and 0FFH	; 8259 enable mask (bit to clear)
+mnidis	db	irq4mask		; 8259 disable mask (bit to set)
+comflg	db	1			; 1=COM1, 2=COM2
+
+; Default baud rate: 2400
+baud	dw	b2400
+
+; ---------------------------------------------------------------------------
+; Baud rate table for cmkey
+
+bdtab	db	5			; 5 entries
+	db	3,'300$'
+	dw	b300
+	db	4,'1200$'
+	dw	b1200
+	db	4,'2400$'
+	dw	b2400
+	db	4,'4800$'
+	dw	b4800
+	db	4,'9600$'
+	dw	b9600
+
+bdhlp	db	cr,lf,'Baud rate (300, 1200, 2400, 4800, 9600)$'
+bdmsg	db	cr,lf,'Baud rate: $'
+
+; ---------------------------------------------------------------------------
+; Port table for cmkey
+
+potab	db	2			; 2 entries
+	db	4,'COM1$'
+	dw	1
+	db	4,'COM2$'
+	dw	2
+
+pohlp	db	cr,lf,'Communications port (COM1, COM2)$'
+prtmsg	db	cr,lf,'Port: $'
+cm1st	db	'COM1',cr,lf,'$'
+cm2st	db	'COM2',cr,lf,'$'
+
+; ---------------------------------------------------------------------------
+; ANSI screen control strings
+
+; delstr -- displayed on DEL key: erase the echoed character
+delstr	db	' ',10O,10O,'$'
+
+anspos	db	esc,'[00;00H$'
+anscls	db	esc,'[H',esc,'[J$'
+ansclr	db	esc,'[K$'
+ansron	db	esc,'[7m$'
+ansrof	db	esc,'[m$'
+ansbon	db	esc,'[1m$'
+ansbof	db	esc,'[m$'
+
+; ---------------------------------------------------------------------------
+; System identification string
+
+system	db	'              IBM PC/XT CP/M-86$'
+
+; ---------------------------------------------------------------------------
+; Clock rate for mswait: 4.77 MHz / (5 * 20 cycles) ~ 47700 loops/sec
+; clckrt * 5 * 20 cycles = 4.77e6  =>  clckrt = 47.7 ~ 48
+
+clckrt	equ	48
+

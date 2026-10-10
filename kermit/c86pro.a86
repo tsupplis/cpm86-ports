@@ -1,0 +1,1443 @@
+; C86PRO.A86
+; * * * * * * * * * * * * * * * * version 3.0 * * ** * * * * * * * * * * * *
+; Allows packet echo - CGL
+; * * * * * * * * * * * * * * *  version 2.9  * * * * * * * * * * * * * * *
+; [34c] Add sorted wildcard SENDs with initial filename
+; * * * * * * * * * * * * * * *  version 2.7  * * * * * * * * * * * * * * *
+; [31] Fix display on file renaming.
+; RonB, 05/05/84
+; [30c] Isolate ANSI escape sequences for machine independence.
+; [29g]  Add 8th bit quoting.
+; [29d]  Enlarge receive buffer and check for packet overruns.
+; [29b]  Add TAKE processing (close command file when aborting).
+; [29a]  Send error packet when aborting.
+; RonB, 04/08/84
+; * * * * * * * * * * * * * * *  version 2.6  * * * * * * * * * * * * * * *
+; [28b]  Make file-not-found error more informative (include filename).
+; [28a]  Clear attribute bits from filename before sending
+; RonB, 03/27/84
+; [25] - make KERCMD more modular by eliminating some use of text
+; strings by other modules (KERPRO, KERSYS), and moving some
+; parsing into KERCMD (ESCAPE and EOLSET logic in KERSYS)
+; * * * * * * * * * * * * * * *  version 2.4  * * * * * * * * * * * * * * *
+;  [21a] Add timeout enable/disable
+; RonB,03/05/84
+;  [20a] Fix version & send/receive header
+;  [20e] Clean up environment better before rebooting in KABORT
+; RonB,03/02/84
+;  [19f] Add ^X/^Z file interruption - adapted from PC Kermit V1.20
+;  Put in Help line for above.
+;  [19g] Put in timeouts.
+; R. Garland 2/84
+; * * * * * * * * * * * * * * *  version 2.1  * * * * * * * * * * * * * * *
+;  [14] Fix nout to print decimal.
+; RonB,12/28/83
+;  [13] Use control-Z's for filler in partial sectors instead of nulls.
+; RonB,12/27/83
+;  [12] Allow user abort from the keyboard in the send and receive routines.
+; RonB,12/27/83
+;  [9] Fix filename parsing, and add wildcard ability.
+; RonB,12/26/83
+; * * * * * * * * * * * * * * *  version 2.0  * * * * * * * * * * * * * * *
+; This module contains the routines that actually implement the Kermit
+; protocol.
+
+; Packet definitions.
+
+maxpkt equ '~'-' '+2O ;Maximum size of a packet.
+maxtry equ 05O  ;Default number of retries on a packet.
+imxtry equ 20O  ;Default number of retries send initiate.
+drpsiz equ 5EH  ;Default receive packet size.
+dspsiz equ 20H  ;Default send packet size.
+dstime equ 0AH  ;Default send time out interval.
+drtime equ 05H  ;Default receive time out interval.
+dspad equ 00H  ;Default send padding.
+drpad equ 00H  ;Default receive padding.
+dspadc equ 00H  ;Default send padding char.
+drpadc equ 00H  ;Default receive padding char.
+dseol equ cr  ;Default send EOL char.
+dreol equ cr  ;Default receive EOL char.
+dsquot equ '#'  ;Default send quote char.
+drquot equ '#'  ;Default receive quote char.
+dqbin equ '&'  ;Default 8th-bit quote char. ;[29g]
+
+bufsiz equ 80H  ;Size of DMA.
+
+; A few control characters
+
+ctlc equ 03H  ;[19f]
+ctlx equ 18H  ;[19f]
+ctlz equ 1AH  ;[19f]
+
+ DSEG $
+
+; Program storage.
+
+belflg db 1  ;Use bell.
+incmod db 0  ;Insert Character mode.
+hierr db 0  ;Non-ascii char (non-zero if yes).
+parflg db defpar  ;Parity flag (default none.)
+flwflg db 0  ;File warning flag (default off).
+ibmflg db 0  ;IBM flag (default off).
+vmeflg db 0  ;VME flag (default off);
+incnt dw 0  ;Number of chars read in from port.
+pktptr dw 0  ;Position in receive packet.
+spsiz db dspsiz  ;Send packet size.
+rpsiz db drpsiz  ;Receive packet size.
+stime db dstime  ;Send time out.
+rtime db drtime  ;Receive time out.
+spad db dspad  ;Send padding.
+rpad db drpad  ;Receive padding.
+spadch db dspadc  ;Send padding char.
+rpadch db drpadc  ;Receive padding char.
+seol db dseol  ;Send EOL char.
+reol db dreol  ;Receive EOL char.
+squote db dsquot  ;Send quote char.
+rquote db drquot  ;Receive quote char.
+ebquot db 'Y'  ;Send 8th-bit quote char.  ;[29g]
+pktnum dw 0  ;Packet number.
+numpkt dw 0  ;Total number of packets sent.
+numrtr dw 0  ;Total number of retries.
+numtry db 0  ;Number of tries on this packet.
+oldtry db 0  ;Number of tries on previous packet.
+cxzflg db 0  ;[19f] flag for ^X/^Z file interruption
+state db 0  ;Present state of the automaton.
+packet rb 4  ;Packet (data is part of it).
+data rb 60H  ;Data and checksum field of packet. ;[29d]
+recpkt rb 100H  ;Receive packet storage.  ;[29d]
+temp dw 0
+argblk dw 0  ;For subroutine arguments.
+argbk1 dw 0
+argbk2 dw 0
+argbk3 dw 0
+tickst dw 10*(7470/clckrt);[19g] "magic" formula for loops/tick
+    ;[19g] CLCKRT is the system clock rate ...
+    ;[19g] ... defined in KERIO
+ticklp dw 0  ;[19g] Dynamic loop count for tick
+tickct db dstime  ;[19g] # ticks for timeout to occur
+tmodon db 0  ;[19g] flag for time-out message
+
+ CSEG $
+
+; Check for a user abort or interrupt during the send or receive ;[12] begin
+;   modified by Rg.
+kabort:
+ call dbinst  ;Check if a char has been typed.
+  jmp r  ;[19f]  Merrily return.
+ call dbin  ;Get the character.
+ cmp al, ctlc ;Abort if control-C [19f]
+ je kabrt2
+ cmp al, ctlx ;[19f] Is it control-x ?
+ je kabrta  ;[19f] yes
+ cmp al, ctlz ;[19f] control-z ?
+ jne kabrtb  ;[19f] no
+kabrta: add al, 100O ;[19f] make into 'X' or 'Z'
+ mov cxzflg, al ;[19f] set the flag
+ call intmsg  ;[19f] reassure the user
+ ret   ;[19f] return
+kabrtb: cmp al, cr  ;if <cr> do a timeout  ;[29a] begin
+ jne kabrtc
+ pop bx  ;return of kabort
+ pop bx  ;receive packet pointer
+    ;... next is return of inpkt
+ ret   ;return to timeout routine ;[29a] end
+kabrtc: cmp al, escchr ;or the escape character followed by 'C'.
+ jne kabrt9
+ mov cx, 1000 ;Only wait just so long for the next char.
+kabrt1: push cx
+ call dbin
+ pop cx
+ cmp al, 0
+ loope kabrt1
+ cmp al, ctlc ;Control-C also works here. [19f]
+ je kabrt2
+ and al, 137O ;Capitalize it.
+ cmp al, 'C'  ;If not a 'C' then continue.
+ jne kabrt9
+kabrt2: cmp tkflg, 0 ;Close any command file in use ;[29b] begin
+ je kabrt3
+ call tkcls      ;[29b] end
+kabrt3: call binst  ;Clear out extraneous input ;[29a] begin
+  jmp kabrt4 ;If none, go abort this transmission.
+ call bin
+ jmps kabrt2
+kabrt4: pop bx  ;return from kabort
+ pop bx  ;receive packet pointer
+ pop bx  ;return from inpkt
+ pop bx  ;return from rpack
+    ;... next is return from r??? to read
+ mov dx, offset erms21 ;Print '* aborted *' message.
+ jmp fatal      ;[29a] end
+kabrt9: mov dl, bell ;beep    [19f]
+ call dbout  ;    [19f]
+ ret   ;return no error  [19f]
+
+
+; Send the generic finish command to the remote Kermit.
+
+finsen: mov ah, 'F'  ;Ask for the finish command.
+ call gensen
+ ret
+
+
+; Send the generic logout command to the remote Kermit.
+
+byesen: mov ah, 'L'  ;Ask for the logout command.
+ call gensen
+ ret
+
+
+; This procedure processes all the generic single packet sends.
+
+gensen: mov temp, ax ;Save the specific generic command.
+ mov numtry, 0 ;Initialize count.
+ call cfibf  ;Clear out input buffer of extra NAKs.
+fins1: mov ah, numtry
+ cmp ah, maxtry ;Too many times?
+ js fins3  ;Nope, try it.
+fins2: mov dx, offset erms18
+ call tcrmsg
+ ret
+
+fins3: inc numtry  ;Increment number of tries.
+ mov argblk, 0 ;Packet number zero.
+ mov argbk1, 1 ;One piece of data.
+ mov bx, offset data
+ mov ax, temp ;Get the generic command.
+ mov [bx], ah ;Finish running Kermit.
+ mov ah, 'G'  ;Generic command packet.
+ call spack
+  jmp fins2 ;Tell user and die.
+ call rpack  ;Get ACK.
+  jmp fins1  ;Go try again.
+ cmp ah, 'Y'  ;Got an ACK?
+ jnz fins4
+ ret   ;Yes, then we're done.
+fins4: cmp ah, 'E'  ;Error packet?
+ jnz fins1  ;Try sending it again.
+ call error1
+ ret
+
+; Packet routines
+
+; Send_Packet
+; This routine assembles a packet from the arguments given and sends it
+; to the host.
+;
+; Expects the following:
+; AH     - Type of packet (D,Y,N,S,R,E,F,Z,T)
+; ARGBLK - Packet sequence number
+; ARGBK1 - Number of data characters
+;
+; Returns: +1 always
+
+spack: push ax  ;Save the packet type.
+ mov bx, offset packet ;Get address of the send packet.
+ mov ah, soh  ;Get the start of header char.
+ mov [bx], ah ;Put in the packet.
+ inc bx  ;Point to next char.
+ mov ax, argbk1 ;Get the number of data chars.
+ xchg ah, al
+ add ah, ' '+3 ;Real packet character count made printable.
+ mov [bx], ah ;Put in the packet.
+ inc bx  ;Point to next char.
+ mov cl, ah  ;Start the checksum.
+ mov ax, argblk ;Get the packet number.
+ xchg ah, al
+ add ah, ' '  ;Add a space so the number is printable.
+ mov [bx], ah ;Put in the packet.
+ inc bx  ;Point to next char.
+ add cl, ah  ;Add the packet number to the checksum.
+ pop ax  ;Get the packet type.
+ mov [bx], ah ;Put in the packet.
+ inc bx  ;Point to next char.
+ add cl, ah  ;Add the type to the checksum.
+ mov dx, argbk1 ;Get the packet size.
+spack2: cmp dx, 0  ;Are there any chars of data?
+  jz spack3  ; No, finish up.
+ dec dx  ;Decrement the char count.
+ mov ah, [bx] ;Get the next char.
+ inc bx  ;Point to next char.
+ add cl, ah  ;Add the char to the checksum.
+ jmp spack2  ;Go try again.
+spack3:
+sp3x: mov ah, cl  ;Get the character total.
+ mov ch, cl  ;Save here too (need 'cl' for shift).
+ and ah, 0C0H ;Turn off all but the two high order bits.
+ mov cl, 6
+ shr ah, cl  ;Shift them into the low order position.
+ mov cl, ch
+ add ah, cl  ;Add it to the old bits.
+ and ah, 3FH  ;Turn off the two high order bits.  (MOD 64)
+ add ah, ' '  ;Add a space so the number is printable.
+ mov [bx], ah ;Put in the packet.
+ inc bx  ;Point to next char.
+ mov ah, seol ;Get the EOL the other host wants.
+ mov [bx], ah ;Put in the packet.
+ inc bx  ;Point to next char.
+ mov ah, 0  ;Get a null.
+ mov [bx], ah ;Put in the packet.
+ cmp debug, 0 ;debug mode.
+ je spack4
+ inc bx
+ mov ah, '$'
+ mov [bx], ah
+ mov dx, offset scrsp ;Print string to move cursor.
+ call poscur      ;[30c] begin
+ call clreol  ;Clear current line
+ mov dl, lf  ;  and next one
+ call bout
+ call clreol
+ mov dx, offset scrsp ;Print string to move cursor.
+ call poscur      ;[30c] end
+ mov dx, offset spmes
+ call tmsg
+ mov dx, offset packet
+ call tmsg  ;Debug end.
+spack4: call outpkt  ;Call the system dependent routine.
+ jmp rskp
+
+
+; Write out a packet.
+
+outpkt: mov dh, spad ;Get the number of padding chars.
+outpk2: dec dh
+ cmp dh, 0
+ jl outpk3  ;If none left proceed.
+ mov al, spadch ;Get the padding char.
+ call prtout  ;Output it.
+ jmp outpk2
+outpk3: mov bx, offset packet ;Point to the packet.
+outlup: mov al, [bx] ;Get the next character.
+ cmp al, 0  ;Is it a null?
+ jnz outlp2
+ ret
+outlp2: call prtout  ;Output the character.
+ inc bx  ;Increment the char pointer.
+ jmp outlup
+
+
+; Receive_Packet
+; This routine waits for a packet arrive from the host.
+
+rpack: call inpkt  ;Read up to a carriage return.
+  jmp rptimo  ; User timed us out.
+rpack0: call getchr  ;Get a character.
+  jmp rpack  ; Hit the carriage return, go try again.
+ cmp ah, soh  ;Is the char the start of header char?
+  jne rpack0  ; No, go until it is.
+rpack1: call getchr  ;Get a character.
+  jmp r  ; Hit the carriage return, return bad.
+ cmp ah, soh  ;Is the char the start of header char?
+  jz rpack1  ; Yes, then go start over.
+ mov cl, ah  ;Start the checksum.
+ sub ah, ' '+3 ;Get the real data count.
+ mov dh, ah  ;Save it for later.
+ mov al, ah  ;Swap halves.
+ mov ah, 0
+ mov argbk1, ax ;Save the data count.
+ call getchr  ;Get a character.
+  jmp r  ; Hit the carriage return, return bad.
+ cmp ah, soh  ;Is the char the start of header char?
+  jz rpack1  ; Yes, then go start over.
+ add cl, ah  ;Add it to the checksum.
+ sub ah, ' '  ;Get the real packet number.
+ mov al, ah  ;Swap halves.
+ mov ah, 0
+ mov argblk, ax ;Save the packet number.
+ call getchr  ;Get a character.
+  jmp r  ; Hit the carriage return, return bad.
+ cmp ah, soh  ;Is the char the start of header char?
+  jz rpack1  ; Yes, then go start over.
+ mov temp, ax ;Save the message type.
+ ; CGL mod for VME packet echo
+ cmp ah, packet + 3       ; compare with the type of this received one
+ je rpack           ; if the same go back and get next
+ ; end of CGL mod
+ add cl, ah  ;Add it to the checksum.
+ mov bx, offset data ;Point to the data buffer.
+rpack2: dec dh  ;Any data characters?
+  js rpack3  ; If not go get the checksum.
+ call getchr  ;Get a character.
+  jmp r  ; Hit the carriage return, return bad.
+ cmp ah, soh  ;Is the char the start of header char?
+  jz rpack1  ; Yes, then go start over.
+ mov [bx], ah ;Put the char into the packet.
+ inc bx  ;Point to the next character.
+ add cl, ah  ;Add it to the checksum.
+ jmp rpack2  ;Go get another.
+rpack3: call getchr  ;Get a character.
+  jmp r  ; Hit the carriage return, return bad.
+ cmp ah, soh  ;Is the char the start of header char?
+  jz rpack1  ; Yes, then go start over.
+ sub ah, ' '  ;Turn the char back into a number.
+ mov dh, cl  ;Get the character total.
+ and dh, 0C0H ;Turn off all but the two high order bits.
+ mov ch, cl
+ mov cl, 6
+ shr dh, cl  ;Shift them into the low order position.
+ mov cl, ch
+ add dh, cl  ;Add it to the old bits.
+ and dh, 3FH  ;Turn off the two high order bits.  (MOD 64)
+ cmp dh, ah  ;Are they equal?
+  jz rpack4  ; If so finish up.
+ call cfibf  ;Clear out any other characters on the line.
+ ret   ;And return failure.
+
+rpack4: mov ah, 0
+ mov [bx], ah ;Put a null at the end of the data.
+ mov ax, temp ;Get the type.
+ call cfibf  ;Clear out any other characters on the line.
+ jmp rskp
+
+rptimo: call cfibf  ;On a time out clear out any remaining chars.
+ ret
+
+inpkt: mov bx, offset recpkt ;Point to the beginning of the packet.
+ mov incnt, 0
+inpkt2: mov al, stime ;[19g] set up timeout loop.
+ mov tickct, al ;[19g]
+ mov ax, tickst ;[19g] "magic" number loops/tick
+ mov ticklp, ax ;[19g]
+inpkta: cmp tmrflg, 0 ;Is timeout disabled?   ;[21a]
+ je inpktb  ;  If so, skip tick routine  ;[21a]
+ dec ticklp  ;[19g]
+ cmp ticklp, 0 ;[19g] done this tick?
+ jne inpktb  ;[19g] not yet
+ mov ax, tickst ;[19g] reload loop count
+ mov ticklp, ax ;[19g]
+ call ticmsg  ;[19g] beep for debugging
+ dec tickct  ;[19g]
+ cmp tickct, 0 ;[19g] timed-out?
+ jne inpktb  ;[19g] not yet
+ call tmomsg  ;[19g] alert user
+ jmp inpkt9  ;[19g] go time-out
+inpktb: push bx  ;[19g][12] bx gets trashed by kb status check.
+ call kabort  ;[19g] Doesn't return if user aborted.
+ pop bx  ;[19g]
+ call instat  ;Any char there?
+  jmp inpkta  ; Go until there is one.
+ call inchr  ;Get the character.
+ mov [bx], al ;Put the char in the packet.
+ inc bx
+ inc incnt
+ cmp incnt, length recpkt ;Have we overrun the input buffer? ;[29d]
+ jb inpktc
+ jmp inpkt  ;If so, just clear and restart
+inpktc: cmp al, reol ;Is it the EOL char?  ;[29d] end
+ jne inpkt2  ;If not loop for another.
+ cmp incnt, 1 ;Ignore bare CR.
+ jne inpkt6
+ jmp  inpkt
+inpkt6: cmp ibmflg, 0 ;Is this the (dumb) IBM mainframe?
+ jz inpkt4  ;If not then proceed.
+inpkt5: cmp state, 'S' ;Check if this is the Send-Init packet.
+ jz inpkt4  ;If so don't wait for the XON.
+inpkt3: call instat  ;Wait for the turn around char.
+  jmp inpkt3
+ call inchr
+ cmp al, xon  ;Is it the IBM turn around character?
+ jne inpkt3  ;If not, go until it is.
+inpkt4: cmp debug, 0
+ jz inpkt7  ;If not debugging don't print the packet.
+ mov al, '$'  ;Get a dollar sign.
+ mov [bx], al ;Put in the packet.
+ inc bx  ;Point to next char.
+ mov dx, offset scrrp ;Print the packet.
+ call poscur      ;[30c] begin
+ call clreol  ;Clear current line
+ mov dl, lf  ;  and next one
+ call bout
+ call clreol
+ mov dx, offset scrrp ;Print string to move cursor.
+ call poscur      ;[30c] end
+ mov dx, offset rpmes
+ call tmsg
+ mov dx, offset recpkt
+ call tmsg
+
+inpkt7: mov bx, offset recpkt
+ mov pktptr, bx ;Save the packet pointer.
+ call tmoclr  ;[19g] Clear timeout message
+ jmp rskp  ;If so we are done.
+
+inpkt9: ret   ;return failure on time out.
+
+
+getchr: push bx
+ mov bx, pktptr ;Get the packet pointer.
+ mov ah, [bx] ;Get the char.
+ inc bx
+ mov pktptr, bx
+ pop bx  ;Restore BX.
+ cmp ah, reol ;Is it the EOL char?
+ jne getcr2  ;If not return retskp.
+ ret   ;If so return failure.
+getcr2: jmp rskp
+
+
+;This is where we go if we get an error packet.  A call to ERROR
+; positions the cursor and prints the message.  A call to ERROR1
+; just prints a CRLF and then the message.
+
+error: mov state, 'A' ;Set the state to abort.
+ mov dx, offset screrr
+ call poscur      ;[30c]
+ jmp error2
+error1: call tcrlf
+error2: mov bx, offset data ;Get to the string.
+ add bx, argbk1 ;Add the length of the data.
+ mov ah, '$'  ;Put a dollar sign at the end.
+ mov [bx], ah
+ mov dx, offset data ;Print the error message.
+ call tmsg
+ ret
+
+; Jump here if we die during a transfer.  Print the error message in
+; DX and abort.
+
+fatal: push dx  ;Save the error message.
+ mov dx, offset screrr
+ call poscur      ;[30c]
+ pop dx
+ call tmsg
+ jmp abort  ;Change the state to abort.
+
+; Print the status message in DX, ring the bell and position of the prompt.
+
+fnstat: push dx
+ mov dx, offset scrst ;Print string to move cursor.
+ call poscur      ;[30c]
+ pop dx
+ call tmsg
+ mov dx, offset ender ;Ring them bells.
+ call tmsg
+ mov dx, offset scrhlp ;[19f] Cursor position
+ call poscur      ;[30c]
+ call clreol  ;[19f] Clear help line  ;[30c]
+ mov dx, offset scrrpr ;Put cursor back
+ call poscur      ;[30c]
+ ret
+
+
+; This routine sets up the data for init packet (either the
+; Send_init or ACK packet).
+
+rpar: mov ah, rpsiz ;Get the receive packet size.
+ add ah, ' '  ;Add a space to make it printable.
+ mov [bx], ah ;Put it in the packet.
+ mov ah, rtime ;Get the receive packet time out.
+ add ah, ' '  ;Add a space.
+ mov 1[bx], ah ;Put it in the packet.
+ mov ah, rpad ;Get the number of padding chars.
+ add ah, ' '
+ mov 2[bx], ah ;Put it in the packet.
+ mov ah, rpadch ;Get the padding char.
+ add ah, 100O ;Uncontrol it.
+ and ah, 7FH
+ mov 3[bx], ah ;Put it in the packet.
+ mov ah, reol ;Get the EOL char.
+ add ah, ' '
+ mov 4[bx], ah ;Put it in the packet.
+ mov ah, rquote ;Get the quote char.
+ mov 5[bx], ah ;Put it in the packet.
+ mov ah, ebquot ;Get 8th-bit quote char ;[29g] begin
+ mov 6[bx], ah ;Put it in the packet.
+ mov ah, '1'  ;Set single character check type
+ mov 7[bx], ah ;Put it in the packet.
+ mov ah, ' '  ;Set no repeat prefix
+ mov 8[bx], ah ;Put it in the packet.
+ mov ah, 0  ;Initialize capability byte
+ cmp tmrflg, 0 ;Are we able to time out?
+ je rpar1  ;  No, leave bit set to zero
+ or ah, 20h  ;  Otherwise set timeout capability flag
+rpar1: add ah, ' '  ;Add space to make it printable
+ mov 9[bx], ah ;Put it in the packet.
+ mov ah, 10  ;Ten pieces of data.  ;[29g] end
+ ret
+
+; This routine reads in all the send_init packet information.
+
+spar: push cx  ;Save CX.
+ mov cx, ax  ;Save the number of arguments.
+ mov ah, [bx] ;Get the max packet size.
+ sub ah, ' '  ;Subtract a space.
+ mov spsiz, ah ;Save it.
+ mov ax, cx  ;[19g]
+ cmp al, 2  ;[19g] Fewer than two pieces?
+ jge spar1  ;[19g]    ;[29g]
+ jmp sparx1      ;[29g]
+spar1: mov ah, 1[bx] ;[19g] Get the timeout value
+ sub ah, ' '  ;[19g]
+ mov stime, ah ;[19g] save it.
+ mov ax, cx
+ cmp al, 3  ;Fewer than three pieces?
+ jge spar2      ;[29g]
+ jmp sparx2      ;[29g]
+spar2: mov ah, 2[bx] ;Get the number of padding chars.
+ sub ah, ' '
+ mov spad, ah
+ mov ax, cx
+ cmp al, 4  ;Fewer than four pieces?
+ jge spar3      ;[29g]
+ jmp sparx3      ;[29g]
+spar3: mov ah, 3[bx] ;Get the padding char.
+ add ah, 100O ;Re-controlify it.
+ and ah, 7FH
+ mov spadch, ah
+ mov ax, cx
+ cmp al, 5  ;Fewer than five pieces?
+ jge spar4      ;[29g]
+ jmp sparx4      ;[29g]
+spar4: mov ah, 4[bx] ;Get the EOL char.
+ sub ah, ' '
+ mov seol, ah
+ mov ax, cx
+ cmp al, 6  ;Fewer than six pieces?
+ jge spar5      ;[29g]
+ jmp sparx5      ;[29g]
+spar5: mov ah, 5[bx] ;Get the quote char.
+ mov squote, ah
+ mov ax, cx      ;[29g] begin
+ cmp al, 7  ;Fewer than seven pieces?
+ jge spar6
+ jmp sparx6
+spar6: mov ah, 6[bx] ;Get the 8th-bit quote char.
+ call doquo  ;Set the quote character.
+ jmp sparxx
+sparx1: mov stime, dstime ;Default timeout interval
+sparx2: mov spad, dspad ;Default number of padding chars
+sparx3: mov spadch, dspadc ;Default pad character
+sparx4: mov seol, dseol ;Default eol character
+sparx5: mov squote, dsquot ;Default send quote character.
+sparx6: mov ebquot, 'N' ;No 8th bit quoting.
+sparxx: pop cx      ;[29g] end
+ ret   ;If so we are done.
+
+; Set 8-bit quote character based on my capabilities  ;[29g] begin
+; and the other Kermit's request.
+
+doquo: cmp ebquot,'N' ;Can I do 8-bit quoting at all?
+ je dq2  ;No - so forget it.
+ cmp ebquot,'Y' ;Can I do it if requested?
+ jne dq0  ;No - it's a must that I do it.
+ mov ebquot,ah ;Do whatever he wants.
+ jmp dq2
+dq0: cmp ah,'Y'  ;I need quoting - can he do it?
+ je dq2  ;Yes - then all is settled.
+ cmp ah,'N'  ;No - then don't quote.
+ je dq1
+ cmp ah,ebquot ;Both need quoting - chars must match.
+ je dq2
+ mov ah,'N'
+dq1: mov ebquot,ah
+dq2: mov ah,ebquot
+ cmp ah,rquote ;Same prefix?
+ je dq3  ;Not allowed, so don't do quoting.
+ cmp ah,squote ;Same prefix here?
+ je dq3  ;This is illegal too.
+ ret
+dq3: mov ebquot,'N' ;Quoting will not be done.
+ ret       ;[29g] end
+
+; These are some utility routines.
+
+; Increment the packet number.
+
+incpkt: inc ax  ;Increment it.
+ and ax, 3FH  ;Turn off the two high order bits.
+ mov pktnum, ax ;Save modulo 64 of the number.
+ inc numpkt  ;Increment the number of packets.
+ ret
+
+; Check if the packet number is the present packet.
+
+chkpeq: mov ax, argblk ;Get the packet number.
+ cmp ax, pktnum ;Is it the right packet number?
+ je chkpe2
+ ret   ;No.
+chkpe2: jmp rskp  ;Yes.
+
+; Is the packet number one more than present.
+
+chkpom: mov ax, pktnum ;Get the present packet number.
+ inc ax  ;Increment.
+ and ax, 03FH ;Account for wraparound.
+ cmp ax, argblk ;Is the packet's number one more than now?
+ jz chkpm2  ;Yes, success.
+ ret
+chkpm2: jmp rskp
+
+; Check if the packet number is the previous packet.
+
+chkpol: inc oldtry  ;Save the updated number of tries.
+ mov ax, pktnum ;Get the present packet number.
+ cmp ax, 0  ;Had we wrapped around?
+ jne chkpl2
+ mov ax, 64
+chkpl2: dec ax  ;Decrement.
+ cmp ax, argblk ;Is the packet's number one less than now?
+ je chkpl3
+ jmp rskp
+chkpl3: ret
+
+; Abort
+
+abort: mov argblk, 0 ;packet number 0  ;[29a] begin
+ mov argbk1, 0 ;no data
+ mov ah, 'E'  ;error type
+ call spack
+  jmp $       ;[29a] end
+ mov state, 'A' ;Otherwise abort.
+ ret
+
+; ACK the packet.
+
+uupack: call updat  ;[19f] entry which doesn't zero argbk1
+ jmp ack1  ;[19f]
+upack: call updat  ;Update the number of tries.
+ack: mov argbk1, 0 ;No data.  (Packet number already in argblk).
+ack1: mov ah, 'Y'  ;Acknowledge packet.
+ call spack  ;Send the packet.
+  jmp r
+ jmp rskp
+
+updat: mov ah, numtry ;Get the number of tries.
+ mov oldtry, ah ;Save it.
+ mov numtry, 0 ;Reset the number of tries.
+ ret
+
+; Re-ACK the previous packet.
+
+reack: call nretry  ;Increment and print the number of retries.
+ mov numtry, 0 ;Reset the number of tries.
+ mov ah, 'Y'  ;Acknowledge packet.
+ call spack  ;Send the packet.
+  jmp r
+ jmp rskp
+
+; NAK that packet.
+
+nak: mov ax, pktnum ;Get the packet number we're waiting for.
+ mov argblk, ax
+ mov argbk1, 0
+ mov ah, 'N'  ;NAK that packet.
+ call spack
+  jmp abort
+ call nretry  ;Increment and print the number of retries.
+ ret   ;Go around again.
+
+; Print the number of retries.
+
+nretry: inc numrtr  ;Increment the number of retries.
+pretry: mov dx, offset scrnrt
+ call poscur      ;[30c]
+ mov ax, numrtr
+ call nout  ;Write the number of retries.
+ ret
+
+; Print the number of packets.
+
+pnmpkt: mov dx, offset scrnp ;Print string to move cursor.
+ call poscur      ;[30c]
+ mov ax, numpkt
+ call nout  ;Write the number of packets.
+ ret
+
+; This routine prints the number in AX on the screen.
+
+nout: push ax  ;save all registers  ;[14] begin
+ push bx
+ push cx
+ push dx
+ mov cx, 0  ;number of digits to print
+ mov bx, 10  ;radix to use for dividing
+nout1: mov dx, 0  ;clear high word of dividend
+ div bx  ;divide dx:ax by 10
+ push dx  ;push this remainder
+ inc cx  ;count it
+ cmp ax, 0  ;anything left in the quotient?
+ jne nout1  ;   if so, keep dividing
+nout2: pop dx  ;get a digit
+ add dl, '0'  ;make it ascii
+ push cx  ;save our count
+ call bout  ;print the digit
+ pop cx  ;repeat until all digits printed
+ loop nout2
+ pop dx  ;restore all registers
+ pop cx
+ pop bx
+ pop ax
+ ret
+
+; Initialize file buffers and paint screen.
+
+init:
+ call dspver  ;Clear screen and display version header
+ mov dx, offset scrnp ;Position to packet location
+ call poscur
+ mov dx, offset pktlin      ;[20a]
+ call tmsg
+ mov dx, offset scrhlp ;[19f] Cursor position
+ call poscur  ;[19f] for help line   ;[30c]
+ call revon  ;Bottom line reverse   ;[30c]
+ mov dx, offset infm10 ;[19f] Help for file transfer
+ call tmsg  ;[19f]
+ call revoff       ;[30c]
+
+init1: mov chrcnt, bufsiz ;Number of chars left.
+ mov bufpnt, offset dma ;Addr for beginning.
+ ret
+
+
+;  Clear out the old filename on the screen.
+
+clrfln: mov dx, offset scrfr ;Move cursor to file rename. ;[31] begin
+ call poscur
+ call clreol  ;Clear to EOL.   ;[31] end
+ mov dx, offset scrfln ;Move cursor to file name position.
+ call poscur      ;[30c]
+ call clreol  ;Clear to EOL.   ;[30c]
+ ret
+
+; acknowledge ^X/^Z with a message  [19f] start
+intmsg: mov dx, offset scrint ;position info
+ call poscur  ;output it   ;[30c]
+ mov dx, offset infms8 ;File message
+ cmp cxzflg, 'X' ;but first check
+ je intm01  ;yes it was X
+ mov dx, offset infms9 ;no it was 'Z' - file group.
+ cmp cxzflg, 'Z' ;or was it?
+ je intm01  ;yes - go output
+ call clreol  ;anything else - clear line ;[30c]
+ jmps intm02      ;[30c]
+intm01: call tmsg  ;output it
+intm02: ret   ;goodbye [19f] end
+
+; let the time-out clock "tick" ;[19g] start
+ticmsg: mov dl, bell ;output a ...
+ call dbout  ;... beep!
+ ret
+
+; notify of time-out
+tmomsg: mov dx, offset scrst ;cursor position
+ call poscur      ;[30c]
+ mov dx, offset timoms ;timeout message
+ call tmsg
+ mov tmodon, 1 ;flag for message
+ ret
+
+; clear time-out message
+tmoclr: cmp tmodon, 0 ;message on screen?
+ jne tmocl1  ;yes - go get it
+ ret   ;nothing to clear - return
+tmocl1: mov dx, offset scrst ;cursor position
+ call poscur      ;[30c]
+ call clreol  ;clear line   ;[30c]
+ mov tmodon, 0 ;indicate line is clear
+ ret   ;[19g] end
+
+; RECEIVE command
+
+read: call init  ;Paint the screen and initialize file buffers.
+ call cfibf  ;Clear out any stacked NAKs.
+read1: mov numpkt, 0 ;Set the number of packets to zero.
+ mov numrtr, 0 ;Set the number of retries to zero.
+ mov pktnum, 0 ;Set the packet number to zero.
+ mov numtry, 0 ;Set the number of tries to zero.
+ mov cxzflg, 0 ;[19f] reset ^X/^Z flag
+ call pretry
+ mov state, 'R' ;Set the state to receive initiate.
+read2: call pnmpkt
+ mov ah, state ;Get the state.
+ cmp ah, 'D'  ;Are we in the data send state?
+ jne read3
+ call rdata
+ jmp read2
+read3: cmp ah, 'F'  ;Are we in the file receive state?
+ jne read4
+ call rfile  ;Call receive file.
+ jmp read2
+read4: cmp ah, 'R'  ;Are we in the receive initiate state?
+ jne read5
+ call rinit
+ jmp read2
+read5: cmp ah, 'C'  ;Are we in the receive complete state?
+ jne read6
+ mov dx, offset infms3 ;Plus a little cuteness.
+ cmp cxzflg,0 ;[19f] an interruption?
+ je read59  ;[19f] no - do normal thing
+ mov dx, offset infms7 ;[19f] substitute 'interrupted' message.
+read59: call fnstat
+ ret
+read6: mov dx, offset infms4 ;Plus a little cuteness.
+ call fnstat
+ ret
+
+
+; Receive routines
+
+; Receive init
+
+rinit: mov ah, numtry ;Get the number of tries.
+ cmp ah, imxtry ;Have we reached the maximum number of tries?
+ jl rinit2
+ mov dx, offset ermes7 ;Print this error and die.
+ jmp fatal
+
+rinit2: inc ah  ;Increment it.
+ mov numtry, ah ;Save the updated number of tries.
+ call rpack  ;Get a packet.
+  jmp nak  ; Trashed packet: nak, retry.
+ cmp ah, 'S'  ;Is it a send initiate packet?
+ jne rinit3  ;If not see if its an error.
+ mov ebquot, 'Y' ;Initialize my 8th-bit quote flag ;[29g]
+ mov ah, numtry ;Get the number of tries.
+ mov oldtry, ah ;Save it.
+ mov numtry, 0 ;Reset the number of tries.
+ mov ax, argblk ;Returned packet number.  (Synchronize them.)
+ call incpkt  ;Increment the packet number.
+ mov ax, argbk1 ;Get the number of arguments received.
+ mov bx, offset data ;Get a pointer to the data.
+ call spar  ;Get the data into the proper variables.
+ mov bx, offset data ;Get a pointer to our data block.
+ call rpar  ;Set up the receive parameters.
+ xchg ah, al
+ mov ah, 0
+ mov argbk1, ax ;Store the returned number of arguments.
+ call ack1  ;ACK the packet.
+  jmp abort
+ mov ah, 'F'  ;Set the state to file send.
+ mov state, ah
+ ret
+rinit3: cmp ah, 'E'  ;Is it an error packet?
+ jne rinit4
+ call error
+rinit4: jmp abort
+
+
+; Receive file
+
+rfile: cmp numtry, maxtry ;Have we reached the maximum number of tries?
+ jl rfile1
+ mov dx, offset ermes8 ;Print this error and die.
+ jmp fatal
+
+rfile1: inc numtry  ;Save the updated number of tries.
+ call rpack  ;Get a packet.
+  jmp nak  ; Trashed packet: nak, retry.
+
+ cmp ah, 'S'  ;Is it a send initiate packet?
+ jne rfile2  ; No, try next type.
+ cmp oldtry, imxtry ;Have we reached the maximum number of tries?
+ jl rfil12  ;If not proceed.
+ mov dx, offset ermes7 ;Print this error and die.
+ jmp fatal
+rfil12: call chkpol  ;Check the packet number, is it right?
+  jmp nak  ;No, NAK and try again.
+ mov bx, offset data ;Get a pointer to our data block.
+ call rpar  ;Set up the parameter information.
+ xchg ah, al
+ mov ah, 0
+ mov argbk1, ax ;Save the number of arguments.
+ call reack  ;Re-ACK the old packet.
+  jmp abort
+ ret
+
+rfile2: cmp ah, 'Z'  ;Is it an EOF packet?
+ jne rfile3  ; No, try next type.
+ cmp oldtry, maxtry ;Have we reached the maximum number of tries?
+ jl rfil21  ;If not proceed.
+ mov dx, offset ermes9 ;Print this error and die.
+ jmp fatal
+rfil21: call chkpol  ;Check the packet number, is it right?
+  jmp nak  ;No, NAK and try again.
+ mov argbk1, 0 ;No data.
+ call reack  ;Re-ACK the previous packet
+  jmp abort
+ ret
+
+rfile3: cmp ah, 'F'  ;Start of file?
+ jne rfile4
+ call chkpeq  ;Packet numbers equal?
+  jmp nak  ; No, NAK it and try again.
+ call incpkt  ;Increment the number of packets.
+ call gofil  ;Get a file to write to.
+  jmp abort
+ call init1  ;Initialize all the file buffers.
+ call upack  ;Update counters and ACK the packet.
+  jmp abort
+ mov state, 'D' ;Set the state to data receive.
+ ret
+
+rfile4: cmp ah, 'B'  ;End of transmission?
+ jne rfile5
+ call chkpeq  ;Packet numbers equal?
+  jmp nak  ; No, NAK it and try again.
+ call ack  ;ACK the packet.
+  jmp abort
+ mov state, 'C' ;Set the state to complete.
+ ret
+
+rfile5: cmp ah, 'E'  ;Is it an error packet?
+ jne rfile6
+ call error
+rfile6: jmp abort
+
+
+; Receive data
+
+rdata: cmp numtry, maxtry ;Get the number of tries.
+ jl rdata1
+ mov dx, offset erms10 ;Print this error and die.
+ jmp fatal
+
+rdata1: inc numtry  ;Save the updated number of tries.
+ call rpack  ;Get a packet.
+  jmp nak  ; Trashed packet: nak, retry.
+
+ cmp ah, 'D'  ;Is it a data packet?
+ je rdat11
+ jmp rdata2  ; No, try next type.
+rdat11: call chkpeq  ;Packet numbers equal?
+  jmp rdat12  ; No, check if previous packet.
+ call incpkt  ;Increment the number of packets.
+ mov ax, argbk1 ;Get the length of the data.
+ cmp cxzflg, 0 ;[19f] interrupt requested?
+ jne rdat1a  ;[19f] yes - skip put to file.
+ call ptchr
+  jmp abort  ; Unable to write out chars;abort.
+ call upack  ;ACK the packet.
+  jmp abort
+ ret
+rdat1a: mov bx, offset data ;[19f] data location
+ mov ah, cxzflg ;[19f] get the ^X/^Z flag
+ mov [bx], ah ;[19f] stick it in the packet
+ mov argbk1, 1 ;[19f] data length is 1
+ call uupack  ;[19f] ACK the packet (without zeroing argbk1)
+  jmp abort  ;[19f]
+ ret   ;[19f]
+
+rdat12: cmp oldtry, maxtry ;Have we reached the maximum number of tries?
+ jl rdat13  ;If not proceed.
+ mov dx, offset erms10 ;Print this error and die.
+ jmp fatal
+rdat13: call chkpol  ;Check the packet number, is it right?
+  jmp nak  ;No, NAK it and try again.
+ mov argbk1, 0 ;No data.
+ call reack  ;Re-ACK the previous packet.
+  jmp abort
+ ret
+
+rdata2: cmp ah, 'F'  ;Start of file?
+ jne rdata3  ; No, try next type.
+ cmp oldtry, maxtry ;Have we reached the maximum number of tries?
+ jl rdat21  ;If not proceed.
+ mov dx, offset ermes8 ;Print this error and die.
+ jmp fatal
+rdat21: call chkpol  ;Check the packet number, is it right?
+  jmp nak  ; No, NAK it and try again.
+ mov argbk1, 0 ;No data.
+ call reack  ;Re-ACK the previous packet
+  jmp abort
+ ret
+
+rdata3: cmp ah, 'Z'  ;Is it a EOF packet?
+ je rdat32
+ jmp rdata4  ;Try and see if its an error.
+rdat32: call chkpeq  ;Packet numbers equal?
+  jmp nak  ; No, NAK it and try again.
+ call incpkt  ;Increment the packet number.
+ cmp cxzflg, 0 ;This file interrupted? [19f] start
+ jne rdat3a  ;yes jump
+ cmp argbk1, 1 ;1 byte of data in EOF packet?
+ jmp rdat3b  ;no - finish up file
+ mov bx, offset data ;pointer to data
+ mov ah, [bx] ;get the data
+ cmp ah, 'D'  ;is it D as in Discard?
+ jne rdat3b  ;no - finish writing file
+rdat3a: mov dx, offset fcb ;get file's fcb
+ call delete  ;delete the file.
+ cmp cxzflg, 'X' ;Kill one file or batch?
+ jne rdat37  ;whole batch - leave flag
+ mov cxzflg, 0 ;clear flag
+ call intmsg  ;clear message
+ jmp rdat37  ;go to clean up.  [19f] end
+rdat3b: mov bx, bufpnt ;Get the dma pointer.
+ mov ax, 80H
+ sub ax, chrcnt ;Get the number of chars left in the DMA.
+ cmp ax, 80H
+ jne rdat34
+ call outbuf  ;Write out buffer if no room for ^Z.
+  jmp abort
+ jmp rdat36  ;Go close the file.
+rdat34: mov cl, 'Z'-100O ;Put in a ^Z for EOF.
+ mov [bx], cl
+ inc ax
+ dec chrcnt
+ mov cx, chrcnt
+ mov temp, cx
+ inc bx
+rdt3: inc ax
+ cmp ax, 80H
+ jg rdat35  ;Pad till full.
+ mov cl, 1AH  ;Use control-Z's  ;[13]
+ mov [bx], cl
+ inc bx
+ jmp rdt3
+rdat35: call outbuf  ;Output the last buffer.
+  jmp abort  ; Give up if the disk is full.
+rdat36: mov dx, offset fcb
+ call closf  ;Close up the file.
+rdat37: call upack  ;ACK the packet.
+  jmp abort
+ mov state, 'F'
+ ret
+
+rdata4: cmp ah, 'E'  ;Is it an error packet.
+ jne rdata5
+ call error
+rdata5: jmp abort
+
+
+; Send a file.
+
+send: cmp wldflg,0FFh
+ je send12
+ mov dircnt,0 ;If not wild, just use the name in the FCB
+ mov dindex,0
+ call getopn  ;Open the file
+ jmps send19
+send12: call getwld  ;If wild, get sorted list of matching names
+  jmp r  ;  on error, message already printed
+ mov dindex,0 ;Start at first one
+ call getfil  ;Get and open first file
+  jmp r
+send19: call init  ;Paint the screen and initialize file buffers.
+ call cfibf  ;Clear out any stacked NAKs.
+ mov pktnum, 0 ;Set the packet number to zero.
+ mov numtry, 0 ;Set the number of tries to zero.
+ mov numpkt, 0 ;Set the number of packets to zero.
+ mov numrtr, 0 ;Set the number of retries to zero.
+ call pretry  ;Print the number of retries.
+ mov state,'S' ;Set the state to receive initiate.
+send2: call pnmpkt  ;Print the number of packets.
+ cmp state, 'S' ;Are we in the send initiate state?
+ jne send3
+ call sinit
+ jmp send2
+send3: cmp state, 'F' ;Are we in the file send state?
+ jne send4
+ call sfile  ;Call send file.
+ jmp send2
+send4: cmp state, 'D' ;Are we in the data send state?
+ jne send5
+ call sdata
+ jmp send2
+send5: cmp state, 'Z' ;Are we in the EOF state?
+ jne send6
+ call seof
+ jmp send2
+send6: cmp state, 'B' ;Are we in the eot state?
+ jne send7
+ call seot
+ jmp send2
+send7: cmp state, 'C' ;Are we in the send complete state?
+ jne send8
+ mov dx, offset infms3 ;Plus a little cuteness.
+ cmp cxzflg, 0 ;[19f] Interrupted?
+ je send7a  ;[19f] no
+ mov dx, offset infms7 ;[19f] substitute "interrupted" message
+send7a: call fnstat
+ ret
+send8: mov dx, offset infms4 ;Plus a little cuteness.
+ call fnstat
+ ret
+
+
+; Send routines
+
+; Send initiate
+
+
+sinit: cmp numtry, imxtry ;Have we reached the maximum number of tries?
+ jl sinit2
+ mov dx, offset erms14
+ jmp fatal
+sinit2: mov ah, 'Y'  ;Reset our quote capability ;[29g] begin
+ cmp parflg, parnon ;If we have parity,
+ je sini21  ;  send our quote preference
+ mov ah, dqbin
+sini21: mov ebquot, ah ;Set our quote capability ;[29g] end
+ inc numtry  ;Save the updated number of tries.
+ mov bx, offset data ;Get a pointer to our data block.
+ call rpar  ;Set up the parameter information.
+ xchg ah, al
+ mov ah, 0
+ mov argbk1, ax ;Save the number of arguments.
+ mov ax, numpkt ;Get the packet number.
+ mov argblk, ax
+ mov ah, 'S'  ;Send initiate packet.
+ call spack  ;Send the packet.
+  jmp abort
+ call rpack  ;Get a packet.
+  jmp r  ; Trashed packet don't change state, retry.
+ cmp ah, 'Y'  ;ACK?
+ jne sinit3  ;If not try next.
+ call chkpeq  ;Is it the right packet number?
+  jmp nretry  ;Increment the retries and go try again.
+ call incpkt  ;Increment the packet number.
+ mov ax, argbk1 ;Get the number of pieces of data.
+ mov bx, offset data ;Pointer to the data.
+ call spar  ;Read in the data.
+ mov ah, numtry ;Get the number of tries.
+ mov oldtry, ah ;Save it.
+ mov numtry, 0 ;Reset the number of tries.
+ mov state, 'F' ;Set the state to file send.
+ ret
+
+sinit3: cmp ah, 'N'  ;NAK?
+ jne sinit4  ;If not see if its an error.
+ call nretry
+ ret
+
+sinit4: cmp ah, 'E'  ;Is it an error packet?
+ jne sinit5
+ call error
+sinit5: jmp abort
+
+
+; Send file header
+
+sfile: cmp numtry, maxtry ;Have we reached the maximum number of tries?
+ jl sfile1
+ mov dx, offset erms14
+ jmp fatal
+sfile1: inc numtry  ;Increment it.
+ mov cxzflg, 0 ;[19f] clear ^X/^Z flag
+ push ds
+ pop es
+ mov di, offset data ;Get a pointer to our data block.
+ mov si, offset fcb+1 ;Pointer to file name in FCB.
+ mov cx,11
+sfil11: cmp cx,3  ;Separate file type with period
+ jne sfil12
+ mov al,'.'
+ stosb
+sfil12: lodsb
+ and al,7Fh  ;Strip off attribute bits
+ cmp al,' '  ;Printable, nonspace characters only
+ jbe sfil13
+ cmp al,7Fh
+ jae sfil13
+ stosb
+sfil13: loop sfil11
+ mov byte ptr [di],'$' ;Terminate filename for printing
+ sub di, offset data
+ mov argbk1, di ;Save number of characters in name
+ call clrfln
+ mov dx, offset data ;Print file name.
+ call tmsg
+
+ mov ax, pktnum ;Get the packet number.
+ mov argblk, ax
+ mov ah, 'F'  ;File header packet.
+ call spack  ;Send the packet.
+  jmp abort
+ call rpack  ;Get a packet.
+  jmp r  ; Trashed packet don't change state, retry.
+ cmp ah, 'Y'  ;ACK?
+ jne sfile2  ;If not try next.
+ call chkpeq  ;Packet number right.
+  jmp nretry  ;Increment the retries and go try again.
+sfil14: call incpkt  ;Increment the packet number.
+ call updat  ;Update the number of tries.
+
+sfil15: mov byte ptr fcb+20h,0 ;Set the record number to zero.
+ mov eoflag, 0 ;Indicate not EOF.
+ mov filflg, 0FFh ;Indicate file buffer empty.
+ call gtchr
+  jmp sfil16  ;Error go see if its EOF.
+ jmp sfil18  ;Got the chars, proceed.
+sfil16: cmp ah, 0FFH ;Is it EOF?
+ je sfil17
+ jmp abort  ;If not give up.
+sfil17: mov state, 'Z' ;Set the state to EOF.
+ ret
+sfil18: mov siz, ax
+ mov state, 'D' ;Set the state to data send.
+ ret
+
+sfile2: cmp ah, 'N'  ;NAK?
+ jne sfile3  ;Try if error packet.
+ call chkpom  ;Is the packet's number one more than now?
+  jmp nretry  ;Increment the retries and go try again.
+ jmp sfil14  ;If so, join the ACK.
+
+sfile3: cmp ah, 'E'  ;Is it an error packet.
+ jne sfile4
+ call error
+sfile4: jmp abort
+
+
+; Send data
+
+sdata: cmp cxzflg, 0 ;[19f] Interrupt flag on?
+ je sdata0  ;[19f] no
+ mov state, 'Z' ;[19f] yes - abort sending file
+ ret
+sdata0: cmp numtry, maxtry ;Have we reached the maximum number of tries?
+ jl sdata1
+ mov dx, offset erms14
+ jmp fatal
+sdata1: inc numtry  ;Increment it.
+ mov dx, offset data ;Get a pointer to our data block.
+ mov datptr, dx
+ mov dx, offset filbuf ;Pointer to chars to be sent.
+ mov cbfptr, dx
+ mov cx, 1  ;First char.
+sdat11: mov bx, cbfptr
+ mov ah, [bx]
+ inc cbfptr
+ mov bx, datptr
+ mov [bx], ah ;Put the char in the data packet.
+ inc datptr  ;Save position in data packet.
+ inc cx  ;Increment the count.
+ cmp cx, siz  ;Have we transfered that many?
+ jle sdat11  ;If not get another.
+ mov ax, siz  ;Number of char in char buffer.
+ mov argbk1, ax
+ mov ax, pktnum ;Get the packet number.
+ mov argblk, ax
+ mov ah, 'D'  ;Data packet.
+ call spack  ;Send the packet.
+  jmp abort
+ call rpack  ;Get a packet.
+  jmp r  ; Trashed packet don't change state, retry.
+ cmp ah, 'Y'  ;ACK?
+ jne sdata2  ;If not try next.
+ call chkpeq  ;Right packet number?
+  jmp nretry  ;Increment the retries and go try again.
+sdat12: call incpkt  ;Increment the packet number.
+ call updat  ;Update the number of tries.
+ cmp argbk1,1 ;1 byte of data there?  [19f] start
+ jne sdt12b  ;no - go on
+ mov bx, offset data ;pointer to data
+ mov ah, [bx] ;get the data
+ cmp ah, 'X'  ;an 'X'?
+ je sdt12a  ;yes - go
+ cmp ah, 'Z'  ;or a 'Z'
+ je sdt12a  ;also go
+ jmp sdt12b  ;neither one - go on
+sdt12a: mov cxzflg, ah ;'X' or 'Z' - set the interrupt flag [19f] end
+ ret
+sdt12b: call gtchr
+  jmp sdat13  ;Error go see if its EOF.
+ mov siz, ax  ;Save the size of the data gotten.
+ ret
+
+sdat13: cmp ah, 0FFH ;Is it EOF?
+ je sdat14
+ jmp abort  ;If not give up.
+
+sdat14: mov state, 'Z' ;Set the state to EOF.
+ ret
+sdata2: cmp ah, 'N'  ;NAK?
+ jne sdata3  ;See if is an error packet.
+ call chkpom  ;Is the packet's number one more than now?
+  jmp nretry  ;Increment the retries and go try again.
+ jmp sdat12
+
+sdata3: cmp ah, 'E'  ;Is it an error packet.
+ jne sdata4
+ call error
+sdata4: jmp abort
+
+
+; Send EOF
+
+seof: cmp numtry, maxtry ;Have we reached the maximum number of tries?
+ jl seof1
+ mov dx, offset erms14
+ jmp fatal
+seof1: inc numtry  ;Increment it.
+ mov ax, pktnum ;Get the packet number.
+ mov argblk, ax
+ mov argbk1, 0 ;No data.
+ cmp cxzflg, 0 ;[19f] interrupt flag set?
+ je seof1a  ;[19f] no - go on
+ mov bx, offset data ;[19f] point to data
+ mov ah, 'D'  ;[19f] get 'D' as in Discard
+ mov [bx], ah ;[19f] stuff it into packet
+ mov argbk1, 1 ;[19f] set data length of 1
+seof1a: mov ah, 'Z'  ;EOF packet.
+ call spack  ;Send the packet.
+ jmp abort
+ call rpack  ;Get a packet.
+  jmp r  ; Trashed packet don't change state, retry.
+ cmp ah, 'Y'  ;ACK?
+ jne seof2  ;If not try next.
+ call chkpeq  ;Is it the right packet number?
+  jmp nretry  ;Increment the retries and go try again.
+seof12: call incpkt  ;Increment the packet number.
+ call updat  ;Update the number of tries.
+ mov dx, offset fcb ;Close the file.
+ call closf
+ call getfil  ;Get and open the next file.
+  jmp seof13  ; No more.
+ mov state, 'F' ;Set the state to file send.
+ cmp cxzflg, 'X' ;[19f] 'X' in interrupt flag?
+ mov cxzflg, 0 ;[19f] meantime reset it
+ jne sef13a  ;[19f] no - go on
+ call intmsg  ;[19f] clear interrupt message
+sef13a: ret   ;[19f] goodbye
+seof13: mov state, 'B' ;Set the state to EOT.
+ ret
+
+seof2: cmp ah, 'N'  ;NAK?
+ jne seof3  ;Try and see if its an error packet.
+ call chkpom  ;Is the packet's number one more than now?
+  jmp nretry  ;Increment the retries and go try again.
+ jmp seof12
+
+seof3: cmp ah, 'E'  ;Is it an error packet?
+ jne seof4
+ call error
+seof4: jmp abort
+
+
+; Send EOT
+
+seot: cmp numtry, maxtry ;Have we reached the maximum number of tries?
+ jl seot1
+ mov dx, offset erms14
+ jmp fatal
+seot1: inc numtry  ;Increment it.
+ mov ax, pktnum ;Get the packet number.
+ mov argblk, ax
+ mov argbk1, 0 ;No data.
+ mov ah, 'B'  ;EOF packet.
+ call spack  ;Send the packet.
+  jmp abort
+ call rpack  ;Get a packet.
+  jmp r  ;Trashed packet don't change state, retry.
+ cmp ah, 'Y'  ;ACK?
+ jne seot2  ;If not try next.
+ call chkpeq  ;Is it the right packet number.
+  jmp nretry  ;Increment the retries and go try again.
+seot12: call incpkt  ;Increment the packet number.
+ call updat  ;Update the number of tries.
+ mov state, 'C' ;Set the state to file send.
+ ret
+
+seot2: cmp ah, 'N'  ;NAK?
+ jne seot3  ;Is it error.
+ call chkpom  ;Is the packet's number one more than now?
+  jmp nretry  ;Increment the retries and go try again.
+ jmp seot12
+
+seot3: cmp ah, 'E'  ;Is it an error packet.
+ jne seot4
+ call error
+seot4: jmp abort
+

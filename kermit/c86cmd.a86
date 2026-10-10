@@ -1,0 +1,862 @@
+; * * * * * * * * * * * * * * *  version 2.8  * * * * * * * * * * * * * * *
+; [32c] remove check for 0-length filename
+; [32b] fix minor bugs
+; [32a]	fix prompt to show default drive and user
+;	RonB, 09/13/84
+; * * * * * * * * * * * * * * *  version 2.7  * * * * * * * * * * * * * * *
+; [fdc]	Fix small glitch w/CMLEVL that issued msg spuriously sometimes.
+; []	Introduced CMLEVL flag to intercept "empty" command-options
+;	Reset by PRSERR, SET in 86KERMIT KERMIT:
+;		B.E.; EIBEN at DEC-MARLBORO 2-May-84
+; [30c] Isolate ANSI escape sequences for machine independence.
+; [30b] Make DEL work like BS and ^X like ^U in command input.
+;	RonB, 04/18/84
+; * * * * * * * * * * * * * * *  version 2.6  * * * * * * * * * * * * * * *
+; [28d] Improve filename special character processing
+;	RonB, 03/27/84
+; [25]	Move logic for "seteol" and "escape" (from KERSYS) into here so those
+;	routines need not use internal CMD routines and variables.  For this
+;	purpose add 2 parse routines and codes: "cmcha" and "cmnum".  The point
+;	of this is to keep calls to CMD modular since I want to eventually
+;	replace the whole thing.
+;	R. Garland	9-Mar-1984
+; * * * * * * * * * * * * * * *  version 2.1  * * * * * * * * * * * * * * *
+;  [9]	Fix filename parsing, and add wildcard ability.
+;	RonB,12/26/83
+;  [8]	Show choices for ambiguous keywords, finish keyword on '?'
+;	RonB,12/26/83
+; * * * * * * * * * * * * * * *  version 2.0  * * * * * * * * * * * * * * *
+; This module contains all the routines and storage necessary for the
+; command parser.  The command parser approximates that of the Tops-20
+; COMND% JSYS.  This code is adapted from the IBM PC Kermit code which
+; was adapted from the CP/M-80 Kermit code.
+; COMND definitions.
+
+cmcfm	equ	01H
+cmkey	equ	02H
+cmifi	equ	03H
+cmofi	equ	04H
+cmtxt	equ	05H
+cmcha	equ	06H
+cmnum	equ	07H
+
+	DSEG $			; Resume the data segment.
+
+; COMND storage.
+ 
+cmer00	db	bell,'?Program error -- Invalid COMND call$'
+cmer01	db	bell,'?Ambiguous command$'
+cmer02	db	bell,'?Illegal input file spec$'
+cmer03	db	bell,'?Unrecognized instruction$'
+cmer04	db	bell,'?Invalid command or operand$'
+cmer05	db	bell,'?Missing command-option$'
+cmin00	db	' Confirm with carriage return$'
+cmin01  db      ' Input file spec (possibly wild) $'
+cmin02	db	' One of the following:$'			;[8]
+ 
+cmlevl	db	0		;0 at main-level, 1 otherwise
+cmstat	db	0		;What is presently being parsed.
+cmaflg	db	0		;Non-zero when an action char has been found.
+cmccnt	db	0		;Non-zero if a significant char is found.
+cmsflg	db	0		;Non-zero when the last char was a space.
+cmostp	dw	0		;Old stack pointer for reparse.
+cmrprs	dw	0		;Address to go to on reparse.
+cmprmp	dw	0		;Address of prompt.
+cmptab	dw	0		;Address of present keyword table.
+cmhlp	dw	0		;Address of present help.
+cmdbuf	rb	80H		;Buffer for command parsing.
+cmfcb	dw	0		;Pointer to FCB.
+cmfcb2	dw	0		;Pointer to position in FCB.
+cmcptr	dw	0		;Pointer for next char input.
+cmdptr	dw	0		;Pointer into the command buffer.
+cmsiz	dw	0		;Size info of user input.
+cmkptr	dw	0		;Pointer to keyword.
+cmsptr	dw	0		;Place to save a pointer.
+cmchr	db	0		;Save char when checking ambiguity.
+cmten	dw	10		;the number "10"
+
+spchar	db	'!#$%&()+-/@\^`|~0000' ;Valid special characters ;[8][28d]
+
+;	This set of routines provides a user oriented way of parsing
+;	commands.  It is similar to that of the COMND JSYS in TOPS-20.
+ 
+	CSEG $			;Resume coding.
+ 
+;	This routine prints the prompt in DX and specifies the reparse
+;	address.
+ 
+prompt:	pop	bx		;Get the return address.
+	push	bx		;Put it on the stack again.
+	mov	cmrprs, bx	;Save as addr to go to on reparse.
+	mov	bx, 0		;Clear out register.
+	add	bx, sp		;Get the present stack pointer.
+	mov	cmostp, bx	;Save for later restoral.
+	mov	cmprmp, dx	;Save pointer to the prompt.
+	mov	bx, offset cmdbuf
+	mov	cmcptr, bx	;Initialize the command pointer.
+	mov	cmdptr, bx
+	mov	cmaflg, 0	;Zero the flags.
+	mov	cmlevl, 0	;[fdc]Including the level-flag
+	mov	cmccnt, 0
+	mov	cmsflg, 0FFH
+reprompt:							;[32a] begin
+	call	tcrlf
+repmt2:	mov	dx, cmprmp	;Print the prompt.
+	call	tmsg
+	mov	dl,defdrv	;Print the default drive and user
+	add	dl,'A'
+	call	bout
+	mov	al,defusr
+	cbw
+	or	ax,ax		;Only print the user number if nonzero
+	jz	repmt3
+	call	nout
+repmt3:	mov	dl,'>'
+	call	bout						;[32a] end
+	ret
+
+ 
+;	This address is jumped to on reparse.
+
+repars:	mov	sp, cmostp	;new sp <-- old sp
+	mov	bx, offset cmdbuf
+	mov	cmdptr, bx
+	mov	cmsflg, 0FFH
+	mov	bx, cmrprs	;Get the reparse address.
+	jmp	bx		;Go there.
+ 
+;	This address can be jumped to on a parsing error.
+ 
+prserr:	mov	ah, cmlevl	;What level are we in?
+	cmp	ah, 0		;
+	jz	prser1		;skip error-message
+	mov	dx, offset cmer05 ;we're out of main-commands
+	call	tcrmsg		;and got an empty option
+	mov	cmlevl, 0	;reset level-flag
+prser1:	mov	sp, cmostp	;Set new sp to old one.
+	mov	bx, offset cmdbuf
+	mov	cmcptr, bx	;Initialize the command pointer.
+	mov	cmdptr, bx
+	mov	cmaflg, 0	;Zero the flags.
+	mov	cmccnt, 0
+	mov	cmsflg, 0FFH
+	call	reprompt					;[32a]
+	mov	bx, cmrprs
+	jmp	bx
+
+ 
+;	This routine parses the specified function in AH. Any additional
+;	information is in DX and BX.
+;	Returns +1 on success
+;		+4 on failure (assumes a JMP follows the call)
+ 
+comnd:	mov	cmstat, ah	;Save what we are presently parsing.
+	call	cminbf		;Get chars until an action or a erase char.
+	mov	ah, cmstat	;Restore 'ah' for upcoming checks.
+	cmp	ah, cmcfm	;Parse a confirm?
+	jz	cmcfrm		;Go get one.
+	cmp	ah, cmkey	;Parse a keyword?
+	jnz	cm1
+	jmp	cmkeyw		;Try and get one.
+cm1:	cmp	ah, cmifi	;Parse an input file spec?
+	jnz	cm2
+	jmp	cmifil		;Go get one.
+cm2:	cmp	ah, cmofi	;Output file spec?
+	jnz	cm3
+	jmp	cmofil		;Go get one.
+cm3:	cmp	ah, cmtxt	;Parse arbitrary text.
+	jnz	cm4
+	jmp	cmtext
+cm4:	cmp	ah, cmcha	;[25] parse a single character?
+	jnz	cm5		;[25]
+	jmp	cmchar		;[25] go do it.
+cm5:	cmp	ah, cmnum	;[25] parse a (decimal) number?
+	jnz	cm99		;[25]
+	jmp	cmnumr		;[25] go do it.
+cm99:	mov	dx, offset cmer00 ;"?Unrecognized COMND call" [25]
+	call	tcrmsg
+	ret
+
+; This routine gets a confirm.
+
+cmcfrm:	call	cmgtch		;Get a char.
+	cmp	ah, 0		;Is it negative (a terminator;a space or
+				;a tab will not be returned here as they
+				;will be seen as leading white space)?
+	js	cmcfr0
+	ret			;If not, return failure.
+cmcfr0:	and	ah, 7FH		;Turn off the minus bit.
+	cmp	ah, esc		;Is it an escape?
+	jne	cmcfr2
+	mov	dl, bell	;Get a bell.
+	call	bout		;Output the char.
+	mov	cmaflg, 0	;Turn off the action flag.
+	mov	bx, cmcptr	;Move the pointer to before the escape.
+	dec	bx
+	mov	cmcptr, bx
+	mov	cmdptr, bx
+	dec	cmccnt		;Decrement the char count.
+	jmp	cmcfrm		;Try again.
+cmcfr2:	cmp	ah, '?'		;Curious?
+	jne	cmcfr3
+	mov	dx, offset cmin00 ;Print something useful.
+	call	tmsg
+	call	reprompt	;Reprint the prompt		;[32a]
+	mov	bx, cmdptr	;Get the pointer into the	buffer.
+	mov	ah, '$'		;Put a $ there for printing.
+	mov	[bx], ah
+	mov	bx, cmcptr
+	dec	bx		;Decrement & save the buffer pointer.
+	mov	cmcptr, bx
+	mov	dx, offset cmdbuf
+	call	tmsg
+	mov	cmaflg, 0	;Turn off the action flag.
+	jmp	repars		;Reparse everything.
+
+cmcfr3:								;[8] begin
+cmcfr4:	jmp	rskp
+
+
+;	This routine parses a keyword from the table pointed
+;	to in DX.  The format of the table is as follows:
+;
+;	addr:	db	n	;Where n is the # of entries in the table.
+;		db	m	;M is the size of the keyword.
+;		db	'string$' ;Where string is the keyword.
+;		dw	ab	;Where ab is data to be returned.
+;
+;	The keywords must be in alphabetical order.
+
+cmkeyw:	mov	cmhlp, bx	;Save the help string.
+	mov	cmptab, dx	;Save the beginning of keyword table.
+	mov	bx, dx
+	mov	ch, [bx]	;Get number of entries in table.
+	inc	bx
+	mov	dx, cmdptr	;Save command pointer.
+	mov	cmsptr, dx	;Save pointer's here.
+cmky1:	cmp	ch, 0		;Any commands left to check?
+	jne	cmky2
+	ret
+cmky2:	dec	ch
+	mov	cl, 0		;Keep track of how many chars read in so far.
+	call	cmgtch		;Get a char.
+	cmp	ah, 0		;Do we have a terminator?
+	jns	cmky2x
+	jmp	cmky4		;Negative number means we do.
+cmky2x:	inc	bx		;Point to first letter of keyword.
+	inc	cl		;Read in another char.
+	mov	al, [bx]		
+	cmp	ah, 'a'		;Less than a?
+	jl	cmky21		;If so, don't capitalize.
+	cmp	ah, 'z'+1	;More than z?
+	jns	cmky21
+	and	ah, 137O	;Capitalize the letter.
+cmky21:	cmp	ah, al
+	je	cmky3
+	jg	cmky2y
+	jmp	cmky41		;Fail if ah preceeds al alphabetically.
+cmky2y:	jmp	cmky6		;Not this keyword - try the next.
+cmky3:	inc	bx		;We match here, how 'bout next char?
+	mov	al, [bx]
+	cmp	al, '$'		;End of keyword?
+	jne	cmky3x
+	jmp	cmky7		;Succeed.
+cmky3x:	mov	dl, al		;Save al's char here.
+	call	cmgtch
+	inc	cl		;Read in another char.
+	mov	al, dl
+	cmp	ah, 'a'
+	jl	cmky31
+	cmp	ah, 'z'+1
+	jns	cmky31
+	and	ah, 137O
+cmky31:	cmp	ah, esc+80H	;Escape Recognition (escape w/minus bit on)?
+	je	cmky3y
+	cmp	ah, '?'+80H	;A question mark?
+	je	cmky3y
+	cmp	ah, ' '+80H	;A space?
+	je	cmky3y
+	cmp	ah, cr+80H	;Carriage return?
+	je	cmky3y
+	jmp	cmky38
+cmky3y:	mov	cmkptr, bx	;Save bx here.
+	mov	cmsiz, cx	;Save size info.
+	mov	cmchr, ah	;Save char for latter.
+	call	cmambg		;See if input is ambiguous or not.
+		jmp	cmky32	;Succeeded (not ambiguous).
+	mov	ah, cmchr
+	cmp	ah, esc+80H	;Escape?
+
+; Display keyword choices and reparse if ambiguous		;[8] begin
+	je	cmky3a
+	cmp	ah, ' '+80H	;Space?
+	jne	cmky3b
+cmky3a:	dec	cmdptr		;If so, back up over it.
+cmky3b:	mov	dx, offset cmin02 ;'One of the following:'
+	call	tcmsgc
+	mov	bx, cmkptr	;Find beginning of current keyword
+	mov	cx, cmsiz
+cmky3c:	dec	bx		;We are 'cl' characters into it
+	dec	cl
+	jnz	cmky3c
+	inc	bx
+	mov	cmkptr, bx	;Save beginning of keyword
+cmky3d:	mov	dl, tab		;Precede each keyword with a tab
+	call	bout
+	mov	dx,cmkptr	;and display the keyword
+	call	tmsg
+	mov	bx, cmkptr	;Move to the next keyword
+cmky3e:	inc	bx
+	cmp	byte ptr [bx], '$'
+	jnz	cmky3e
+	add	bx,4		;Bypass '$', 2-byte return value, next length
+	mov	di, cmkptr	;Get previous keyword for comparison
+	mov	cmkptr, bx	;and save beginning of this keyword
+	mov	cx, cmsiz	;Get number of characters to match
+	dec	ch		;Are we at end of table?
+	js	cmky3g		;  Yes, quit displaying
+	mov	cmsiz, cx
+cmky3f:	dec	cl
+	jz	cmky3d		;This keyword also matches to 'cl' places
+	mov	ah,[bx]		;Compare this keyword to last
+	cmp	ah,[di]
+	jne	cmky3g
+	inc	di
+	inc	bx
+	jmps	cmky3f
+cmky3g:	jmp	cmky50		;Not equal or end of table, redisplay prompt
+								;[8] end
+
+cmky32:	mov	cx, cmsiz	;Restore info.
+	mov	bx, cmkptr	;Our place in the keyword table.
+cmk32a:	cmp	cmchr, ' '+80H	;Space?			;[8]
+	je	cmky35
+	cmp	cmchr, cr+80H	;Carriage return?
+	je	cmky35
+	dec	cmcptr		;Pointer into buffer of input.
+	mov	dx, cmcptr
+cmky33:	mov	ah, [bx]	;Get next char in keyword.
+	cmp	ah, '$'		;Are we done yet?
+	jz	cmky34
+	mov	di,dx
+	mov	[di], ah
+	inc	bx
+	inc	dx
+	inc	cmccnt
+	jmp	cmky33
+cmky34:	push	bx		;Save pointer to return value	;[8]
+	mov	ah, ' '
+	mov	di, dx
+	mov	[di], ah	;Put a blank in the buffer.
+	inc	dx
+	mov	cmdptr, dx						;[8] begin
+	cmp	cmchr, '?'+80H	;Question mark?
+	jne	cmk34a
+	mov	ah, '?'
+	mov	di,dx
+	mov	[di], ah
+	inc	dx
+	inc	cmccnt
+	push	dx
+	mov	dl, 08H		;Erase question mark from display
+	call	bout
+	pop	dx
+cmk34a:	mov	cx, cmcptr	;Remember where we were (for printing below).
+	mov	cmcptr, dx	;Update our pointers.		;[8] end
+	mov	ah, '$'
+	mov	di, dx
+	mov	[di], ah	;Add '$' for printing.
+	mov	dx, cx		;Point to beginning of filled in data.
+	call	tmsg
+	pop	bx		;Recover pointer to return value ;[8]
+	inc	bx		;Point to address we'll need.
+	mov	bx, [bx]
+	cmp	cmchr, 0BFH	;Question mark?		;[8] begin
+	je	cmk34b
+	mov	cmaflg, 0 	;If esc, turn off action flag
+	mov	cmsflg, 0FFH	;   and pretend they typed a space
+cmk34b:	jmp	rskp						;[8] end
+
+cmky35:	mov	ah, [bx]	;Find end of keyword.	
+	inc	bx
+	cmp	ah, '$'
+	jne	cmky35	
+	mov	bx, [bx]	;Address of next routine to call.
+	jmp	rskp
+
+cmky38:	cmp	ah, al
+	jne	cmky6		;Go to end of keyword and try next.
+	jmp	cmky3
+	
+cmky4:	and	ah, 7FH		;Turn off minus bit.
+	cmp	ah, '?'		;Need help?
+	je	cmky5
+	cmp	ah, ' '		;Just a space - no error.
+	je	cmky51
+	cmp	ah, cr
+	je	cmky51
+	cmp	ah, esc		;Ignore escape?
+	je	cmky43
+cmky41:	mov	dx, offset cmer03
+	call	tcrmsg
+	jmp	prserr		;Parse error - give up.
+
+cmky43:	mov	dl, bell	;Ring a bell.
+	call	bout
+	mov	bx, cmcptr
+	dec	bx
+	mov	cmcptr, bx
+	mov	cmdptr, bx
+	dec	cmccnt		;Don't count the escape.
+	mov	cmaflg, 0	;Reset action flag.
+	inc	ch		;Account for a previous 'dec'.
+	jmp	cmky1		;Start over.
+
+cmky5:	mov	dx,cmhlp	;Print the help text.
+	call	tcmsgc
+cmky50:	call	reprompt	;Reprint the prompt		;[32a]
+	mov	bx,cmdptr	;Get pointer into buffer.
+	mov	al, '$'
+	mov	[bx], al	;Add dollar sign for printing.
+	mov	dx, offset cmdbuf
+	call	tmsg
+	mov	bx, cmdptr	;[8] begin
+	mov	cmcptr, bx
+	mov	dx, offset cmdbuf
+	sub	bx, dx
+	mov	cmccnt, bl
+	mov	cmaflg, 0	;Turn off the action flag.
+	jmp	repars
+
+cmky51:	jmp	prserr
+
+cmky6:	inc	bx		;Find end of keyword.
+	mov	al, [bx]
+	cmp	al, '$'
+	jne	cmky6	
+	add	bx, 3		;Beginning of next command.
+	mov	dx, cmsptr	;Get old cmdptr.
+	mov	cmdptr, dx	;Restore.
+	mov	cmsflg, 0FFH
+	jmp	cmky1		;Keep trying.
+
+cmky7:	call	cmgtch		;Get char.
+	cmp	ah, 0
+	js	cmky71		;Ok if a terminator.
+	dec	bx
+	jmp	cmky6		;No match - try next keyword.
+cmky71:	mov	cmchr, ah						;[8] begin
+	jmp	cmk32a
+
+
+; See if keyword is ambiguous from what the user has typed in.
+
+cmambg:	cmp	ch, 0		;Any keywords left to check?
+	jne	cmamb0
+	ret			;If not then not ambiguous.
+cmamb0:	inc	bx		;Go to end of keyword ...
+	mov	al, [bx]	;So we can check the next one.
+	cmp	al, '$'
+	jne	cmamb0
+	add	bx, 4		;Point to start of next keyword.
+	dec	cl		;Don't count escape.
+	mov	dx, cmsptr	;Buffer with input typed by user.
+cmamb1:	mov	ah, [bx]	;Keyword char.	
+	mov	di, dx
+	mov	al, [di]	;Input char.
+	cmp	al, 'a'		;Do capitalizing.
+	jl	cmam11
+	cmp	al, 'z'+1
+	jns	cmam11
+	and	al, 137O
+cmam11:	cmp	ah, al		;Keyword bigger than input (alphabetically)?
+	jle	cmamb2		;No - keep checking.
+	ret			;Yes - not ambiguous.
+cmamb2:	inc	bx		;Advance one char.
+	inc	dx
+	dec	cl
+	jnz	cmamb1
+	jmp	rskp		;Fail - it's ambiguous.
+
+; Parse an input file spec.
+
+cmifil:	mov	wldflg, 0	;Set to no wildcards.		;[9]
+	mov	bx, dx		;Get the fcb address in bx.
+	mov	cmfcb, bx	;Save it.
+	mov	ch, 0		;Initialize char count.
+	mov	ah, 0
+	mov	[bx], ah	;Set the drive to default to current.
+	inc	bx
+	mov	cmfcb2, bx
+	mov	cl, ' '
+cmifi0:	mov	[bx], cl	;Blank the FCB.
+	inc	bx
+	inc	ah
+	cmp	ah, 0BH		;Twelve?
+	jl	cmifi0
+cmifi1:	call	cmgtch		;Get another char.
+	cmp	ah, 0		;Is it an action character.
+	jns	cmifi2
+	and	ah, 7FH		;Turn off the action bit.
+	cmp	ah, '?'		;A question mark?
+	jne	cmif12
+	mov	cmaflg, 0	;Blank the action flag.
+; '?' is a legal character in wildcard filenames.		;[9] begin
+; Make ESC take its place by giving info instead of beeping.	;[32b]
+	mov	wldflg, 0FFH	;Say we have a wildcard.
+	inc	cmdptr
+	jmp	cmifi8		;Accept a '?'
+cmif12:	cmp	ah, esc		;An escape?
+	jne	cmif13
+	dec	cmdptr
+cmf12a:	mov	cmaflg, 0	;Turn off the action flag	;[9] end
+	dec	cmcptr		;Decrement the buffer pointer.
+	dec	cmccnt		;Decrement count.
+	mov	dx, offset cmin01 ;Help message.
+	call	tmsg
+	call	reprompt	;Reprint the prompt		;[32a]
+	mov	bx, cmdptr
+	mov	al, '$'
+	mov	[bx], al	;Put in dollar sign for printing.
+	mov	dx, offset cmdbuf
+	call	tmsg
+	jmp	repars
+
+cmif13:	mov	ah, ch		;It must be a terminator.
+; The check for 0-length filenames will be performed by the	;[32c]
+; caller so as to allow the file specification to be optional.
+	cmp	ah, 0DH
+	js	cmf3y
+	jmp	cmifi9		;If too long complain.
+cmf3y:	jmp	rskp		;Otherwise we have succeeded.
+cmifi2:	cmp	ah, '.'
+	jne	cmifi3
+	inc	ch
+	mov	ah, ch
+	cmp	ah, 1H		;Any chars yet?
+	     	jnz cmf2x
+	jmp	cmifi9		;No, give error.
+cmf2x:	cmp	ah, 0AH		;Tenth char?
+      	js	cmf2y
+	jmp	cmifi9		;Past it, give an error.
+cmf2y:	mov	dl, 9H
+	mov	dh, 0
+	mov	bx, cmfcb
+	add	bx, dx		;Point to file type field.
+	mov	cmfcb2, bx
+	mov	ch, 9H		;Say we've gotten nine.
+	jmp	cmifi1		;Get the next char.
+cmifi3:	cmp	ah, ':'
+	jne	cmifi4
+	inc	ch
+	cmp	ch, 2H		;Is it in right place for a drive?
+	je	cmif3x
+	jmp	cmifi9		;If not, complain.
+cmif3x:	mov	ch, 0		;Reset char count.
+	mov	bx, cmfcb2
+	dec	bx
+	mov	ah, [bx]	;Get the drive name.
+	cmp	ah,'A'		;Make sure it's in range A-P	;[9] begin
+	jb	cmif3y
+	cmp	ah,'P'
+	jbe	cmif3z
+cmif3y:	jmp	cmifi9
+cmif3z:	sub	ah,'@'		;Get the drive number.		;[9] end
+	mov	cmfcb2, bx
+ 	mov bx, cmfcb
+	mov	[bx], ah	;Put it in the fcb.
+	jmp	cmifi1
+cmifi4:	cmp	ah, '*'
+	jne	cmifi7
+	mov	ah, ch
+	cmp	ah, 8H		;Is this in the name or type field?
+	jz	cmifi9		;If its where the dot should be give up.
+	jns	cmifi5		;Type.
+	mov	cl, 8H		;Eight chars.
+	jmp	cmifi6
+cmifi5:	mov	cl, 0CH		;Three chars.
+cmifi6:	mov	wldflg, 0FFH	;Remember we had a wildcard.
+	mov	bx, cmfcb2	;Get a pointer into the FCB.
+	mov	ah, '?'
+	mov	[bx], ah	;Put a question mark in.
+	inc	bx
+	mov	cmfcb2, bx
+	inc	ch
+	mov	ah, ch
+	cmp	ah, cl
+	jl	cmifi6		;Go fill in another.
+	jmp	cmifi1		;Get the next char.
+cmifi7:
+
+cmif7x:	cmp	ah,'0'
+	jb	cmif8x
+	cmp	ah,'9'
+	jbe	cmifi8
+	cmp	ah,'A'
+	jb	cmif8x
+	cmp	ah,'Z'
+	jbe	cmifi8
+	cmp	ah,'a'
+	jb	cmif8x
+	cmp	ah,'z'
+	ja	cmif8x						;[9] end
+	and	ah, 137O	;Capitalize.
+cmifi8:	mov	bx, cmfcb2	;Get the pointer into the FCB.
+	mov	[bx], ah	;Put the char there.
+	inc	bx
+	mov	cmfcb2, bx
+	inc	ch
+	jmp	cmifi1
+
+cmif8x:	push	es		;Check list of special characters
+	mov	cx, ds		;   which are legal in filenames
+	mov	es, cx		;Scan uses ES register.
+	mov	di, offset spchar ;Special chars.
+	mov	cx, 20		;Twenty of them.
+	mov	al, ah		;Char is in al.
+	repnz	scasb		;Search string for input char.
+	cmp	cx, 0		;Was it there?
+	pop	es
+	jnz	cmifi8
+ 
+cmifi9:	mov	dx, offset cmer02
+	call	tcrmsg
+	ret
+ 
+cmofil:	jmp	cmifil		;For now, the same as CMIFI.
+
+; Parse arbitrary text up to a CR.  Put chars into data buffer sent to
+; the host (pointed to by BX).	 Return updated pointer in BX and
+; input size in AH.
+
+cmtext:	mov	cmptab, bx	;Save pointer to data buffer.
+	mov	cl, 0		;Init the char count.
+cmtxt1:	call	cmgtch		;Get a char.
+	cmp	ah, 0		;Terminator?
+	jns	cmtxt5		;Nope, put into the buffer.
+	and	ah, 07FH
+	cmp	ah, esc		;An escape?
+	jne	cmtxt2
+	mov	dl, bell	;Ring a bell.
+	call	bout
+	mov	cmaflg, 0	;Reset action flag.
+	dec	cmcptr		;Move pointer to before the escape.
+	dec	cmdptr
+	dec	cmccnt		;Decrement count.
+	jmp	cmtxt1		;Try again.
+cmtxt2:	cmp	ah, '?'		;Asking a question?
+	jz	cmtx2y						;[32b]
+	cmp	ah, ' '		;Space?				;[32b]
+	jz	cmtxt3
+	cmp	ah, ff		;Formfeed?
+	jne	cmtx2x
+	call	clrscr
+cmtx2x:	mov	ah, cl		;Return count in AH.
+	mov	bx, cmptab	;Return updated pointer.
+	jmp	rskp
+cmtx2y:	inc	cmdptr						;[32b]
+cmtxt3:	mov	cmaflg, 0	;Reset action flag to zero.
+cmtxt5:	inc	cl		;Increment the count.
+	mov	bx, cmptab	;Pointer into destination array.
+	mov	[bx], ah	;Put char into the buffer.
+	inc	bx
+	mov	cmptab, bx
+	jmp	cmtxt1
+
+
+cminbf:	push	dx
+	push	bx
+	mov	cx, dx		;Save value here too.
+	mov	ah, cmaflg	;Is the action char flag set?
+	cmp	ah, 0
+	je	cminb1
+	jmp	cminb9		;If so get no more chars.
+cminb1:	inc	cmccnt		;Increment the char count.
+	call	bin
+	mov	ah, al		;Keep char in 'ah'.
+	mov	bx, cmcptr	;Get the pointer into the buffer.
+	mov	[bx], ah	;Put it in the buffer.
+	inc	bx
+	mov	cmcptr, bx
+	cmp	ah, 15h		;Is it a ^U?
+	je	cmnb12						;[30b]
+	cmp	ah, 18h		;     or ^X?			;[30b]
+	jne	cminb2
+cmnb12:	call	clrlin						;[30c]
+	call	repmt2		;Reprint the prompt (no crlf)	;[32a]
+	mov	bx, offset cmdbuf
+	mov	cmcptr, bx	;Reset the point to the start.
+	mov	cmccnt, 0	;Zero the count.
+	mov	dx, cx		;Preserve original value of	dx.
+	jmp	repars		;Go start over.
+cminb2:	cmp	ah, 08h		;Is it a backspace?		;[30b]
+	jz	cminb3
+	cmp	ah, 7fh		;     or delete?		;[30b]
+	jne	cminb4
+	mov	dx, offset delstr
+	call	tmsg
+cminb3:	mov	ah, cmccnt	;Decrement the char count by two.
+	dec	ah
+	dec	ah
+	cmp	ah, 0		;Have we gone too far?
+	jns	cmnb32		;If not proceed.
+	mov	dl, bell	;Ring the bell.
+	call	bout
+	jmp	cmnb12		;Go reprint prompt and reparse.
+cmnb32:	mov	cmccnt, ah	;Save the new char count.
+	mov	dx, offset clrspc ;Erase the character.
+	call	tmsg
+	mov	bx, cmcptr	;Get the pointer into the buffer.
+	dec	bx		;Back up in the buffer.
+	dec	bx
+	mov	cmcptr, bx
+	jmp	repars		;Go reparse everything.
+cminb4:	cmp	ah, '?'		;Is it a question mark.
+	jz	cminb6
+	cmp	ah, esc		;Is it an escape?
+	jz	cminb6
+	cmp	ah, cr		;Is it a carriage return?
+	jz	cminb5
+	cmp	ah, lf		;Is it a line feed?
+	jz	cminb5
+	cmp	ah, ff		;Is it a formfeed?
+	jne	cminb7
+	call	clrscr
+cminb5:	mov	ah, cmccnt	;Have we parsed any chars yet?
+	cmp	ah, 1
+	jnz	cminb6
+	jmp	prserr		;If not, just start over.
+cminb6:	mov	cmaflg, 0FFH	;Set the action flag.
+	jmp	cminb9
+cminb7:	jmp	cminb1		;Get another char.
+
+cminb9:	pop	bx
+	pop	dx
+	ret
+
+cmgtch:	push	cx
+	push	bx
+	push	dx
+cmgtc1:	mov	ah, cmaflg
+	cmp	ah, 0		;Is it set.
+	jne	cmgt10
+	call	cminbf		;If the action char flag is not set get more.
+cmgt10:	mov	bx, cmdptr	;Get a pointer into the buffer.
+	mov	ah, [bx]	;Get the next char.
+	inc	bx
+	mov	cmdptr, bx
+	cmp	ah, ' '		;Is it a space?
+	jz	cmgtc2
+	cmp	ah, tab		;Or a tab?
+	jne	cmgtc3
+cmgtc2:	mov	ah, cmsflg	;Get the space flag.
+	cmp	ah, 0		;Was the last char a	space?
+	jne cmgtc1		;Yes, get another char.
+	mov	cmsflg, 0FFH	;Set the space flag.
+	mov	ah, ' '
+	pop	dx
+	pop	bx
+	jmp	cmgtc5
+cmgtc3:	mov	cmsflg, 0	;Zero the space flag.
+	pop	dx
+	pop	bx
+	cmp	ah, esc
+	jz	cmgtc5
+	cmp	ah, '?'		;Is the user curious?
+	jz	cmgtc4
+	cmp	ah, cr
+	jz	cmgtc4
+	cmp	ah, lf
+	jz	cmgtc6						;[8]
+	cmp	ah, ff
+	je	cmgtc6						;[8]
+	pop	cx
+	ret			;Not an action char, just return.
+cmgtc6:	mov	ah, cr		;Convert lf & ff to cr		;[8]
+cmgtc4:	dec	cmdptr
+cmgtc5:	or	ah, 80H		;Make the char negative to indicate
+	pop	cx		;it is a terminator.
+	ret
+
+; Parse a single character	;[25] start
+;	this is for setting the escape character
+
+cmchar:
+	call	cmgtch		;get a char
+	cmp	ah, 0
+	jns	cmchr1		;go if not negative
+	and	ah, 7FH		;turn off sign bit
+	cmp	ah, '?'		;user curious?
+	jne	cmchr0		;no - an error
+	mov	dx, bx		;help string pointer was in bx
+	call	tmsg		;print help stuff		;[32a]
+	call	reprompt	;Reprint the prompt		;[32a]
+	mov	bx, cmdptr
+	mov	al, '$'
+	mov	[bx], al	;add a "$" to what was typed
+	mov	dx, offset cmdbuf
+	call	tmsg		;type it again
+	dec	cmcptr		;but don't leave "$" ..
+	dec	cmccnt		;in buffer
+	mov	cmaflg, 0	;turn off action flag
+	jmp	repars		;try again
+cmchr0:	mov	dx, offset erms20
+	call	tcrmsg		;"illegal value" error
+	ret
+cmchr1:	mov	temp, ax	
+	call	cmcfrm		;get a confirm
+	 jmp	cmchr0		;or else complain
+	mov	ax, temp
+	mov	bl, ah		;return the character
+	jmp	rskp
+
+;	parse a (decimal) number.  Maximum allowed value in dx
+cmnumr:	
+	mov	temp1, 001H	;initial multiplier of 1
+	mov	temp2, dx	;storage for maximum
+	mov	temp, 0		;zero running sum
+	call	cmgtch		;get a char
+	cmp	ah, 0
+	jns	cmnum1		;go if not negative
+	and	ah, 7FH		;turn off sign bit
+	cmp	ah, '?'		;user curious?
+	jne	cmnum0		;no - an error
+	mov	dx, bx		;help string pointer was in bx
+	call	tmsg		;print help stuff		;[32a]
+	call	reprompt	;Reprint the prompt		;[32a]
+	mov	bx, cmdptr
+	mov	al, '$'
+	mov	[bx], al	;add a "$" to what was typed
+	mov	dx, offset cmdbuf
+	call	tmsg		;type it again
+	dec	cmcptr		;but don't leave "$" ..
+	dec	cmccnt		;in buffer
+	mov	cmaflg, 0	;turn off action flag
+	jmp	repars		;try again
+	call	cmcfrm		;get character (or confirm)
+	 jmp	cmnum1		;got a character
+				;fall through - too early for confirm
+cmnum0:	mov	dx, offset erms20
+	call	tcrmsg		;"illegal value" message
+	ret
+cmnum1:	sub	ah, 030H	;ASCII -> binary
+	jl	cmnum0		;too small
+	cmp	ah, 09H
+	jg	cmnum0		;too big
+	mov	bl, ah
+	mov	bh, 0		;get number in low part of bx
+	mov	ax, temp	;get running sum
+	mul	temp1		;multiply by decimal place value
+	add	ax, bx		;add in this digit
+	cmp	ax, temp2	;over the maximum
+	jg	cmnum0		;yes - error
+	mov	temp, ax	;save running sum
+	mov	ax, temp1	;get multiplier
+	mul	cmten		;multiply multiplier by 10
+	mov	temp1, ax	;save it
+	call	cmcfrm		;get another character
+	 jmp	cmnum1		;not terminator - process it
+	mov	bx, temp	;get value of number
+	jmp	rskp		;return success
+						;[25] end
+

@@ -1,0 +1,257 @@
+; * * * * * * * * * * * * * * * version 2.7 * * * * * * * * * * * * * * * *
+; [fdc]	Print message about how to get help during connect.
+; [29e]	Move terminal session logging to terminal module.
+; * * * * * * * * * * * * * * * version 2.6 * * * * * * * * * * * * * * * *
+; [24b revisited]	Fix handling of double-escape character
+;	RonB, 03/22/84
+; [26]
+;  	Move TELNET stuff from KERMIT to a this module: KERTRM.
+;	This is to modularize terminal emulation.
+;
+;  	integrate keyboard check in-line.  This allows keyboard check
+;	between port checks to work without blowing the stack.
+;
+;	to improve speed, let the port-to-screen routine loop for a certain
+;	number of characters before checking the keyboard.  If we
+;	check every time,  we lose a few characters at 9600 baud
+;	without flow control.
+;
+;	Mar-1984.	R. Garland - Columbia University.
+;
+; [24]
+; (a)   Add terminal session logging (KERMIT,KERSYS,KERUTL)
+; (b)   Allow escape character to local-echo (KERMIT)
+;	RonB, 03/15/84
+; * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+
+	cseg	$		;resume code segment
+
+; This is the CONNECT command.  It makes the local Kermit act as a terminal.
+ 
+telnet:	mov	ah,cmcfm
+	call	comnd		;Get a confirm.
+	 jmp	r		; Didn't get a confirm.
+	mov	dx, offset inms01 ;Confirmed, print informatory message.
+	call	tcrmsg
+	call	escprt
+	mov	dx, offset inms02
+	call	tmsg		;[fdc] Say how to get help during connect.
+	call	escprt		;[fdc]
+	mov	dx, offset inms25	;[fdc]
+	call	tmsgcr		;[fdc]
+	cmp	logflg, 0	;Is logging specified?		;[24a] begin
+	je	telnt1
+	call	logopn		;If so, open the log file
+	 jmp	logerr						;[24a] end
+
+telnt1:			;Check keyboard.
+	mov	teloop, cx	;initialize loop counter
+	call	dbinst		;Any chars out there?
+	 jmp	telntx		; If not, check serial port
+	call	dbin		;Yes, then get the char.
+	cmp	al, escchr	;Is it an escape char?
+	jz	intchr		;If so go process it.
+telnty:	call	dopar		;Set parity (if any).		;[24b]
+	mov	dx, ax
+	call	prtout		;Output the char to the port.
+	cmp	ecoflg, 0	;Is the echo flag turned on?
+	jz	telnt2		;no - go on
+	and 	dl, 7FH		;Turn off the parity bit.
+	call 	dbout		;Echo the character.
+telntx:	mov	cx, telnct	;load count for telnt2 loop
+telnt2:			;Check serial port.
+	mov	teloop, cx	;save loop count
+	call	instat		;Any characters available?
+	 jmp	telnt1		; No, check keyboard
+	call	inchr		;Get the character.
+	and	al, 7FH		;Strip off parity bit.
+	mov	dl, al		;Get the character.
+	call	dbout		;output to screen.
+	mov	cx, teloop	;get loop counter
+	loop	telnt2		;loop a bunch of characters before
+				;checking keyboard - for speed.
+	jmp	telnt1		;go back and check keyboard.
+
+intchr:	call	dbin		;Get a char.
+	cmp	al, 0		;Is the char a null?
+	jz	intchr		;If so, go until we get a char.
+	mov	bl, al		;Save the actual char.
+	and	al, 137O	;Convert to upper case.
+			;C = close
+	cmp	al, 'C'		;Is it close?
+	jne	intch0
+	call	logcls		;Close the log file		;[24a]
+	mov	dx, offset inms03
+	call	tcmsgc		;return to micro message
+	jmp	rskp		;return from telnet
+			;B = break
+intch0:	cmp	al,'B'		;[19e] Is it "send break"?
+	jne	intch1		;[19e] no.
+	call	prtbrk		;[19e] send a break.
+	jmp	telnt2		;[19e]
+			;escape character
+intch1:	cmp	bl, escchr	;Is it the escape char?
+	jne	intch2		;If not, go send a beep to the user.
+	mov	al, bl		;If so, uncapitalize it		;[24b]
+	jmp	telnty		;go on, we are done here.		;[24b]
+			;? = help
+intch2:	cmp	bl, '?'		;Is it a cry for help?			;[20c]
+	jne	intch3
+	mov	dx, offset inthlp	;If so, display help message on screen
+	call	tcrmsg
+	call	escprt
+	mov	dx, offset inthl2
+	call	tmsg
+	call	escprt
+	mov	dx, offset inthl3
+	call	tmsgcr
+	jmp	intchr		;Keep looking for escape character.	;[20c]
+			;L = toggle logging
+intch3:	cmp	al, 'L'		;Is it the logging toggle?	;[24a] begin
+	jne	intch4
+	cmp	logflg, 0	;Is logging now off?
+	jne	intc32
+intc31:	mov	logflg, 0FFh	;If so, set to 'on' value.
+	call	logopn		;Open log file.
+		jmp	logerr
+	jmp	telnt2
+intc32:	mov	logflg, 0
+	call	logcls		;Close the log file.
+	jmp	telnt2						;[24a] end
+			;Q = quit logging			;[29e] begin
+intch4:	cmp	al, 'Q'
+	jne	intch5
+	cmp	logflg, 0	;If logging currently enabled,
+	jne	intc32		;  go set flag to 'off'
+	jmp	telnt2
+			;R = resume logging
+intch5:	cmp	al, 'R'
+	jne	intch6
+	cmp	logflg, 0	;If logging currently disabled,
+	je	intc31		;  go set flag to 'on'
+	jmp	telnt2						;[29e] end
+			;error = beep!
+intch6:	mov	dl, bell	;Otherwise send a beep.
+	call	dbout
+	jmp	telnt2
+
+logerr:	mov	logflg, 0	;Reset logging on file error	;[24a] begin
+	call	logcls		;Make sure log file is closed
+	mov	dx, offset erms22 ;Print an error message.
+	call	tcrmsg
+	mov	dx, offset lfcb
+	call	tfile
+	call	tcrlf
+	jmp	rskp		;And keep doing whatever we were ;[24a] end
+
+; These are the file handling routines for terminal session logging.
+; LOGOPN opens the logfile in lfcb.
+
+logopn:	mov	byte ptr lfcb+12,0
+	mov	byte ptr lfcb+13,0
+	mov	byte ptr lfcb+14,0
+	mov	dx, offset lfcb
+	call	gtjfn		;Is file already present?
+	cmp	al, 0FFh
+	jne	logo4		;If so, go seek to its end & open it.
+	mov	bx, offset lfcb+1 ;Don't allow wild or blank name
+	cmp	byte ptr [bx], ' '
+	je	logo2
+	cmp	wldflg, 0
+	je	logo3
+logo2:	cld
+	push	ds
+	pop	es
+	mov	di, offset lfcb	;Make it "KERMIT.LOG" instead
+	mov	si, offset lognam
+	mov	cx, 12
+	rep movsb
+logo3:	mov	dx, offset lfcb
+	call	create		;Otherwise create the file.
+	mov	bx, offset lfcb
+	mov	byte ptr 32[bx], 0	;Zero "CR" field
+	mov	bx, offset dma
+	cmp	al, 0FFh	;If no more directory space
+	jne	logo9
+	ret			;  then return an error
+
+logo4:	cld
+	push	ds
+	pop	es
+	mov	di, offset lfcb+1 ;Get the unambiguous filename
+	mov	si, offset dma+1
+	mov	cl, 5
+	shl	al, cl
+	mov	ah, 0
+	add	si, ax
+	mov	cx, 11
+	rep movsb
+	mov	dx, offset lfcb
+	call	openf
+	mov	dx, offset lfcb	;Get existing file size
+	call	sizef
+	mov	bx, offset lfcb
+	cmp	byte ptr 35[bx], 0
+	je	logo5		;If file is too full
+	ret			;  then return an error
+logo5:	cmp	word ptr 33[bx], 0	;Is the file totally empty?
+	je	logo8		;  if so, don't look for control-Z.
+	dec	word ptr 33[bx]	;Point to last record in file
+	mov	dx, offset lfcb
+	call	rinr		;Read random
+	mov	bx, offset dma-1 ;Look for the terminating control-Z.
+	mov	cx, 80h
+logo6:	inc	bx
+	cmp	byte ptr [bx], 'Z'-100O
+	je	logo9
+	loop	logo6
+	mov	dx, offset lfcb
+	call	soutr		;If no control-Z, then start a new buffer
+logo8:	mov	bx, offset dma
+logo9:	mov	bufpnt, bx	;Save current buffer location.
+	mov	logfil, 0FFh	;Flag that file is open
+	mov	dx, offset infm11 ;And display status on the terminal
+	call	tmsg
+	mov	dx, offset lfcb	;Including the file name
+	call	tfile
+	mov	dx, offset infm12
+	call	tmsgcr
+	jmp	rskp		;Return success.
+
+; LOGCLS - closes the log file, but only if it was open
+
+logcls:	cmp	logfil, 0	;Is file open?
+	je	logc3		;No, just return.
+	cmp	bufpnt, offset dma ;Do we have an empty buffer?
+	je	logc2
+	mov	bx, bufpnt	;If not, fill remainder with control-Z's
+	mov	cx, offset DMA+80h
+	sub	cx, bx
+	mov	al, 'Z'-100O
+logc1:	mov	[bx], al
+	inc	bx
+	loop	logc1
+	mov	dx, offset lfcb	;Write out last buffer
+	call	soutr
+logc2:	mov	dx, offset lfcb	;Close the log file
+	call	closf
+	mov	dx, offset infm13 ;Tell user so.
+	call	tcmsgc
+	mov	logfil, 0	;Show file closed.
+logc3:	ret							;[24a] end
+
+
+
+;	data specific to terminal emulation
+
+	dseg	$
+
+telnct	dw	10		;count of characters to take from port
+				;for the screen before checking keyboard.
+teloop	dw	0		;active loop counter
+logflg	db	deflog		;Is logging enabled?		;[24a] begin
+logfil	db	0		;Is the log file open?
+lognam	db	0,'KERMIT  LOG'	;Default log filename
+lfcb	db	0,'KERMIT  LOG'	;Logging file control block
+	rb	24						;[24a] end
+

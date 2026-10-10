@@ -1,0 +1,529 @@
+; * * * * * * * * * * * * * * *  version 2.9  * * * * * * * * * * * * * * *
+; [34c]	Add sorted wildcard SENDs with starting filename
+; * * * * * * * * * * * * * * *  version 2.8  * * * * * * * * * * * * * * *
+; [32c]	Allow replacement of output filename with trailer from RECEIVE.
+; * * * * * * * * * * * * * * *  version 2.7  * * * * * * * * * * * * * * *
+; [31]	Fix display of file renaming.
+;	RonB, 05/05/84
+; [30c] Isolate ANSI escape sequences for machine independence.
+; [29g]  Add 8th bit quoting
+;	RonB, 04/15/84
+; * * * * * * * * * * * * * * *  version 2.6  * * * * * * * * * * * * * * *
+; [28d]  Improve input filename processing, allow valid special chars
+;	RonB, 03/27/84
+; [23]	Modification to GTCEOF to fix ASCII mode transfer
+; * * * * * * * * * * * * * * *  version 2.4  * * * * * * * * * * * * * * *
+; [Rg]	^X/^Z file interruption.  Slight mod to GTNFIL.	Rg, 2/84
+; * * * * * * * * * * * * * * *  version 2.1  * * * * * * * * * * * * * * *
+;  [par] Added calls to set parity, strip parity on input if
+;	other than none parity is called for.
+;	 JD, 2/84
+;  [16]	Add file-mode ASCII or BINARY processing.
+;	RonB,01/02/84
+;  [11]	Capitalize and parse filename being received.
+;	RonB,12/27/83
+;  [9]	Fix filename parsing, and add wildcard ability.
+;	RonB,12/26/83
+; * * * * * * * * * * * * * * *  version 2.0  * * * * * * * * * * * * * * *
+	CSEG $
+
+;	Get the file name (including host to micro translation)
+
+gofil:	cld
+	push	ds
+	pop	es
+	mov	si, offset data
+	mov	di, offset fcb
+	mov	al,0
+	stosb
+	mov	cx,11
+	mov	al,' '
+	rep stosb
+	mov	cx,24
+	mov	al,0
+	rep stosb
+	mov	di, offset fcb+1
+	mov	ah,0
+gofil1:	lodsb			;Get a filename character
+	cmp	al,'.'
+	je	gofil2
+	cmp	al,0
+	je	gofil4
+	cmp	ah,8
+	jae	gofil1
+	call	gofl20		;Capitalize, and replace strange chars ;[11]
+	stosb
+	inc	ah
+	jmps	gofil1
+gofil2:	mov	di, offset fcb+9
+	mov	ah,0
+gofil3:	lodsb			;Get a file type character
+	cmp	al,'.'
+	je	gofil4
+	cmp	al,0
+	je	gofil4
+	cmp	ah,3
+	jae	gofil4
+	call	gofl20		;Capitalize, and replace strange chars ;[11]
+	stosb
+	inc	ah
+	jmps	gofil3
+gofil4:	cmp	byte ptr fcb+1,' ' ;Any chars in first field?	;[32c] begin
+	jne	gofil5		; if not, set filename to '&'
+	mov	byte ptr fcb+1,'&'
+gofil5:	mov	si, offset fcb2+11 ;Replace with RECEIVE trailer
+	mov	di, offset fcb+11
+	mov	temp2, di
+	mov	ah,' '
+gofl5b:	mov	al,[si]		;Get character from replacement filename
+	cmp	al,'?'
+	je	gofl5c
+	mov	[di],al		;If not wild, simply replace existing letter
+	cmp	al,' '
+	je	gofl5c
+	mov	ah,'-'		; and replace subsequent spaces with '-'
+gofl5c:	cmp	byte ptr [di],' '
+	jne	gofl5d		;Replace spaces in filename with filler char
+	mov	[di],ah		; either a space or a '-'.
+	cmp	ah,' '
+	jne	gofl5d
+	mov	temp2,di	;Mark location where last space occurred
+gofl5d:	dec	di
+	dec	si
+	cmp	si,offset fcb2+8
+	jne	gofl5e
+	mov	ah,' '
+gofl5e:	cmp	si,offset fcb2
+	jae	gofl5b
+	sub	temp2,di
+	dec	temp2
+	cmp	temp2,8
+	jbe	gofl5f
+	mov	temp2,8
+gofl5f:	call	clrfln
+	mov	dx, offset fcb	;Print the file name.
+	call	tfile						;[32c] end
+	cmp	flwflg, 0	;Is file warning on?
+	jnz	gofl5x
+	jmp	gofil9		;If not, just proceed.
+gofl5x:	mov	dx, offset fcb
+	call	openf		;See if the file exists.
+	cmp	al, 0FFH	;Does it exist?
+	jnz	gofil7
+	jmp	gofil9		;If not create it.
+
+gofil7:	mov	dx, offset scrfr ;Move cursor.
+	call	poscur						;[30c]
+	mov	dx, offset infms5 ;Inform the user we are renaming the file.
+	call	tmsg
+	mov	cx, temp2	;Get the length of the file name. ;[32c] begin
+	mov	al, 0		;Says if first field is full.
+gofil8:	cmp	cl, 8		;Is the first field full?
+	jne	gofl81
+	mov	al, 0FFH	;Set a flag saying so.
+gofl81:	mov	bx, offset fcb	;Get the FCB.
+	add	bx, cx		;Add in the character number.
+	mov	ah, '&'
+	mov	[bx], ah	;Replace the char with an ampersand.
+	push	ax
+	push	bx
+	push	cx
+	mov	dx, offset fcb	;See if the file exists.
+	call	openf
+	pop	cx
+	pop	bx
+	cmp	al, 0FFH	;Does it exist?
+	pop	ax
+	jz	gofl89		;If not create it.
+	cmp	al, 0		;Get the flag.
+	jz	gofl83
+	dec	cl		;Decrement the number of chars.
+	cmp	cl, 0
+	jz	gofl88		;If no more, die.
+	jmp	gofl81
+gofl83:	inc	cl		;Increment the number of chars.
+	jmp	gofil8						;[32c] end
+
+gofl88:	mov	dx, offset screrr
+	call	poscur						;[30c]
+	mov	dx, offset ermes4 ;Tell the user that we can't rename it.
+	call	tmsg
+	ret
+
+gofl89:	push	dx
+	mov	dx, offset fcb	;Print the file name.		;[31]
+	call	tfile						;[31]
+	pop	dx
+gofil9:	mov	dx, offset fcb	;Delete the file if it exists.
+	call	delete
+	mov	dx, offset fcb	;Now create it.
+	call	create
+	cmp	al, 0FFH	;Is the disk full?
+	je	gofl9x
+	jmp	rskp
+gofl9x:	mov	dx, offset screrr ;Position cursor.
+	call	poscur						;[30c]
+	mov	dx, offset erms11
+	call	tmsg
+	ret
+
+; Make sure character in al is a legal filename character:	;[11] begin
+; Mask 8th bit, capitalize, and replace all illegal
+; special characters with '#'
+
+gofl20:	and	al, 7Fh		;mask eighth bit		;[28d]
+	cmp	al, '0'		;Check for digit
+	jb	gofl21
+	cmp	al, '9'
+	jbe	gofl23
+	cmp	al, 'A'		;Check for uppercase letter
+	jb	gofl21
+	cmp	al, 'Z'
+	jbe	gofl23
+	cmp	al, 'a'		;Check for lowercase letter
+	jb	gofl21
+	cmp	al, 'z'
+	ja	gofl21
+	and	al, 5Fh		;Capitalize lowercase
+	jmps	gofl23
+gofl21:	push	di
+	mov	di, offset spchar ;Special chars.
+	mov	cx, 20		;Twenty of them.
+	repne	scasb		;Search string for input char.
+	je	gofl22
+	mov	al, '#'		;Replace illegal characters with '#'
+gofl22:	pop	di						;[28d] end
+gofl23:	ret							;[11] end
+
+
+; Get next filename from sorted directory list.  Return skip on success,
+; plain return at end.
+
+getfil:	cmp	cxzflg, 'Z'	;[Rg] file interrupt flag set to 'Z'? ;[34c]
+	je	gtfl9
+	mov	si,dindex	;Any more entries in list?
+	cmp	si,dircnt
+	jae	gtfl9
+	cld
+gtfl4:	push	ds
+	pop	es
+	mov	ds,word ptr membuf
+	mov	cl,4
+	shl	si,cl
+	inc	si
+	push	si
+	mov	di,offset fcb2+1
+	mov	cl,11
+	repe	cmpsb
+	pop	si
+	jae	gtfl6		;If above starting filename, use it
+	push	es
+	pop	ds
+	inc	dindex
+	mov	si,dindex
+	cmp	si,dircnt
+	jb	gtfl4
+	mov	dx,offset erms28 ;No filenames below starting filename
+	call	tcrmsg
+	jmps	gtfl9
+gtfl6:	mov	di,offset fcb+1
+	mov	cx,11
+	rep	movsb		;Move the name to the FCB
+	push	es
+	pop	ds
+	inc	dindex		;Point to next entry
+	call	getopn
+	jmp	rskp
+gtfl9:	mov	wldflg, 0	;Reset wild card flag.
+	ret							;[34c] end
+
+; open the file for sending
+
+getopn:	mov	filflg, 0FFH	;Nothing in the DMA.
+	mov	eoflag, 0	;Not the end of file.
+	mov	dx, offset fcb
+	call	openf		;Open the file.
+	ret
+
+;	Output the chars in a packet.
+
+ptchr:	mov	temp1, ax	;Save the	size.
+	mov	bx, offset data	;Beginning of received packet data.
+	mov	outpnt, bx	;Remember where we are.
+	mov	ch, rquote	;Quote char.
+ptchr1:	dec	temp1		;Decrement # of chars in packet.
+	jnl	pt1
+	jmp	rskp		;Return successfully if done.
+pt1:	dec	chrcnt		;Decrement number of chars in dta.
+	jns	ptchr2		;Continue if space left.
+	call	outbuf		;Output it if full.
+	 jmp	r		; Error return if disk is full.
+ptchr2:	mov	bx, outpnt	;Get position in packet data buffer.
+	mov	ah, [bx]	;Grab a char
+	inc	bx
+	mov	outpnt, bx	;and bump pointer.
+	mov	al, 00h		;First assume no 8th bit	;[29g] begin
+	cmp	ebquot, 'N'	;No 8th bit if we can't quote
+	je	ptch21
+	cmp	ebquot, 'Y'	;  or if we can but aren't.
+	je	ptch21
+	cmp	ah, ebquot	;Is this the 8th bit quote character?
+	jne	ptch21
+	mov	ah, [bx]	;Get the quoted character
+	inc	bx
+	mov	outpnt, bx
+	dec	temp1		;Decrement # of chars in packet.
+	mov	al, 80h		;Set the 8th bit.		;[29g] end
+ptch21:	cmp	ah, ch		;Is it the quote char?
+	jne	ptchr4		;If not proceed.
+	mov	ah, [bx]	;Get the quoted character
+	inc	bx
+	mov	outpnt, bx	;and bump pointer.
+	dec	temp1		;Decrement # of chars in packet.
+	mov	dl, ah		;Save the parity bit in dl.	;[29g] begin
+	and	dl, 80H
+	and	ah, 7FH		;Turn off the parity bit.
+	cmp	ah, ch		;Is it the quote char?
+	je	ptchr3		;If so just go write it out.
+	cmp	ebquot, 'N'	;No 8th bit if we can't quote
+	je	ptch22
+	cmp	ebquot, 'Y'	;  or if we can but aren't.
+	je	ptch22
+	cmp	ah, ebquot	;Is this the 8th bit quote character?
+	je	ptchr3		;If so, just go write it out.
+ptch22:	add	ah, 40H		;Make it a control char again.	;[29g] end
+	and	ah, 7FH		;Modulo 128.
+ptchr3:	or	ah, dl		;Or in the parity bit.
+ptchr4:	or	ah, al		;Or in the quoted 8th bit.	;[29g]
+	mov	bx, bufpnt	;Destination buffer.
+	mov	[bx], ah	;Store it.
+	inc	bx
+	mov	bufpnt, bx	;Update the pointer
+	jmp	ptchr1		;and loop to next char.
+
+
+	; output the buffer, reset bufpnt and chrcnt
+
+outbuf:	push	bx
+	push	cx
+	mov	dx, offset fcb
+	call	soutr		;Write the record.
+	pop	cx
+	pop	bx
+	cmp	al, 0		;Successful.
+	jz	outbf1
+	cmp	al, 1
+	jz	outbf0
+	mov	dx, offset screrr
+	call	poscur						;[30c]
+	mov	dx, offset erms17 ;Record length exceeds DTA.
+	call	tmsg
+	ret
+outbf0:	mov	dx, offset screrr
+	call	poscur						;[30c]
+	mov	dx, offset erms11 ;Disk full error.
+	call	tmsg
+	ret
+outbf1:	mov	bx, offset dma	;Addr for beginning.
+	mov	bufpnt, bx	;Store addr for beginning.
+	mov	ax, bufsiz-1	;Buffer size.
+	mov	chrcnt, ax	;Number of chars left.
+	jmp	rskp
+
+
+;	Get the chars from the file.
+
+gtchr:	mov	ch, squote	;Keep quote char in c.
+	cmp	filflg, 0	;Is there anything in the DMA?
+	jz	gtchr0		;Yup, proceed.
+	mov	cl, 0		;No chars yet.
+	call	inbuf
+	 jmp	gtceof		;No more chars, go return EOF.
+gtchr0:	mov	al, spsiz	;Get the maximum packet size.
+	sub	al, 5		;Subtract the overhead.
+	mov	ah, 0
+	mov	temp1, ax	;Number of chars we're to get.
+	mov	bx, offset filbuf ;Where to put the data.
+	mov	cbfptr, bx	;Remember where we are.
+	mov	cl, 0		;No chars.
+gtchr1:	dec	temp1		;Decrement the number of chars left.
+	jns	gtchr2		;Go on if there is more than one left.
+	mov	al, cl		;Return the count in A.
+	mov	ah, 0
+	jmp	rskp
+gtchr2:	mov	ax, chrcnt
+	dec	ax
+	jl	gtchr3
+	mov	chrcnt, ax
+	jmp	gtchr4
+gtchr3:	call	inbuf		;Get another buffer full.
+	jmp	gtceof
+	cmp	chrcnt, 0
+	jne	gtchr4
+	sub	cl, 2		;Don't count controllified Z.
+	mov	al, cl
+	mov	ah, 0
+	jmp	rskp
+gtchr4:	mov	bx, bufpnt	;Position in DMA.
+	mov	ah, [bx]	;Get a char from the file.
+	inc	bx
+	mov	bufpnt, bx
+	cmp	ebquot, 'N'	;Can we not do 8th bit quoting? ;[29g] begin
+	je	gtch41
+	cmp	ebquot, 'Y'	;Or are we not?
+	je	gtch41
+	mov	dh, ah
+	and	ah, 7Fh
+	and	dh, 80h		;Is the 8th bit set?
+	je	gtch41		;If not, no need for quoting
+	dec	temp1		;Decrement the number of characters left
+	mov	dh, ebquot	;Insert 8th bit quote char. in packet buffer
+	mov	bx, cbfptr
+	mov	[bx], dh
+	inc	cbfptr
+	inc	cl		;Count the character
+gtch41:	mov	dl, ah		;Save the char.		;[29g] end
+	and	dl, 80H		;Turn off all but parity.
+	and	ah, 7FH		;Turn off the parity.
+	cmp	ah, ' '		;Compare to a space.
+	jl	gtchr5		;If less then its a control char, handle it.
+	cmp	ah, del		;Is the char a delete?
+	jz	gtchr5		;Go quote it.
+	cmp	ah, ch		;Is it the quote char?
+	je	gtch42		;If so, insert it in the buffer ;[29g] begin
+	cmp	ebquot, 'N'	;Can we not do 8th bit quoting?
+	je	gtchr8
+	cmp	ebquot, 'Y'	;Or are we not?
+	je	gtchr8
+	cmp	ah, ebquot	;Is this the 8th bit quote character?
+	jne	gtchr8		;If not, proceed
+gtch42:	dec	temp1		;Decrement the chars remaining. ;[29g] end
+	mov	bx, cbfptr	;Position in character buffer.
+	mov	[bx], ch	;Precede char with send quote.
+	inc	cbfptr
+	inc	cl		;Increment the char count.
+	jmp	gtchr8
+gtchr5:	or	ah, dl		;Turn on the parity bit.
+	cmp	ah, ('Z'-100O)	;Is it a ^Z?
+	jne	gtchr7		;If not just proceed.
+	cmp	binflg, 0	;ASCII file?			;[16] begin
+	je	gtceof		;If so, terminate
+	cmp	eoflag, 0	;EOF flag set?			;[16] end
+	jz	gtchr6		;If not just go on.
+	mov	bx, bufpnt
+	mov	ax, chrcnt
+	mov	dh, al		;Get number of chars left in DMA.
+gtch51:	dec	dh
+	jns	gtch52		;Any chars left?
+	mov	chrcnt, 0	;If not, say so.
+	mov	al, cl		;Return the count in A.
+	mov	ah, 0
+	jmp	rskp
+gtch52:	mov	ah, [bx]	;Get the next char.
+	inc	bx		;Move the pointer.
+	cmp	ah, ('Z'-100O)	;Is it a ^Z?
+	jz	gtch51		;If so see if they rest are.
+
+gtchr6:	mov	ah, ('Z'-100O)	;Restore the ^Z.
+gtchr7:	xchg	ah, al
+	mov	ah, 0
+	mov	temp2, ax	;Save the char.
+	dec	temp1		;Decrement char counter.
+	mov	bx, cbfptr	;Position in character buffer.
+	mov	[bx], ch	;Put the quote in the buffer.
+	inc	cbfptr
+	inc	cl		;Increment the char count.
+	mov	ax, temp2	;Get the control char back.
+	xchg	al, ah
+	add	ah, 40H		;Make the non-control.
+	and	ah, 7FH		;Modulo 200 octal.
+gtchr8:	or	dl, dl		;Do we have parity?		;[29g]
+	jz	gtch81		;If not, just send it.		;[29g]
+	or	ah, dl		;Or in the parity bit.
+	cmp	parflg,parnon	;[par] no parity?
+	je	gtch81		;[par] yes, keep going
+	and	ah,7fh		;[par] else turn off parity from file
+;[par]*** should probably mention that we're losing eighth bit here
+	push	ax						;[29g] begin
+	push	cx
+	mov	dx, offset scrhi ;mention that high bit is being lost
+	call	poscur						;[30c]
+	mov	dx, offset hibit
+	call	tmsg
+	pop	cx
+	pop	ax						;[29g] end
+gtch81:	mov	bx, cbfptr	;Position in character buffer.
+	mov	[bx], ah	;Put the char in the buffer.
+	inc	cbfptr
+	inc	cl		;Increment the char count.
+	jmp	gtchr1		;Go around again.
+
+gtceof:	cmp	cl, 0		;Had we gotten any data?
+	je	gteof0		;Nope.
+	mov	filflg,0FFh	;[23] fix ASCII extra buffers at eof
+	mov	eoflag,0FFh	;[23]
+	mov	al, cl
+	mov	ah, 0
+	jmp	rskp
+gteof0:	mov	ah, 0FFH	;Get a minus one.
+	ret
+
+;Input the next DMA buffer.
+
+inbuf:	mov	ah, eoflag	;Have we reached the end?
+	cmp	ah, 0
+	jz	inbuf0
+	ret			;Return if set.
+inbuf0:	push	bx
+	push	cx
+	mov	bx, offset dma	;Set the r/w buffer pointer.
+	mov	bufpnt, bx
+	mov	dx, offset fcb
+	call	sinr
+	cmp	al, 0		;End of file?
+	je	inbuf1		;Still have data left.
+	mov	eoflag, 0FFH	;Set End-of-file.
+	mov	filflg, 0	;Buffer not empty.
+	mov	chrcnt, 0	;Say no characters.
+	pop	cx
+	pop	bx
+	ret
+
+inbuf1:	mov	al, 80H		;Use as counter for number of chars read.
+	pop	cx
+	pop	bx
+	cmp	filflg, 0	;Ever used DMS?
+	jnz	inbf21		;Nope, then don't change count.
+	dec	al		;Fix boundary error.
+inbf21:	mov	ah, 0		;Zero the flag (buffer not empty).
+	mov	chrcnt, ax	;Number of chars read from file.
+	mov	filflg, 0	;Buffer not empty.
+	jmp	rskp
+
+
+	DSEG $
+
+temp1	dw	0
+temp2	dw	0
+dma	rb	80H
+filbuf	rb	60H		;Character buffer.
+cpfcb	rb	25H		;Save FCB in case of "*".
+rdbuf	rb	80H
+cnt	dw	0
+fcb	rb	36
+fcb2	rb	12		;replacement receive filename	;[32c]
+chrcnt	dw	0		;Number of chars in the file buffer.
+filcnt	dw	0		;Number of chars left to fill.
+outpnt	dw	0		;Position in packet.
+bufpnt	dw	0		;Position in file buffer.
+fcbptr	dw	0		;Position in FCB.
+datptr	dw	0		;Position in packet data buffer.
+cbfptr	dw	0		;Position in character buffer.
+siz	dw	0		;Size of data from gtchr.
+filflg	db	0		;Non-zero when nothing in DMA buffer.
+filsiz	rw	02H		;Double word for filesize (in bytes.)
+eoflag	db	0		;EOF flag;non-zero on EOF.
+binflg	db	0		;ASCII/Binary flag - 0 if ASCII file	;[16]
+wldflg	db	0		;Assume no "*" in fn.
+
+

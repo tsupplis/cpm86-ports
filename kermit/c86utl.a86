@@ -1,0 +1,965 @@
+;* * * * * * * * * * * * * * * version 2.9 * * * * * * * * * * * * * * *
+; [34c]	Make DMA initialization and buffer allocation global
+; [34b]	Add LOCAL TYPE command
+; [34a]	Fix bugs in directory listing file sizes
+;* * * * * * * * * * * * * * * version 2.8 * * * * * * * * * * * * * * *
+; [32d]	Add routines to get disk parameters for space calculation
+; [32a]	Add routines to get and set default disk and user numbers
+;* * * * * * * * * * * * * * * version 2.7 * * * * * * * * * * * * * * *
+; [29c]  Clear FCB prior to opening or creating a file.
+; [29b]  Add TAKE command file processing.
+;	RonB, 04/08/84
+;* * * * * * * * * * * * * * * version 2.6 * * * * * * * * * * * * * * *
+;  [24a] Add terminal session logging
+;	RonB, 03/15/84
+; * * * * * * * * * * * * * * *  version 2.4  * * * * * * * * * * * * * * *
+;  [20e] Add regular console status check, in addition to direct I/O check.
+;	RonB,03/02/84
+;  [19c] Give "bdos" mnemonic for vector 224.
+; * * * * * * * * * * * * * * *  version 2.1  * * * * * * * * * * * * * * *
+;  [7]	Do tab expansion and suppress nulls while in telnet mode.
+;	RonB,12/24/83
+; * * * * * * * * * * * * * * *  version 2.0  * * * * * * * * * * * * * * *
+
+; BDOS command codes
+
+bdos	equ	224
+reset	EQU	00H
+conin	EQU	01H
+conout	EQU	02H
+rdrin	EQU	03H
+punout	EQU	04H
+lstout	EQU	05H
+dconio	EQU	06H
+gtiob	EQU	07H
+prstr	EQU	09H
+consta	EQU	0BH
+resetd	EQU	0DH						;[32a]
+stdrv	EQU	0EH						;[32a]
+opnfil	EQU	0FH
+clsfil	EQU	10H
+sfirst	EQU	11H
+snext	EQU	12H
+delf	EQU	13H
+readf	EQU	14H
+writef	EQU	15H
+makef	EQU	16H
+gtdrv	EQU	19H						;[32a]
+gtalv	EQU	1BH						;[32d]
+gtrov	EQU	1DH						;[32d]
+statr	EQU	1EH
+gtdpb	EQU	1FH						;[32d]
+stusr	EQU	20H						;[32a]
+readr	EQU	21H
+writer	EQU	22H
+cflsz	EQU	23H
+dmaset	EQU	1AH
+dmabas	EQU	33H
+allocm	EQU	37H						;[32d]
+freem	EQU	39H						;[32d]
+
+	DSEG $						;[29b] begin
+
+; TAKE command file processing data area.
+
+tkfcb	db	0,'KERMIT  INI',0,0,0,0		;FCB with default name
+	rb	19
+tkbuf	rb	80h				;Input buffer
+tkptr	dw	0				;Buffer pointer
+tkflg	db	1				;Initially enable file input
+
+; Messages and storage for directory operations
+
+dirm01	db	'Drive $'					;[32d] begin
+dirm02	db	', User $'
+dirm03	db	'    K$'
+dirm04	db	' : $'		;directory column separator
+dirm05	db	' files, $'
+dirm06	db	'K listed$'
+dirm07	db	'  $'		;displayed at start of each row
+eram01	db	tab,'Delete? $'
+eram02	db	tab,'...not deleted$'
+eram03	db	tab,'...deleted$'
+eram04	db	' $'		;displayed at start of each row
+erahlp	db	cr,lf,'Respond with ''Y'' to delete this file,'
+	db	cr,lf,'             ''N'' to bypass this file,'
+	db	cr,lf,'         or ''ESC'' to return to the Kermit-86> prompt.$'
+spcm01	db	'K (out of $'
+spcm02	db	'K) remaining on drive $'
+morm01	db	'--more--$'
+morm02	db	'Return: next line, Space: next page, ^X: next file, ^Z: quit$'
+membuf	rb	5		;memory control block
+dirbuf	rb	16
+dindex	dw	0		;index to first entry in row
+dlngth	dw	0		;length of directory list
+dircnt	dw	0		;files in directory list
+dirsiz	dw	0		;kbytes in directory list
+remK	dw	0		;Kbytes remaining on disk
+maxK	dw	0		;Kbytes available if disk was empty
+DSM	dw	0		;drive maximum allocation blocks
+KPB	dw	0		;drive Kbytes Per Block		;[32d] end
+
+	CSEG $			;Resume coding segment.
+
+tkst:	cmp	tkptr, 0	;Is file open yet?
+	jne	tkst1
+	call	tkopn
+	 jmp	r		;If open failure
+tkst1:	mov	bx, tkptr	;Do we need a new record?
+	cmp	bx, offset tkbuf+80h
+	jb	tkst2
+	call	tkread
+	mov	bx, tkptr
+tkst2:	cmp	byte ptr [bx], 1Ah	;Are we at end of file?
+	je	tkst3
+	jmp	rskp		;If not, say we have a character.
+tkst3:	call	tkcls		;  otherwise end the file
+	jmp	r
+
+tkin:	call	tkst		;If no file input,
+	 jmp	bin		;  get it from the console.
+	mov	bx, tkptr
+	mov	al, [bx]	;Get character from command file record.
+	inc	tkptr
+	cmp	al, lf		;Ignore <lf> in file
+	je	tkin
+	push	ax
+	mov	dl, al		;Echo it to the display.
+	call	bout
+	pop	ax
+	ret
+
+tkopn:	mov	dx, offset tkfcb ;Open the command file
+	call	fcbzer		;zero fcb trailer
+	mov	cl, opnfil
+	int	bdos
+	inc	al
+	jz	tkopn1
+	mov	tkptr, offset tkbuf+80h ;If success, show we need a read
+	jmp	rskp
+tkopn1:	mov	tkflg, 0	;On failure, turn off file input flag.
+	ret
+
+tkread:	mov	dx, offset tkbuf ;Set dma to our location.
+	call	setdma
+	mov	dx, offset tkfcb
+	call	sinr		;Read a record.
+	cmp	al, 0
+	je	tkrd1
+	mov	tkbuf, 1Ah	;If failure, load buffer with EOF.
+tkrd1:	mov	tkptr, offset tkbuf	;Reinitialize buffer pointer.
+	call	inidma		;Reset dma to normal.
+	ret
+
+tkcls:	mov	dx, offset tkfcb ;Close command file.
+	call	closf
+	mov	tkflg, 0	;Turn off file input flag.
+	ret							;[29b] end
+
+
+; Local directory operation
+
+dirutl:	call	getwld		;fill buffer with matching names
+	 jmp	r		;on failure a message has already been printed
+	cmp	dircnt,0
+	jne	locd3
+	 ret
+locd3:	mov	dirsiz,0
+	mov	ax,dircnt
+	dec	ax		;calculate number of entries in each column
+	shr	ax,1		; = ((count-1)/4)+1
+	shr	ax,1
+	inc	ax
+	mov	dlngth,ax
+	call	tcrlf
+	mov	dx, offset dirm01 ;print header: Drive X, User nn:
+	call	tcrmsg
+	mov	dl,fcb		;display the drive letter
+	add	dl,'A'-1
+	call	bout
+	mov	dx, offset dirm02
+	call	tmsg
+	mov	al,defusr	;display the user number
+	cbw
+	call	nout
+	mov	dl,':'
+	call	bout
+	mov	dindex,0	;table entry in first column
+	mov	cx,dlngth
+locd4a:	push	cx
+	mov	dx, offset dirm07 ;Start new row
+	call	tcrmsg
+	mov	si,dindex
+	mov	cx,4
+locd4b:	push	si
+	push	cx
+	push	ds
+	mov	ds,word ptr membuf
+	mov	cl,4		;change entry number to table offset
+	shl	si,cl
+	inc	si		;skip user number
+	mov	cx,8		;Eight characters in filename
+locd5b:	lodsb			;get a filename character
+	mov	dl,al
+	push	cx
+	call	bout		;print it
+	pop	cx
+	loop	locd5b
+	mov	dl,'.'		;separate filename and type with a period
+	call	bout
+	mov	cx,3		;Three characters in file type
+locd5c:	lodsb			;get a file type character
+	mov	dl,al
+	push	cx
+	call	bout		;print it
+	pop	cx
+	loop	locd5c
+	lodsw			;get file size
+	pop	ds
+	add	dirsiz,ax	;add filesize to listing size
+	mov	di, offset dirm03 ;message for file size (____K)
+	mov	cx,3
+locd5d:	mov	byte ptr [di],' ' ;first blank out the last size
+	inc	di
+	loop	locd5d
+	mov	bx,10
+locd5e:	mov	dx,0		;fill in current size
+	div	bx
+	add	dl,'0'
+	mov	[di],dl
+	dec	di
+	cmp	ax,0
+	jne	locd5e
+	mov	dx, offset dirm03 ;print size message
+	call	tmsg
+	pop	cx
+	cmp	cx,1		;follow all but last column with separator
+	je	locd5f
+	mov	dx, offset dirm04 ;print column separator
+	push	cx
+	call	tmsg
+	pop	cx
+locd5f:	pop	si
+	add	si,dlngth
+	cmp	si,dircnt
+	jae	locd6
+	loop	locd4b
+locd6:	inc	dindex
+	pop	cx
+	dec	cx
+	jz	locd8
+	jmp	locd4a
+locd8:	call	tcrlf		;end the last row
+	call	tcrlf		;add a blank row
+	mov	ax,dircnt	;display file count
+	call	nout
+	mov	dx, offset dirm05
+	call	tmsg
+	mov	ax,dirsiz	;display total file size
+	call	nout
+	mov	dx, offset dirm06
+	call	tmsg
+	jmp	rskp
+
+
+; Erase utility function
+
+erautl:	call	getwld
+	 jmp	r		;On error a message has already been printed
+	mov	dindex,0
+loce3:	mov	si,dindex
+	cmp	si,dircnt
+	jb	loce4
+	jmp	loce9
+loce4:	mov	cl,4
+	shl	si,cl
+	inc	si
+	mov	di, offset fcb+1	;FCB already has drive code
+	push	ds
+	pop	es
+	mov	ds, word ptr membuf
+	mov	cx,15
+	rep	movsb
+	push	es
+	pop	ds
+	mov	dx, offset eram04	;Start new row
+	call	tcrmsg
+	mov	dx, offset fcb
+	call	tfile
+	mov	dx, offset eram01	;'<tab>Delete? '
+	call	tmsg
+loce5a:	call	dbinst			;clear out all typeahead
+	 jmp	loce5b
+	call	dbin
+	jmps	loce5a
+loce5b:	call	dbin			;get response
+	cmp	al,0			;NUL is ignored
+	je	loce5b
+	cmp	al,cr			;CR bypasses file
+	je	loce5d
+	cmp	al,' '			;any nonprintable char aborts
+	jb	loce8
+	cmp	al,7Fh
+	jae	loce8
+	push	ax
+	mov	dl,al			;echo the printable response
+	call	bout
+	pop	ax
+	cmp	al,'?'			;request for help?
+	jne	loce5c
+	mov	dx, offset erahlp	;help message
+	call	tcmsgc
+	jmp	loce3
+loce5c:	or	al,'a'-'A'		;convert to lower case
+	cmp	al,'y'
+	je	loce6
+loce5d:	mov	dx, offset eram02	;'    ...not deleted'
+	call	tmsg
+	jmp	loce7
+loce6:	cmp	byte ptr fcb+14,0	;make file read-write if necessary
+	je	loce6a
+	mov	dx, offset fcb
+	call	setatr
+loce6a:	mov	dx, offset fcb		;delete file
+	call	delete
+	mov	dx, offset eram03 	;'    ...deleted'
+	call	tmsg
+loce7:	inc	dindex
+	jmp	loce3
+loce8:	mov	dx, offset eram02	;'    ...not deleted' when aborting
+	call	tmsg
+loce9:	call	tcrlf
+	jmp	rskp
+
+
+; Type utility function
+
+typutl:	call	getwld
+	 jmp	r		;On error a message has already been printed
+	mov	dindex,0
+loct3:	mov	si,dindex		;Get next filename in table
+	cmp	si,dircnt
+	jb	loct4
+	jmp	loct9
+loct4:	mov	dlngth,1
+	mov	cl,4
+	shl	si,cl
+	inc	si
+	mov	di, offset fcb+1
+	push	ds
+	pop	es
+	mov	ds, word ptr membuf
+	mov	cx,15
+	rep	movsb
+	push	es
+	pop	ds
+	call	tcrlf			;Display the filename
+	mov	dx, offset fcb
+	call	tfile
+	call	tcrlf
+	mov	dx, offset fcb
+	call	openf			;Open the file
+	inc	al
+	jnz	loct5
+	jmp	loct6b
+loct5:	mov	dx, offset fcb		;Read a record
+	call	sinr
+	cmp	al,0
+	jne	loct6
+	mov	bx,offset dma
+loct5a:	mov	dl,[bx]			;Get a character
+	cmp	dl,1Ah
+	je	loct6
+	and	dl,7Fh
+	push	bx
+	push	dx
+	call	bout			;Print the character
+	pop	dx
+	cmp	dl,lf
+	jne	loct5b
+	inc	dlngth			;Count lf characters
+	cmp	dlngth,22		;If more than 22, then pause for input
+	jb	loct5b
+	call	more
+	 jmp	loct5c
+loct5b:	pop	bx
+	inc	bx
+	cmp	bx,offset dma+128
+	jb	loct5a
+	jmps	loct5
+loct5c:	pop	bx
+	jmps	loct6a
+loct6:	mov	ax,dindex		;EOF in file
+	inc	ax
+	cmp	ax,dircnt
+	jae	loct6a
+	call	tcrlf
+	call	more
+	 jmp	loct6a
+loct6a:	mov	dx, offset fcb		;Close file
+	call	closf
+	call	tcrlf
+loct6b:	inc	dindex			;Move on to next file
+	jmp	loct3
+loct9:	jmp	rskp
+
+
+more:	call	revon
+	mov	dx,offset morm01	;Show --more-- message
+	call	tmsg
+	call	revoff
+more1:	call	dbin			;Get response
+	cmp	al,0			; ignore nulls
+	je	more1
+	push	ax
+	call	clrlin
+	mov	dl,tab			;This is to fool CP/M so it
+	call	bout			;  gets tab stops right
+	mov	dl,cr
+	call	bout
+	pop	ax
+	and	al,7Fh
+	cmp	al,'?'			;? gives help
+	jne	more2
+	call	revon
+	mov	dx,offset morm02	;Show help message
+	call	tmsg
+	call	revoff
+	jmps	more1
+more2:	cmp	al,cr			;cr, lf go to next line
+	je	more4
+	cmp	al,lf
+	je	more4
+	mov	dlngth,0		;Everything else resets line count
+	cmp	al,0Fh			;^O, ^X go to next file
+	je	more6
+	cmp	al,18h
+	je	more6
+	cmp	al,03h			;^C, ^Z, q quit
+	je	more5
+	cmp	al,1Ah
+	je	more5
+	or	al,'a'-'A'
+	cmp	al,'q'
+	je	more5
+more4:	jmp	rskp			;Next line, page
+more5:	mov	ax,dircnt		;Quit
+	mov	dindex,ax
+more6:	ret				;Next file
+
+
+; Space remaining utility
+
+spcutl:	call	getprm		;Get the disk parameters for calculation
+	call	tcrlf
+	mov	ax,remK		;Display the number of Kbytes remaining
+	call	nout
+	mov	dx, offset spcm01
+	call	tmsg
+	mov	ax,maxK		;And the total number on the drive.
+	call	nout
+	mov	dx, offset spcm02
+	call	tmsg
+	mov	dl,fcb		;Finally say which drive it is.
+	add	dl,'A'-1
+	call	bout
+	mov	dl,':'
+	call	bout
+	call	tcrlf
+	jmp	rskp
+
+
+; get and save disk parameters which relate to block allocation and size
+
+getprm:	mov	newdrv,0	;initialize flag
+	mov	dl,fcb		;specified drive must be the default
+	dec	dl		; which is true if drive was not specified
+	jl	gprm2
+	cmp	dl,defdrv	; or if specified drive matches the default
+	je	gprm2
+	mov	newdrv,0FFh	;otherwise show that we changed default
+	push	dx
+	call	getrov		;make sure the desired drive is write enabled
+	pop	dx		; or else the data may be inaccurate
+	mov	cl,dl
+	mov	ax,1
+	shl	ax,cl
+	and	ax,bx
+	jz	gprm1
+	push	dx
+	call	rstdsk		;if read-only, reset all drives
+	pop	dx
+gprm1:	call	setdrv		;select the new drive as default
+gprm2:	push	es
+	call	getdpb		;get address of DPB in ES:BX
+	mov	cl,es:2[bx]	;get Block Shift Factor
+	sub	cl,3
+	mov	ax,1
+	shl	ax,cl
+	mov	KPB,ax		;save Kbytes Per Block
+	mov	cx,es:5[bx]	;get DSM maximum block number
+	mov	DSM,cx		;save for file size and allocation calculation
+	inc	cx		;number of blocks includes block 0
+	mul	cx
+	mov	maxK,ax		;Maximum number of Kbytes
+	mov	remK,ax		;Kbytes remaining
+	mov	ax,es:7[bx]	;subtract directory allocation from maxK
+	mov	cl,5
+	shr	ax,cl
+	inc	ax
+	sub	maxK,ax
+	call	getalv		;get address of allocation vector in ES:BX
+	mov	ax,DSM		;compute length of vector = (DSM/8)+1
+	mov	cl,3
+	shr	ax,cl
+	inc	ax
+	mov	cx,ax
+	mov	ax,0		;Count allocated blocks:
+gprm3:	mov	dl,es:[bx]	;for each byte in vector,
+	inc	bx
+	push	cx
+	mov	cx,8		;  for each bit in byte,
+gprm4:	test	dl,1
+	jz	gprm5
+	inc	ax		;    if bit is set, then block is allocated
+gprm5:	shr	dl,1
+	loop	gprm4
+	pop	cx
+	loop	gprm3
+	mul	KPB		;convert allocated blocks to Kbytes
+	sub	remK,ax		;subtract allocated Kbytes from remK
+	pop	es
+	cmp	newdrv,0	;reset default drive if we changed it
+	je	gprm6
+	mov	dl,defdrv
+	call	setdrv
+gprm6:	ret
+
+
+; This subroutine fills the previously allocated memory buffer with a sorted
+; list of filenames matching the wild name in fcb.  On failure, if there were
+; no files, it prints an appropriate error message and simply returns.  On
+; success, it returns to the skip location with the number of entries
+; in the list in dircnt.  Each buffer entry is 16 bytes long and contains
+; the user number at offset 0, the filename (with all attribute bits stripped)
+; at offset 1-11, the allocated size in Kbytes at offset 12-13, and the
+; read-only and system flags at offsets 14 and 15.
+
+getwld:	mov	byte ptr fcb+12,'?' ;Match any extent
+	mov	byte ptr fcb+13,'?'
+	mov	byte ptr fcb+14,'?'
+	call	getprm		;get disk parameters for size calculation
+	mov	dircnt,0	;zero file count and total space occupied
+	mov	dx, offset fcb
+	call	gtjfn		;get first filename
+	cmp	al,0FFh
+	jne	gwld2
+	mov	dx, offset erms15 ;unable to find file
+	call	tcrmsg
+	mov	dx, offset fcb
+	call	tfile
+	 ret
+gwld2:	mov	cl,5		;find file directory entry
+	shl	al,cl
+	mov	ah,0
+	mov	si, offset dma
+	add	si,ax		;pointer to filename (incl. user number)
+	mov	di, offset dirbuf
+	push	ds
+	pop	es
+	mov	ax,9[si]	;get read-only and system flags
+	and	ax,8080h	;keep only attribute bits
+	mov	14[di],ax	;save flags at end of buffer
+	mov	cx,12
+gwld2a:	lodsb
+	and	al,7Fh		;get rid of all attribute bits
+	stosb
+	loop	gwld2a
+	add	si,4		;look at allocation area
+	mov	ax,0		;initialize block count
+	cmp	DSM,256		;if <256 blocks, then each takes a byte
+	jb	gwld2c
+	mov	cx,8		;8 blocks, one word each
+gwld2b:	cmp	word ptr [si],0
+	je	gwld2e
+	inc	si
+	inc	si
+	inc	ax
+	loop	gwld2b
+	jmps	gwld2e
+gwld2c:	mov	cx,16		;16 blocks, one byte each
+gwld2d:	cmp	byte ptr [si],0
+	je	gwld2e
+	inc	si
+	inc	ax
+	loop	gwld2d
+gwld2e:	mul	KPB		;convert blocks to kbytes
+	stosw			;save this FCB's allocation
+	mov	ax,dircnt
+	cmp	ax,word ptr membuf+2 ;don't exceed buffer length
+	jb	gwld2f
+	mov	dx,offset erms27 ; if memory exceeded, print warning
+	call	tcmsgc		;     and use what info we have
+	jmp	gwld4
+gwld2f:	mov	si, offset dirbuf ;go back to start of filename
+	mov	es,word ptr membuf ;find correct location in sorted file list
+	mov	di,0
+	mov	cx,dircnt	;number of entries already in list
+	jcxz	gwld3e
+gwld3a:	push	cx
+	push	si
+	push	di
+	mov	cx,12
+	repe	cmpsb
+	jb	gwld3d		;table entry greater than this file, insert
+	ja	gwld3c		;table entry less than this file, keep looking
+	lodsw			;else table entry same as file
+	add	es:[di],ax	; ...add this FCB's allocation to size
+gwld3b:	pop	di
+	pop	si
+	pop	cx
+	jmp	gwld3f		;go get next filename
+gwld3c:	pop	di		;haven't found insert location yet
+	pop	si
+	pop	cx
+	add	di,16
+	loop	gwld3a
+	jmp	gwld3e		;if greater than all entries, insert at end
+gwld3d:	pop	di		;insertion point
+	pop	si		;filename pointer
+	pop	ax		;number of entries following insertion point
+	push	si
+	push	di
+	mov	cl,4		;each entry occupies 16 bytes
+	shl	ax,cl
+	add	di,ax
+	dec	di
+	mov	si,di		;point to last byte of table
+	add	di,16		;move last part down 16 bytes
+	mov	cx,ax
+	push	ds		;save filename segment
+	push	es		;make all action in table segment
+	pop	ds
+	std			;decrement pointers after each move
+	rep	movsb
+	cld
+	pop	ds		;restore filename segment
+	pop	di		;insertion point
+	pop	si		;filename pointer
+gwld3e:	mov	cx,16		;insert filename in table
+	rep	movsb
+	inc	dircnt		;count new entry
+gwld3f:	mov	dx, offset fcb	;look for another matching filename
+	call	gnjfn
+	cmp	al,0FFh
+	je	gwld4
+	jmp	gwld2		;go process next filename
+gwld4:	push	ds
+	pop	es
+	jmp	rskp
+
+; General output utility routines
+
+tmsgcr:	call	tmsg		;Print the string
+	call	tcrlf		;Print a CRLF.
+	ret
+
+tcrmsg:	push	dx		;Don't trash our string.
+	call	tcrlf		;Print a CRLF.
+	pop	dx		;Restore our string.
+	call	tmsg		;Print the string
+	ret
+
+tcmsgc:	push	dx		;Don't trash our string.
+	call	tcrlf		;Print a CRLF.
+	pop	dx		;Restore our string.
+	call	tmsg		;Print the string
+	call	tcrlf		;Print a CRLF.
+	ret
+
+tcrlf:	mov	dl,cr		;print a crlf
+	call	bout
+	mov	dl,lf
+	call	bout
+	ret
+
+tmsg:	push	bx		;Don't clobber my ACs.
+	mov	cl, prstr	;Ask BDOS for string printing.
+	int	bdos		;What a way to call the BDOS.
+	pop	bx
+	ret
+
+tfile:	mov	bx, dx		;Print filename in [dx]'s FCB	;[24a] begin
+	mov	dl, [bx]	;If explicit drive number, display it.
+	cmp	dl, 0
+	je	tfil1
+	add	dl, 'A'-1
+	push	bx
+	call	bout
+	mov	dl, ':'
+	call	bout
+	pop	bx
+tfil1:	mov	cx, 11		;Now display 11 chars of filename
+tfil2:	push	cx
+	cmp	cx, 3		;With period before file type
+	jne	tfil3
+	push	bx
+	mov	dl, '.'
+	call	bout
+	pop	bx
+tfil3:	inc	bx
+	mov	dl, [bx]
+	cmp	dl, ' '		;Don't include spaces
+	je	tfil4
+	push	bx
+	call	bout
+	pop	bx
+tfil4:	pop	cx
+	loop	tfil2
+	ret							;[24a] end
+
+
+bout:	mov	cl, conout	;Ask BDOS for character printing.
+	int	bdos
+	ret
+
+bin:	cmp	tkflg, 0	;Check for command file input.	;[29b] begin
+	je	bin1
+	jmp	tkin						;[29b] end
+bin1:	mov	cl, conin	;Get a char from the console.
+	int	bdos
+	ret
+
+binst:	cmp	tkflg, 0	;Check for command file input.	;[29b] begin
+	je	binst1
+	jmp	tkst						;[29b] end
+binst1:	mov	cl, consta	;Console input status check	;[20e] begin
+	int	bdos
+	or	al, al		;Result 0 if no character ready
+	jz	bins2
+	jmp	rskp		;Return SKIP if character ready
+bins2:	ret							;[20e] end
+
+dbout:	cmp	dl, 0		;Skip null fillers.
+	je	dbout3
+	call	logchr		;Log the character if necessary ;[24a]
+	call	dotab		;Do any necessary tab expansion.
+	jmp	r		; No more chars to output.
+dbout2:	mov	cl, dconio	;Put a char to the console.
+	int	bdos
+dbout3:	ret
+
+dbin:	push	dx
+	mov	cl, dconio	;Get a char from the console without
+	mov	dl, 0FFH	; interference.
+	int	bdos
+	pop	dx
+	ret
+
+dbinst:	push	dx
+	mov	cl, dconio	;Check the console's input status.
+	mov	dl, 0FEH
+	int	bdos
+	pop	dx
+	or	al, al		;Result 0 if no character ready ;[20e] begin
+	jz	dbins2
+	jmp	rskp		;Return SKIP if character ready
+dbins2:	ret							;[20e] end
+
+;Log the terminal output character
+
+logchr:	cmp	logfil, 0	;Only log if file is open	;[24a] begin
+	je	logch9
+	mov	bx, bufpnt	;Store the character in the buffer.
+	mov	[bx], dl
+	inc	bx
+	cmp	bx, offset dma+80h	;Have we filled a buffer?
+	jb	logch1
+	push	dx		;If so, write it to file.
+	mov	dx, offset lfcb
+	call	soutr
+	pop	dx
+	mov	bx, offset dma
+logch1:	mov	bufpnt, bx
+logch9:	ret			;Return to output routine	;[24a] end
+
+;Halt this program.
+
+haltf:	mov	cl, reset	;End this program.
+	int	bdos
+	ret			;One never knows!
+
+;Reset the disk system to log in drives				;[32a] begin
+
+rstdsk:	mov	cl,resetd
+	int	bdos
+	call	inidma		;Concurrent CP/M also resets DMA address
+	ret
+
+;Get and set the default disk drive
+
+getdrv:	mov	cl,gtdrv
+	int	bdos
+	ret			;returns drive in al (A=0 through P=15)
+
+setdrv:	mov	cl,stdrv	;new drive number (A=0 through P=15) in dl
+	int	bdos
+	ret
+
+;Get and set the default user number
+
+getusr:	mov	cl,stusr
+	mov	dl,0FFh
+	int	bdos
+	ret			;returns user in al (0-15)
+
+setusr:	mov	cl,stusr	;new user number (0-15) in dl
+	int	bdos
+	ret							;[32a] end
+
+
+; Get the address of the disk allocation vector			;[32d] begin
+
+getalv:	mov	cl,gtalv
+	int	bdos
+	ret
+
+; Get the disk read-only vector
+
+getrov:	mov	cl,gtrov
+	int	bdos
+	ret
+
+; Set file attributes according to FCB in dx
+
+setatr:	mov	cl,statr
+	int	bdos
+	ret
+
+; Get the address of the DPB
+
+getdpb:	mov	cl,gtdpb
+	int	bdos
+	ret
+
+; Allocate a block of memory.  MCB address is in dx.
+
+allmem:	mov	cl,allocm
+	int	bdos
+	ret
+
+; Free a previously allocated block of memory.  MCB address is in dx.
+
+fremem:	mov	cl,freem
+	int	bdos
+	ret							;[32d] end
+
+
+; Get the first file in a wild card search.
+
+gtjfn:	mov	cl, sfirst
+	int	bdos
+	ret
+
+; Get the next file in a wild card search.
+
+gnjfn:	mov	cl, snext
+	int	bdos
+	ret
+
+; Close the file pointed to by the FCB in DX.
+
+closf:	mov	cl, clsfil
+	int	bdos
+	ret
+
+; Open the file pointed to by the FCB in DX.
+
+openf:	call	fcbzer		;clear the fcb trailer		;[29c]
+	mov	cl, opnfil
+	int	bdos
+	ret
+
+; Create the file pointed to by the FCB in DX.
+
+create:	call	fcbzer		;clear the fcb trailer		;[29c]
+	mov	cl, makef
+	int	bdos
+	ret
+
+fcbzer:	push	bx		;Clear the end of the FCB	;[29c] begin
+	push	cx		;  prior to opening or creating a file.
+	mov	bx, dx
+	add	bx, 12
+	mov	ch, 0
+	mov	cl, 23
+fcbz1:	mov	[bx], ch
+	inc	bx
+	loop	fcbz1
+	pop	cx
+	pop	bx
+	ret							;[29c] end
+
+; Write a record to the file pointed to by the FCB in DX.
+
+soutr:	mov	cl, writef
+	int	bdos
+	ret
+
+; Read a record from the file pointed to by the FCB in DX.
+
+sinr:	mov	cl, readf
+	int	bdos
+	ret
+
+; Delete the file pointed to by the FCB in DX.
+
+delete:	mov	cl, delf
+	int	bdos
+	ret
+
+; Sets dma to the default buffer.  Functions that change this must call this
+; function to reset it before continuing
+
+inidma:	push	dx
+	mov	dx, offset dma
+	call	setdma
+	pop	dx
+	ret
+
+; Sets the DMA to the offset pointed to in DX and the base in DS.
+
+setdma:	mov	cl, dmaset
+	int	bdos
+	mov	dx, ds
+	mov	cl, dmabas
+	int	bdos
+	ret
+
+; Do random access read, write, or file size checks, FCB is in dx
+
+rinr:	mov	cl, readr
+	int	bdos
+	ret
+
+routr:	mov	cl, writer
+	int	bdos
+	ret
+
+sizef:	mov	cl, cflsz
+	int	bdos
+	ret
+
+; Jumping to this location is like retskp.  It assumes the instruction
+;   after the call is a jmp addr.
+ 
+rskp:	pop	bp
+	add	bp, 3
+	push	bp
+	ret
+
+ 
+; Jumping here is the same as a ret.
+ 
+r:	ret
+

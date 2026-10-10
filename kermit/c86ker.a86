@@ -1,0 +1,1360 @@
+; * * * * * * * * * * * * * * *  version 2.9  * * * * * * * * * * * * * * *
+;
+; [35]  Change file names in INCLUDE statements, fdc, 5 Jun 85
+;
+; [34]
+; (c)	Make memory allocation global, add sorted SEND capability.
+; (b)	Add LOCAL TYPE command to display files on screen
+; (a)	Fix directory file size calculation errors
+;	RonB, 11/13/84
+; * * * * * * * * * * * * * * *  version 2.8  * * * * * * * * * * * * * * *
+; [33] Fix printer on hanging system problem by letting CP/M handle the
+;	interrupts from the 7201 that we don't care about.  Thanks to
+;	Paul Ford, U. of Chicago Graduate School of Business
+;	WBC3, 10/1/84
+; [32]
+; (e)	Change all LEA xx,yy instructions to MOV xx,OFFSET yy
+; (d)	Add LOCAL and REMOTE command table entries, implementing LOCAL
+;	DELETE, DIRECTORY and SPACE commands (KERMIT,KERUTL)
+; (c)	Fix RECEIVE FILENAME to be different from GET (KERMIT,KERCMD,KERFIL)
+; (b)	Fix minor bugs (KERMIT,KERCMD)
+; (a)	Add SET option for default drive and user (KERMIT,KERCMD,KERUTL)
+;	RonB, 09/20/84
+;* * * * * * * * * * * * * * * version 2.7 * * * * * * * * * * * * * * *
+; [31]	Fix display of file rename
+;	RonB, 05/05/84
+;[fdc]	Add help message about "?" when starting up.
+;	Add help message about "<esc-char>?" when connecting.
+;	Fix glitch in Bernie's command level flagging (KERCMD).
+;	F. da Cruz, Columbia
+;
+;[]	Prefixed all ermes'sages with bell and changed ermes3 (secondary
+;	command didn't parse) from "?Not confirmed" to "?Unrecognized
+;	command-option".
+;	Prettied up (TABs between INSTR and AC's) and fixed SET command
+;	using RSKP convention - B.Eiben, EIBEN at DEC-Marlboro, 2-May-84
+; [30]
+; (e)	Recombine KERSYS and KERMIT.
+; (d)	Add SET PORT command, currently unimplemented (KERMIT,KERIO)
+; (c)	Isolate all machine dependencies in KERIO.
+; (b)	Make DEL work like BS and ^X like ^U in command input (KERCMD).
+; (a)	Add keyboard DEL key alteration for APC (KERIO).
+;	RonB, 04/18/84
+; [29]
+; (g)	Add 8th bit quoting (KERPRO,KERFIL,KERSYS).
+; (f)	Add QUIT command, synonymous to EXIT (KERSYS).
+; (e)	Move logging code to terminal module, make it a SET command,
+;	add quit/resume (^Q/^R) to make it more standard (KERTRM,KERSYS)
+; (d)	Expand receive buffer and check for packet overruns (KERPRO)
+; (c)	Clear FCB prior to opening or creating a file (KERUTL)
+; (b)	Add TAKE file processing, initially from KERMIT.INI
+;	(KERMIT,KERSYS,KERUTL)
+; (a)	Send error packet whenever a fatal error occurs (KERPRO)
+;	RonB, 04/08/84
+;* * * * * * * * * * * * * * * version 2.6 * * * * * * * * * * * * * * *
+; [28]
+; (e)	Add local stack for use in interrupt handling (KERIO)
+; (d)	Improve input filename processing, allow valid special chars
+;	(KERFIL,KERCMD)
+; (c)	Make disk full error messages more accurate (KERSYS)
+; (b)	Include filename in file-not-found error message (KERPRO,KERSYS)
+; (a)	Clear attribute bits from filename before sending (KERPRO)
+;	RonB, 03/27/84
+; [27]	add "Kermit-86" to interrupt messages.	Rg 20-Mar-1984
+; [26]	Move terminal emulation (TELNET) to a separate module: KERTRM.
+;	This is to "modularize" terminal emulation. Rg
+;
+; [25]	Move logic for "seteol" and "escape" from KERSYS into KERCMD so those
+;	routines need not use internal CMD routines and variables.  For this
+;	purpose add 2 parse routines and codes: "cmcha" and "cmnum".  Also
+;	eliminate the use of some KERCMD text strings in KERPRO.  The point
+;	of this is to keep calls to CMD modular since I want to eventually
+;	replace the whole thing.
+;	R. Garland	9-Mar-1984
+; [24]
+; (a)	Add terminal session logging (KERMIT,KERSYS,KERUTL)
+; (b)	Allow escape character to local-echo (KERMIT)
+;	RonB, 03/15/84
+;
+; [23]	Fix ASCII-mode-junk-at-end-of-file bug.  (KERFIL)	Rg
+;* * * * * * * * * * * * * * * version 2.5 * * * * * * * * * * * * * * *
+; [22]
+; (a) - Cosmetics - changed FILE-Warning to Warning, parallel to CP/M
+;	Version and makes SET FI Binary painless
+; (b) - made this version 2.5 to stop confusion -B.Eiben DEC Marlboro
+;	7-March-84
+; [21]
+; (a) - Add SET TIMER ON/OFF option, default is OFF (KERSYS,KERPRO)
+; (b) - Change SET FILE-MODE to SET FILE-TYPE to match VAX/VMS (KERSYS)
+; (c) - Move all Set/Show processing to KERSYS (KERMIT,KERSYS)
+;	RonB, 03/05/84
+; [20]
+; (a) -	Fix version & send/receive header for APC (KERSYS,KERPRO)
+; (b) - Add Break processing & set clock rate for NEC (KERIO)
+; (c) - Add escape character help in telnet mode (KERMIT,KERSYS)
+; (d) - Add a pseudo time-out to PRTOUT so it doesn't loop forever (KERIO)
+; (e) - Clean up environment better on KABORT (KERPRO,KERUTL)
+;	RonB, 03/02/84
+;* * * * * * * * * * * * * * * version 2.4 * * * * * * * * * * * * * * *
+; [19]	(let Bill's and Jeff's changes be 17 and 18)
+; (a) - Add flow control for input comm port buffer.  This is primarily to
+;  allow smooth scrolling and "Hold Screen" to work on the Rainbow.  Add
+;  associated Set, Show, and Help for same.  (KERSYS and KERIO)
+; (b) - Clear screen at beginning and end of program. (KERSYS and KERIO)
+; (c) - Give "bdos" mnemonic to interrupt 224. (KERUTL)
+; (d) - Change telnet to check keyboard between comm port reads. (KERMIT)
+;  Woops - can't get this dumb simple thing to work.  Save for later.
+; (e) - Put in Break transmission in connect mode. (KERMIT,KERIO)
+; (f) - Put in ^X/^Z file interruption. (KERSYS, KERPRO, KERFIL)
+; (g) - Put in timeouts for packet receive routines. (KERPRO)
+; [Rg] R. Garland, 2/84,	OC.GARLAND%CU20B@COLUMBIA-20.ARPA
+;	Columbia Univ.		OC.GARLAND@CU20B.BITNET
+;* * * * * * * * * * * * * * * version 2.3 * * * * * * * * * * * * * * *
+; Fill in the missing parity routines to allow this program to work with
+; IBM mainframes and other systems that require parity (edit marked "[par]").
+; Include RonB's fixes for places where previous edit broke the NEC APC.
+; Jeff Damens, Columbia, 6 Feb 84
+;* * * * * * * * * * * * * * * version 2.2 * * * * * * * * * * * * * * *
+; Added CFIBFs (buffer clearing) where necessary, put conditional assembly
+; code all in two modules (86KERIO and 86KERSYS), created new module
+; (86KERSYS), added CTLPRT routine to print out control chars for the SHOW
+; command, made SERINI called once at the beginning of the program and nowhere
+; else and added user protocol timeouts (hitting a <CR>).
+; Bill Catchings:  12:36pm  Thursday, 19 January 1984
+;* * * * * * * * * * * * * * *  version 2.1  * * * * * * * * * * * * * *
+;  [B.E. 3-Jan-83] added DTR-code (in 86kermit and 86kerio) for RAINBO
+;
+;  [16]	Add file-mode ASCII or BINARY processing.
+;  [15]	Clear screen lines before displaying packet debug.
+;  [14]	Fix nout to print decimal. (KERPRO)
+;  [13]	Use control-Z's for filler in partial sectors instead of
+;	nulls. (KERPRO)
+;  [12]	Allow user abort from the keyboard in the send and receive routines.
+;  [11]	Capitalize and parse filename being received. (KERFIL)
+;  [10]	Correct missing elements in the Show display.
+;  [9]	Fix filename parsing, and add wildcard ability. (KERCMD,KERPRO,KERFIL)
+;  [8]	Show choices for ambiguous keywords, finish keyword on '?' (KERCMD)
+;  [7]	Do tab expansion and suppress nulls while in telnet mode. (KERUTL)
+;  [6]	Add support for changing baud rate.
+;  [5]	Put OFF/ON command table in alphabetical order.
+;  [4]	Change default escape character to '^' because NEC keyboard doesn't
+;	generate a control-\.
+;  [3]	Change "esc,'[H'" to "esc,'[1;1H'" to get around bug in NEC BIOS.
+;	This should not affect operation on the Rainbow.
+;  [2]	Add a de-initialization routine for the serial port, to restore
+;	changed interrupt vectors, etc. (KERIO)
+;  [1]	Add I/O support for the NEC Advanced Personal Computer (KERIO)
+;	RonB,12/23/83
+;
+;
+; * * * * * * * * * * * * * * *  version 2.0  * * * * * * * * * * * * * * *
+; KERMIT - KL10 Error-free Reciprocal Micro Interconnect over TTY-lines
+;
+;	Kermit Protocol Version 2
+;
+;	Based on the KERMIT Protocol.
+;
+;	Copyright (C) 1983 William B. Catchings III
+
+; This program implements the Kermit Protocol developed at Columbia
+; University.  This version is being written specifically for the
+; DEC Rainbow 100.  It will hopefully take advantage of much of what
+; was learned in implementing the CP/M-80, DEC-20 and other versions.
+
+; Things to do:
+;	Add new features from Kermit-80, like local CP/M functions
+;	Make all commands the same as those in Kermit-80
+
+; Now all system dependencies have been isolated in 86KERIO, which
+; will be implemented as a separate module for each system.  This
+; eliminates source code ballooning when other systems are added
+; which have (for example) non-ANSI screen controls and terminal
+; emulation capabilities, as well as specific port drivers.
+; Information about what routines are needed in the 86KERIO module
+; is given in the 86KERMIT.HLP and 86KERIO.HLP files.
+;
+; So far the systems supported are:
+;	NEC APC		in 86KERIO.APC
+;	DEC Rainbow	in 86KERIO.RB
+;
+; PIP 86KERIO.A86=86KERIO.???	- will make system-dependent routines available
+; ASM86 86KERMIT $PZ		- will assemble without listing
+; GENCMD 86KERMIT		- will LOAD
+; REN KERMIT.CMD=86KERMIT.CMD	- will make it "real" after testing
+
+	TITLE	'Kermit'
+
+TRUE	EQU	1
+FALSE	EQU	0
+
+; Definitions:
+
+soh	EQU	01O
+bell	EQU	07O
+tab	EQU	11O
+lf	EQU	12O
+ff	EQU	14O
+cr	EQU	15O
+xon	EQU	21O
+xoff	EQU	23O
+esc	EQU	33O
+del	EQU	177O
+
+parevn	EQU	00H		;Even parity.			;[21c] begin
+parmrk	EQU	01H		;Mark parity.
+parnon	EQU	02H		;No parity.
+parodd	EQU	03H		;Odd parity.
+parspc	EQU	04H		;Space parity.
+ibmpar	EQU	parmrk		;IBM's parity (mark).
+defpar	EQU	parnon		;Default parity (none).
+defeco	EQU	00H		;Default is echo off		;[21a]
+defesc	EQU	'\'-100O	;Escape char is Control backslash by default.
+				;note: generated by INS key on the APC.
+deftmr	EQU	00H		;Default is timer off		;[21a]
+deflog	EQU	00H		;Default is logging off		;[24a]
+floxon	EQU	1		;[19a]
+flonon	EQU	0		;[19a]
+diasw	EQU	00H		;Default is diagnostics off.	;[21c] end
+
+
+; The actual program:
+
+	CSEG			;Start coding!
+
+	call	getdrv		;Save initial disk and user	;[32a] begin
+	mov	cpmdrv,al
+	mov	defdrv,al
+	call	getusr
+	mov	cpmusr,al
+	mov	defusr,al					;[32a] end
+
+;	The allocation amount of 245 pages was arrived at by trial and
+;	error.  This figure causes Concurrent CP/M on the NEC APC to only
+;	allocate one additional memory block.  (Since the blocks are 4K
+;	each, one would expect 256...)
+
+	mov	cx,245
+start1:	push	cx
+	mov	word ptr membuf+2, cx	;Allocate 4K (or less) bytes of memory
+	mov	dx, offset membuf	;   for sorting filenames
+	call	allmem
+	pop	cx
+	cmp	al,0
+	loopne	start1
+	cmp	cx,0
+	jne	reboot
+	mov	dx, offset erms25	;Not enough memory available:
+	call	tcrmsg			;   local dir, del, and type will
+	mov	word ptr membuf+2, 0	;   not be enabled, nor will wildcard
+					;   sends.		;[34c] end
+
+reboot:	pushf			;Push flags on CCP's stack.	;[12]
+	pop	ax		;flags in AX.
+	cli							;[32b]
+	mov	bx, ds		;Set SS to DS.
+	mov	ss, bx
+	mov	sp, offset stack ;Set up the stack pointer.
+	push	ax		;Restore the flags.
+	popf
+
+	call	inidma		;Set DMA base and offset	;[34c] begin
+	call	serini		;Do any necessary serial port initialization.
+
+	call	dspver		;Clear screen and print version header
+	mov	dx, offset hlpmsg ;[fdc] Give help message about "?"
+	call	tmsgcr		;[fdc]
+
+; This is the main KERMIT loop.  It prompts for and gets the user's commands.
+
+kermit:	mov	dx, offset kerm
+	call	prompt		;Prompt the user.
+	mov	dx, offset comtab
+	mov	bx, offset tophlp
+	mov	ah, cmkey
+	call	comnd
+	 jmp	kermt2		;Tell them about the error.
+	mov	cmlevl, 1	;we're going into options
+	call	bx		;Call the routine returned.
+	 jmp	kermt3		;Tell them about the error.
+	cmp	extflg, 0	;Check if the exit flag is set.
+	je	kermit		;If not, do it again.
+	call	serfin		;clean up serial port environment ;[2]
+	mov	dl,cpmdrv	;reset disk and user		;[32a] begin
+	call	setdrv		; to initial defaults
+	mov	dl,cpmusr
+	call	setusr						;[32a] end
+	call	haltf
+	retf			;Just in case!			;[32b]
+ 
+kermt2:	mov	dx, offset ermes1 ;Give an error.
+	call	tcrmsg
+	jmp	kermit
+
+kermt3:	mov	dx, offset ermes3 ;Give an error.
+	call	tcrmsg
+	jmp	kermit
+ 
+
+; This is the EXIT command.  It leaves KERMIT and returns to CP/M.
+ 
+exit:	mov	 ah, cmcfm
+	call	comnd		;Get a confirm.
+	 jmp	r
+	mov	extflg, 1	;Set the exit flag.
+	jmp	rskp
+
+; This is the HELP command.
+ 
+help:	mov	ah, cmcfm
+	call	comnd		;Get a confirm.
+	 jmp	r
+	mov	dx, offset tophlp ;Print some help.
+	call	tmsg
+	jmp	rskp
+
+
+; LOCAL - parse and perform local command			;[32d] begin
+
+loccmd:	mov	dx, offset loctab ;Parse a keyword from the local table.
+	mov	bx, offset lochlp
+	mov	ah,cmkey
+	call	comnd
+	 jmp	r
+	call	bx		;Call the specific local routine
+	 jmp	r		;We got an error
+	jmp	rskp
+
+
+; DIRECTORY of local files
+
+locdir:	mov	ah, cmifi	;Parse an input filename
+	mov	dx, offset fcb
+	call	comnd
+	 jmp	r
+	push	ax		;Save length of filename
+	mov	ah, cmcfm	;Confirm it
+	call	comnd
+	 jmp	r
+	pop	ax
+	cmp	ah, 0		;Read in any chars?
+	jne	locd1
+	mov	di, offset fcb+1
+	call	wldfcb		;If not, set filename to all wild
+locd1:	cmp	byte ptr fcb,0	;Replace unspecified drive with default
+	jne	locd2
+	mov	al,defdrv
+	inc	al
+	mov	byte ptr fcb,al
+locd2:	call	dirutl		;perform directory action (in KERUTL)
+	 jmp	rskp		;On error a message has already been issued
+	jmp	locs2		;jump to display space remaining
+
+
+; ERASE local files
+
+locera:	mov	ah, cmifi	;Parse an input filename
+	mov	dx, offset fcb
+	call	comnd
+	 jmp	r
+	push	ax		;Save length of filename
+	mov	ah, cmcfm	;Confirm it
+	call	comnd
+	 jmp	r
+	pop	ax
+	cmp	ah, 0		;Read in any chars?
+	jne	loce1
+	mov	dx, offset erms26 ;Illegal (blank) filename
+	call	tcrmsg
+	 jmp	rskp
+loce1:	call	erautl		;Erase utility (in KERUTL)
+	 jmp	rskp		;On error a message has already been issued
+	jmp	rskp
+
+
+; TYPE local files
+
+loctyp:	mov	ah, cmifi	;Parse an input filename
+	mov	dx, offset fcb
+	call	comnd
+	 jmp	r
+	push	ax		;Save length of filename
+	mov	ah, cmcfm	;Confirm it
+	call	comnd
+	 jmp	r
+	pop	ax
+	cmp	ah, 0		;Read in any chars?
+	jne	loct1
+	mov	dx, offset erms26 ;Illegal (blank) filename
+	call	tcrmsg
+	 jmp	rskp
+loct1:	call	typutl		;Type utility (in KERUTL)
+	 jmp	rskp		;On error a message has already been issued
+	jmp	rskp
+
+
+; SPACE remaining on disk
+
+locsiz:	mov	ah, cmifi	;Parse an input filename
+	mov	dx, offset fcb
+	call	comnd
+	 jmp	r
+	push	ax		;Save length of filename
+	mov	ah, cmcfm	;Confirm it
+	call	comnd
+	 jmp	r
+	pop	ax
+	cmp	ah, 0		;Read in any chars?
+	je	locs1
+	mov	dx, offset erms24 ;At most only a drive code should be entered
+	call	tcrmsg
+	 jmp	rskp
+locs1:	cmp	fcb,0
+	jne	locs2
+	mov	al,defdrv
+	inc	al
+	mov	fcb,al
+locs2:	call	spcutl		;Space utility (in KERUTL)
+	 jmp	rskp		;On error a message has already been issued
+	jmp	rskp
+
+
+; Fill a file control block filename with ?'s
+
+wldfcb:	mov	ax,ds		;Fill filename with ?'s.
+	mov	es,ax
+	mov	cx,11
+	mov	al,'?'
+	rep stosb
+	mov	wldflg,0FFh	;Set wildcard flag
+	ret
+
+
+; REMOTE - parse and perform remote command
+;	(not yet implemented)
+
+remcmd:	mov	ah,cmtxt	;Parse arbitrary text up to a CR
+	mov	bx, offset data
+	call	comnd
+	 jmp	r
+	mov	dx, offset infms6 ;Tell the user that it's not yet implemented.
+	call	tcrmsg
+	jmp	rskp
+
+;	mov	dx, offset remtab ;Parse a keyword from the remote table.
+;	mov	bx, offset remhlp
+;	mov	ah,cmkey
+;	call	comnd
+;	 jmp	r
+;	call	bx		;Call the specific remote routine
+;	 jmp	r		;We got an error
+;	jmp	rskp						;[31b] end
+
+
+; FINISH - tell remote KERSRV to exit.
+
+finish:	mov	ah,cmcfm	;Parse a confirm.
+	call	comnd
+	 jmp	r
+	mov	ah, 'F'
+	call	gensen		;Send the finish command.
+	jmp	rskp
+
+; BYE - tell remote KERSRV to logout and then exit to CP/M.
+
+bye:	mov	ah,cmcfm	;Parse a confirm.
+	call	comnd
+	 jmp	r
+	mov	ah, 'L'
+	call	gensen		;Send the logout command.
+	mov	extflg,1	;Set exit flag.
+	jmp	rskp
+
+; LOGOUT- tell remote KERSRV to logout.
+
+logout:	mov	ah,cmcfm	;Parse a confirm.
+	call	comnd
+	 jmp	r
+	mov	ah, 'L'
+	call	gensen		;Send the logout command.
+	jmp	rskp
+
+; RECEIVE - Receive a file or files from the remote Kermit.	;[32c] begin
+; A filespec can optionally be specified to rename the received file.
+
+rec:	mov	ah, cmofi	;Parse an output filename
+	mov	dx, offset fcb2
+	call	comnd
+	 jmp	r
+	push	ax		;Save length of filename
+	mov	ah, cmcfm	;Confirm it
+	call	comnd
+	 jmp	r
+	pop	ax
+	cmp	ah, 0		;Read in any chars?
+	jne	rec1
+	mov	di, offset fcb2+1
+	call	wldfcb		;If not, set filename to all wild
+rec1:	cmp	byte ptr fcb2,0	;Also make default drive a ?.
+	jne	rec2
+	mov	byte ptr fcb2,'?'
+rec2:	call	read		;Do the actual protocol work.
+	jmp	rskp						;[32c] end
+
+; GET - Get a file or files from the remote server Kermit.
+
+get:	mov	di, offset fcb2
+	mov	byte ptr [di],'?'
+	inc	di
+	call	wldfcb		;Receive any filename as is	;[32c]
+	mov	ah, cmtxt	;Parse an arbitrary text string.
+	mov	bx, offset data	;Where to put the parsed text.
+	call	comnd
+	 jmp	r
+	cmp	ah, 0		;Read in any chars?
+	jne	get1		;If not give an error.
+	mov	dx, offset ermes5
+	call	tcrmsg
+	jmp	rskp
+get1:	mov	al, ah
+	mov	ah, 0
+	mov	argbk1, ax	;Remember number of chars we read.
+	mov	ah, '$'		;Used for printing.
+	mov	[bx], ah
+	call	init		;Paint screen and initialize file buffers.
+	call	cfibf		;Clear any stacked NAKs.
+	call	clrfln		;Prepare to print filename.
+	mov	dx, offset data	;Print file name.
+	call	tmsg
+	mov	argblk, 0	;Start at packet zero.
+	mov	ah, 'R'		;Receive init packet.
+	call	spack		;Send the packet.
+	 jmp	r
+	call	read1		;Join the read code.
+	jmp	rskp
+
+; SEND - Send a file or files to the remote Kermit.
+
+sencom:	mov	ah, cmifi	;Parse an input file spec.
+	mov	dx, offset fcb	;Give the address for the FCB.
+	call	comnd
+	 jmp	r		;Give up on bad parse.
+	cmp	ah,0		;Check for null filename	;[32c] begin
+	jne	$+5
+	 jmp	r						;[32c] end
+	cmp	wldflg,0FFh
+	jne	sen7
+	mov	ah, cmifi	;Parse first file to send	;[34c] begin
+	mov	dx, offset fcb2
+	call	comnd
+	 nop
+	 nop
+	 nop
+	mov	bx,offset fcb2+1
+	mov	cx,11
+sen4:	cmp	byte ptr [bx],'?' ;Replace wildcards with spaces
+	jne	sen5		  ;   in starting filename
+	mov	byte ptr [bx],' '
+sen5:	inc	bx
+	loop	sen4
+	mov	wldflg,0FFh	;Show original filename as wild
+sen7:	mov	ah, cmcfm
+	call	comnd		;Get a confirm.
+	 jmp	r		;Didn't get a confirm.
+	call	send
+	jmp	rskp
+
+; SET - Set some Kermit parameter.
+
+setcom:	mov	dx, offset settab ;Parse a keyword from the set table.
+	mov	bx, offset sethlp
+	mov	ah,cmkey
+	call	comnd
+	 jmp	r
+	call	bx		;Call the specific set routine in KERSYS.
+	 jmp	r		;We got an error
+	jmp	rskp
+
+
+; STATUS - Give some statistics on the connection.
+
+status:	jmp	show		;Make STATUS and SHOW synonymous for now ;[32b]
+
+; TAKE - Specify file which will supply command input.		;[29b] begin
+
+take:	mov	ah, cmifi	;Parse an input file spec.
+	mov	dx, offset tkfcb ;Give the address for the FCB.
+	call	comnd
+	 jmp	r		;Give up on bad parse.
+	cmp	ah,0		;Check for null filename	;[32c] begin
+	jne	$+5
+	 jmp	r						;[32c] end
+	mov	ah, cmcfm
+	call	comnd		;Get a confirm.
+	 jmp	r		;Didn't get a confirm.
+	mov	tkflg, 1	;Turn on command file input
+	mov	tkptr, 0	;Indicate file not yet open
+	jmp	rskp						;[29b] end
+
+; TRANSMIT file(s) with no protocol				;[32e] begin
+
+txmit:	mov	ah,cmtxt	;Parse arbitrary text up to a CR
+	mov	bx, offset data
+	call	comnd
+	 jmp	r
+	mov	dx, offset infms6 ;Tell the user that it's not yet implemented.
+	call	tcrmsg
+	jmp	rskp						;[32e] end
+
+; Set parity for character in Register AL.
+
+dopar:	cmp	parflg, parnon	;No parity?
+	je	parret		;Just return
+	cmp	parflg, parevn	;Even parity?
+	jne	dopar0
+	and	al, 7FH		;Strip parity.
+	jpe	parret		;Already even, leave it.
+	or	al, 80H		;Make it even parity.
+	jmp	parret
+dopar0:	cmp	parflg, parmrk	;Mark parity?
+	jne	dopar1
+	or	al, 80H		;Turn on the parity bit.
+	jmp	parret
+dopar1:	cmp	parflg, parodd	;Odd parity?
+	jne	dopar2
+	and	al, 7FH		;Strip parity.
+	jpo	parret		;Already odd, leave it.
+	or	al, 80H		;Make it odd parity.
+	jmp	parret
+dopar2:	and	al, 7FH		;Space parity - turn off parity bit.
+parret:	ret
+
+
+
+; The following are the SET command subroutines		;[21c] begin
+;	except for Baud rate and Port selection, which are
+;	isolated in the system dependent modules.
+
+; Sets debugging mode on and off.
+
+debset:	mov	dx, offset ontab
+	mov	bx, offset onhlp
+	mov	ah, cmkey
+	call	comnd
+	 jmp	r
+	mov	temp1, bx
+	mov	ah, cmcfm
+	call	comnd		;Get a confirm.
+	 jmp	r		;Didn't get a confirm.
+	mov	bx, temp1
+	mov	debug, bl	;Set the debug flag.
+	jmp	rskp
+
+; Sets the default disk and user number for file operations	;[32a] begin
+; Entry must be in one of the following forms:
+;	d:	= go to drive d (A through P)
+;	u:	= go to user u (0 through 15)
+;	du:	= go to drive d and user u
+;	:	= go to the defaults when Kermit was loaded
+; Whenever a drive is specified, even if it is the same as the current
+; default drive, the drive is logged in so that disks can be swapped
+; without exiting Kermit to type control-C.
+
+defset:	mov	ah,cmtxt	;Get the du: specification
+	mov	bx, offset data
+	call	comnd
+	 jmp	r
+	mov	byte ptr [bx],0	;Mark the end of input
+	mov	ah,cmcfm	;Confirm the input
+	call	comnd
+	 jmp	r
+	mov	newdrv,0FFh	;set inputs to show no entry
+	mov	newusr,0FFh
+	mov	bx, offset data	;analyze the input
+	mov	al,[bx]
+	cmp	al,'a'		;check for lower case drive specification
+	jb	defs10
+	cmp	al,'p'
+	jbe	defs05
+	jmp	deferr
+defs05:	sub	al,'a'
+	jmps	defs15
+defs10:	cmp	al,'A'		;check for upper case drive specification
+	jb	defs25
+	cmp	al,'P'
+	ja	deferr
+	sub	al,'A'
+defs15:	mov	newdrv,al	;save the new drive specification
+defs20:	inc	bx
+	mov	al,[bx]
+defs25:	cmp	al,':'		;input must terminate with required colon
+	je	defs50
+	cmp	al,'0'		;check for user number digit
+	jb	deferr
+	cmp	al,'9'
+	ja	deferr
+	sub	al,'0'
+	mov	dl,al
+	cmp	newusr,0FFh	;is this the first digit?
+	jne	defs30
+	mov	newusr,dl	; yes, just store the digit
+	jmps	defs20
+defs30:	mov	al,newusr	; otherwise append digit to current value
+	mov	dh,10
+	mul	dh
+	add	al,dl
+	mov	newusr,al
+	jmps	defs20
+defs50:	inc	bx		;we've seen a colon, it must be followed
+	cmp	byte ptr [bx],0	; by the null we stored earlier
+	jne	deferr
+	mov	al,newusr	;are we setting a new user number?
+	cmp	al,0FFh
+	jne	defs60		; yes, check its value
+	cmp	al,newdrv	; otherwise if neither drive nor user
+	jne	defs70		;  was specified and yet we saw the colon,
+	mov	al,cpmdrv	;  then return to the initial CP/M defaults.
+	mov	newdrv,al
+	mov	al,cpmusr
+defs60:	cmp	al,15		;make sure user is in range
+	ja	deferr
+	mov	defusr,al	;save new user value
+	mov	dl,al
+	call	setusr
+defs70:	mov	al,newdrv	;are we setting a new drive?
+	cmp	al,0FFh
+	je	defs90
+	mov	defdrv,al	;save new drive value
+	call	rstdsk		;reset disk system to log in drive
+	mov	dl,defdrv	; then select new default
+	call	setdrv
+defs90:	jmp	rskp
+deferr:	mov	dx, offset erms23
+	call	tcrmsg
+	jmp	rskp						;[32a] end
+
+; Set end-of-line character
+
+eolset:							;[25] begin
+	mov	dx, 01FH	;maximum value of number allowed. (31)
+	mov	bx, offset eolhlp ;help string for parser
+	mov	ah, cmnum	;look for a decimal number
+	call	comnd		;call the parser
+	 jmp	r
+	mov	seol, bl	;set the eol character
+	jmp	rskp
+
+escape:
+	mov	bx, offset eschlp ;help string for parser
+	mov	ah, cmcha	;parser code for single character
+	call	comnd		;call parser
+	 jmp	r
+	mov	escchr, bl	;set the character
+	jmp	rskp
+								;[25] end
+
+;	This is the SET file-type (ASCII or BINARY) command	;[16] begin
+
+fmset:	mov	dx, offset fmtab
+	mov	bx, offset fmhlp
+	mov	ah, cmkey
+	call	comnd
+	 jmp	r
+	mov	temp1, bx
+	mov	ah, cmcfm
+	call 	comnd		;Get a confirm.
+	 jmp	r		;Didn't get a confirm.
+	mov	bx, temp1
+	mov	binflg, bl	;Set the file-type flag.
+	jmp	rskp						;[16] end
+
+;	This is the SET Warning command.
+
+filwar:	mov	dx, offset ontab
+	mov	bx, offset onhlp
+	mov	ah, cmkey
+	call	comnd
+	 jmp	r
+	mov	temp1, bx
+	mov	ah, cmcfm
+	call	comnd		;Get a confirm.
+	 jmp	r		;Didn't get a confirm.
+	mov	bx, temp1
+	mov	flwflg, bl	;Set the file warning flag.
+	jmp	rskp
+
+;		Set flow-control flag			[19a] Begin
+
+setflo:	mov	dx, offset flotab ;set up ON/OFF response
+	mov	bx, offset flohlp
+	mov	ah, cmkey
+	call	comnd		;get response
+	jmp	r
+	mov	temp1, bx	;save response
+	mov	ah, cmcfm
+	call	comnd		;get confirm
+	jmp	r
+	mov	bx, temp1
+	mov	floctl, bl	;set flag
+	jmp	rskp						;[19a] end
+
+;	This is the SET IBM command.
+
+ibmset:	mov	dx, offset ontab
+	mov	bx, offset onhlp
+	mov	ah, cmkey
+	call	comnd
+	 jmp	r
+	mov	temp1, bx
+	mov	ah, cmcfm
+	call	comnd		;Get a confirm.
+	 jmp	r		;Didn't get a confirm.
+	mov	bx, temp1
+	mov	ibmflg, bl	;Set the IBM flag.
+	cmp	bl, 0		;Turning on or off?
+	je	ibmst1		;If off, set parity & local echo to defaults.
+	mov	parflg, ibmpar	;Set IBM parity.		;[21a] begin
+	mov	ecoflg, 1	;Set local echo on.
+	mov	tmrflg, 1	;Set timer on.
+	jmps	ibmst2
+ibmst1:	mov	parflg, defpar	;Set default parity.
+	mov	ecoflg, defeco	;Set local echo to default.
+	mov	tmrflg, deftmr	;Set timer to default.
+ibmst2:	jmp	rskp							;[21a] end
+
+
+;	This is the LOCAL echo SET subcommand.
+
+local:	mov	dx, offset ontab
+	mov	bx, offset onhlp
+	mov	ah, cmkey
+	call	comnd
+	 jmp	r
+	mov	temp1, bx	;Save the parsed value.
+	mov	ah, cmcfm
+	call	comnd		;Get a confirm.
+	 jmp	r		;Didn't get a confirm.
+	mov	bx, temp1
+	mov	ecoflg, bl	;Set the local echo flag.
+	jmp	rskp
+
+
+;	This is the LOG filename SET command
+
+log:	mov	ah, cmofi	;Get an output filename
+	mov	dx, offset lfcb	;For a log file
+	call	comnd
+	 jmp	r
+	cmp	ah,0		;Check for null filename	;[32c] begin
+	jne	$+5
+	 jmp	r						;[32c] end
+	mov	ah, cmcfm	;Confirm it
+	call	comnd
+	 jmp	r
+	mov	logflg, 0FFh	;Turn logging on
+	jmp	rskp
+
+
+;	This is the SET Parity command.
+
+setpar:	mov	dx, offset partab
+	mov	bx, offset parhlp
+	mov	ah, cmkey
+	call	comnd
+	 jmp	r
+	mov	temp1, bx
+	mov	ah, cmcfm
+	call	comnd		;Get a confirm.
+	 jmp	r		;Didn't get a confirm.
+	mov	bx, temp1
+	mov	parflg, bl	;Set the parity flag.
+	jmp	rskp
+
+;	This is the SET Timer command.			;[21a] begin
+
+tmrset:	mov	dx, offset ontab
+	mov	bx, offset onhlp
+	mov	ah, cmkey
+	call	comnd
+	 jmp	r
+	mov	temp1, bx
+	mov	ah, cmcfm
+	call	comnd		;Get a confirm.
+	 jmp	r		;Didn't get a confirm.
+	mov	bx, temp1
+	mov	tmrflg, bl	;Set the timer flag.
+	jmp	rskp					;[21a] end
+							;[21c] end
+
+;	The following are display subroutines used primarily	;[21c] begin
+;	in the SHOW command.
+
+								;[10] begin
+;	This routine matches a table value and prints the corresponding
+;	keyword.  On entry:
+;			al = value to match
+;			bx = beginning address of table
+
+tabprt:	mov	ah, 0		;make it a word comparison
+	mov	ch, [bx]	;get the table size
+	inc	bx
+tabp1:	mov	dl, [bx]	;get the offset to the value
+	inc	bx		;point to beginning of the keyword
+	mov	dh, 0
+	mov	si, dx
+	cmp	ax, 1[bx+si]	;does the value match?
+	je	tabp2		;yes, go print the keyword at [bx].
+	add	bx, dx		;otherwise go to next entry
+	add	bx, 3
+	dec	ch		;any more entries
+	jnz	tabp1		;if so, go check the next
+	mov	bx, offset erms20 ;else say value was not found
+tabp2:	mov	dx, bx
+	call	tmsg		;display the keyword
+	ret
+								;[10] end
+
+; This routine prints out the escape character in readable format.
+;	Call CTLPRT with any char in DL for similar output.
+
+escprt:	mov	dl, escchr
+ctlprt:	cmp	dl, ' '
+	jge	escpr2
+	push	dx
+	mov	dx, offset esctl ;Print "Control-"
+	call	tmsg
+	pop	dx
+	add	dl, 040H	;Make it printable.
+escpr2:	call	bout
+	ret
+
+;	This routine prints "is on" if prior comparison was nonzero
+;	and otherwise prints "is off"
+
+ponoff:	jz	ponof2		;If not say so.
+	mov	dx, offset onstr ;Say on.
+	jmp	ponof3
+ponof2:	mov	dx, offset offstr ;Say off.
+ponof3:	call	tmsg
+	ret
+
+; SHOW - Show the state of the parameters available from the SET command.
+
+show:	mov	ah,cmcfm	;Parse a confirm.
+	call	comnd
+	 jmp	r
+	call	tcrlf
+
+	call	shobd		;Display baud rate (system dependent)
+
+	mov	dx, offset debst ;Debugging string.
+	call	tcrmsg
+	cmp	debug, 0	;Is the debugging flag on?
+	call	ponoff
+
+	mov	dx, offset eolst ;End of line string.		;[10] begin
+	call	tcrmsg
+	mov	dl, seol
+	call	ctlprt						;[10] end
+
+	mov	dx, offset escst ;Escape string.
+	call	tcrmsg
+	call	escprt		;Print the escape char.
+
+	mov	dx, offset fmst	;File type string. [22d]	;[16] begin
+	call	tcrmsg
+	mov	al, binflg	;Print the keyword corresponding to the
+	mov	bx, offset fmtab ;current value of binflg
+	call	tabprt						;[16] end
+
+	mov	dx, offset flostr				;[19a] start
+	call	tcrmsg		;
+	mov	al, floctl	;show the current
+	mov	bx, offset flotab ;setting for flow-control
+	call	tabprt						;[19a] end
+
+	mov	dx, offset ibmst ;IBM string.
+	call	tcrmsg
+	cmp	ibmflg, 0	;Is the IBM flag on?
+	call	ponoff
+
+	mov	dx, offset locst ;Get the address of the local echo string.
+	call	tcrmsg
+	cmp	ecoflg, 0	;Is the local echo flag on?
+	call	ponoff		;Print on or off.
+
+	mov	dx, offset logst ;Logging string.
+	call	tcrmsg
+	mov	dx, offset lfcb	;Print the log filename.
+	call	tfile
+	cmp	logflg, 0	;Is the logging flag on?
+	call	ponoff
+
+	mov	dx, offset parst ;Parity string.
+	call	tcrmsg
+	mov	al, parflg	;Print the keyword corresponding ;[10] begin
+	mov	bx, offset partab ;to the current value of parflg
+	call	tabprt
+
+	call	shoprt		;Port selection (system dependent) ;[30d]
+
+	mov	dx, offset tmrst ;Timer on/off string		;[21a] begin
+	call	tcrmsg
+	cmp	tmrflg, 0	;Is the timer on?
+	call	ponoff		;Print on or off.		;[21a] end
+
+	mov	dx, offset filst ;File warning string.
+	call	tcrmsg
+	cmp	flwflg, 0	;Is the file warning flag on?
+	call	ponoff
+
+	call	tcrlf		;Print a crlf
+	jmp	rskp						;[21c] end
+
+
+dspver:	call	clrscr		;Home cursor and clear the screen ;[30c] begin
+	mov	dx, offset scrhdr ;Position to the version line.
+	call	poscur
+	call	bldon		;Turn on bold (highlighted) display
+	mov	dx, offset system ;Print the system identification
+	call	tmsg
+	mov	dx, offset versio ;Print the Kermit version header.
+	call	tmsg
+	call	bldoff		;Turn off the highlight	;[30c] end
+	ret
+
+
+	DSEG			;Data segment.
+
+	ORG	100H		;Leave room for system page.
+
+	RW	100		;hundred word or so stack.
+stack	RW	2
+
+	; COMND tables
+
+comtab	db	22
+	db	3,'BYE$'
+	dw	bye
+	db	7,'CONNECT$'
+	dw	telnet
+	db	6,'DELETE$'					;[32d] begin
+	dw	locera
+	db	9,'DIRECTORY$'
+	dw	locdir
+	db	5,'ERASE$'
+	dw	locera						;[32d] end
+	db	4,'EXIT$'
+	dw	exit
+	db	6,'FINISH$'
+	dw	finish
+	db	3,'GET$'
+	dw	get
+	db	4,'HELP$'
+	dw	help
+	db	5,'LOCAL$'					;[32d]
+	dw	loccmd						;[32d]
+	db	6,'LOGOUT$'
+	dw	logout
+	db	4,'QUIT$'					;[29f]
+	dw	exit						;[29f]
+	db	7,'RECEIVE$'
+	dw	rec
+	db	6,'REMOTE$'					;[32d]
+	dw	remcmd						;[32d]
+	db	4,'SEND$'
+	dw	sencom
+	db	3,'SET$'
+	dw	setcom
+	db	4,'SHOW$'
+	dw	show
+	db	5,'SPACE$'					;[32d]
+	dw	locsiz						;[32d]
+	db	6,'STATUS$'
+	dw	status
+	db	4,'TAKE$'					;[29b]
+	dw	take						;[29b]
+	db	8,'TRANSMIT$'					;[32e]
+	dw	txmit						;[32e]
+	db	4,'TYPE$'					;[34b]
+	dw	loctyp						;[34b]
+
+settab	db	14
+	db	4,'BAUD$'
+	dw	bdset						;[6] end
+	db	9,'DEBUGGING$'
+	dw	debset
+	db	12,'DEFAULT-DISK$'				;[32a] begin
+	dw	defset						;[32a] end
+	db	11,'END-OF-LINE$'
+	dw	eolset
+	db	6,'ESCAPE$'
+	dw	escape
+	db	9,'FILE-TYPE$'			;[16] begin [21b]
+	dw	fmset					;[16] end
+	db	13,'FLOW-CONTROL$'				;[19a]
+	dw	setflo						;[19a]
+	db	3,'IBM$'
+	dw	ibmset
+	db	10,'LOCAL-ECHO$'
+	dw	local
+	db	3,'LOG$'					;[24a]
+	dw	log						;[24a]
+	db	6,'PARITY$'
+	dw	setpar
+	db	4,'PORT$'					;[30d]
+	dw	prtset
+	db	5,'TIMER$'					;[21a]
+	dw	tmrset						;[21a]
+	db	7,'WARNING$'
+	dw	filwar
+
+loctab	db	5						;[32d] begin
+	db	6,'DELETE$'
+	dw	locera
+	db	9,'DIRECTORY$'
+	dw	locdir
+	db	5,'ERASE$'
+	dw	locera
+	db	5,'SPACE$'
+	dw	locsiz						;[32d] end
+	db	4,'TYPE$'					;[34b]
+	dw	loctyp						;[34b]
+ 
+ontab	db	2		;Two entries.
+	db	3,'OFF$'					;[5] begin
+	dw	0000H
+	db	2,'ON$'
+	dw	0001H						;[5] end
+ 
+yestab	db	2		;Two entries.
+	db	2,'NO$'
+	dw	0000H
+	db	3,'YES$'
+	dw	0001H
+
+flotab	db	2		;[19a] start
+	db	4,'NONE$'
+	dw	flonon
+	db	8,'XON/XOFF$'
+	dw	floxon		;[19a] end
+
+partab	db	5		;Five entries.
+	db	4,'EVEN$'
+	dw	parevn
+	db	4,'MARK$'
+	dw	parmrk
+	db	4,'NONE$'
+	dw	parnon
+	db	3,'ODD$'
+	dw	parodd
+	db	5,'SPACE$'
+	dw	parspc
+
+fmtab	db	2		;Two entries.			;[16] begin
+	db	5,'ASCII$'
+	dw	00H
+	db	6,'BINARY$'
+	dw	01H						;[16] end
+
+hlpmsg	db	cr,lf,'Type ? at any point for help$'
+cfrmes	db	' Confirm with carriage return $'
+filhlp	db	' Input file spec (possibly wild) $'
+
+tophlp	db	cr,lf,'      Basic Commands'
+	db	'                            Other Commands'
+	db	cr,lf,'CONNECT to host as a terminal'
+	db	'             DELETE local files'
+	db	cr,lf,'RECEIVE file(s) from host'
+	db	'                 DIRECTORY of local files'
+	db	cr,lf,'SEND file(s) to host'
+	db	'                      HELP by giving this message'
+	db	cr,lf,'SET a Kermit parameter'
+	db	'                    LOCAL generic command'
+	db	cr,lf,'SHOW the parameter values'
+	db	'                 QUIT (same as EXIT)'
+	db	cr,lf,'EXIT to CP/M'
+	db	'                              SPACE remaining on disk'
+	db	cr,lf,'                                          STATUS of Kermit'
+	db	cr,lf,'      Server Commands'
+	db	'                     TAKE command input from file'
+	db	cr,lf,'GET file(s) from host                     TYPE local file on screen'
+	db	cr,lf,'SEND file(s) to host'
+	db	cr,lf,'REMOTE generic command'
+	db	cr,lf,'FINISH running Kermit on the host'
+	db	cr,lf,'LOGOUT the host'
+	db	cr,lf,'BYE to host (LOGOUT, then EXIT)'
+	db	'$'
+
+sethlp	db	cr,lf,'BAUD rate'				;[6]
+	db	cr,lf,'DEBUGGING displays of transferred packets'
+	db	cr,lf,'DEFAULT-DISK for file operations'	;[32a]
+	db	cr,lf,'END-OF-LINE character in packets'
+	db	cr,lf,'ESCAPE character from terminal mode'
+	db	cr,lf,'FILE-TYPE (ASCII or BINARY)'		;[16][21b]
+	db	cr,lf,'FLOW-CONTROL (NONE or XON/XOFF)'		;[19a]
+	db	cr,lf,'IBM mainframe communications mode'
+	db	cr,lf,'LOCAL-ECHO echoing (half-duplex)'
+	db	cr,lf,'LOG filename for terminal session logging' ;[24a]
+	db	cr,lf,'PARITY type'
+	db	cr,lf,'PORT to communicate on'			;[30d]
+	db	cr,lf,'TIMER for packet retransmission'		;[21a]
+	db	cr,lf,'WARNING for received filename conflicts'
+	db	'$'
+
+lochlp	db	cr,lf,'DELETE local files'			;[32d] begin
+	db	cr,lf,'DIRECTORY of local files'
+	db	cr,lf,'SPACE remaining on disk'
+	db	cr,lf,'TYPE local files on screen'		;[34b]
+	db	'$'						;[32d] end
+
+flohlp	db	cr,lf,'NONE	XON/XOFF$'
+onhlp	db	cr,lf,'OFF	ON$'
+yeshlp	db	cr,lf,'NO	YES$'
+parhlp	db	cr,lf,'NONE   MARK   ODD   EVEN   SPACE$'
+fmhlp	db	cr,lf,'ASCII	BINARY$'			;[16]
+eolhlp	db	cr,lf,'Decimal digit between 0 and 31$'
+eolerr	db	cr,lf,'Illegal end-of-line character$'
+timhlp	db	cr,lf,'Decimal digit between 1 and 94$'
+timerr	db	cr,lf,'Illegal timeout value$'
+esctl	db	'Control-$'
+eschlp	db	cr,lf,'Enter literal value (ex: Ctrl ])  $'
+inthlp	db	'Kermit-86: Interrupt - type'		;[27]
+	db	cr,lf,'	?   to display this message'	;[20c] begin
+	db	cr,lf,'	B   to send a Break signal to the port'
+	db	cr,lf,'	C   to return to the Kermit-86> prompt'
+	db	cr,lf,'	L   to toggle terminal session logging'	;[24a]
+	db	cr,lf,'	Q   to quit terminal session logging'	;[29e]
+	db	cr,lf,'	R   to resume terminal session logging'	;[29e]
+	db	cr,lf,'	$'
+inthl2	db	'   to send a $'
+inthl3	db	' character to the port$'			;[20c] end
+onstr	db	' is on$'
+offstr	db	' is off$'
+flostr	db	'Flow control: $'				;[19a]
+bdst	db	'Baud rate: $'
+debst	db	'Debug mode$'
+eolst	db	'End-of-line character: $'
+escst	db	'Escape char: $'
+fmst	db	'File type is $'				;[16][21b]
+ibmst	db	'IBM flag$'
+locst	db	'Local echo$'
+logst	db	'Logging to $'					;[24a]
+parst	db	'Parity: $'
+tmrst	db	'Timer$'					;[21a]
+timmes	db	'Timeout is $'
+filst	db	'Warning$'
+
+clrspc	db	' ',10O,'$'		;Clear space.
+
+versio	db	' CP/M-86 Kermit-86 - V2.9'
+	db	cr,lf,lf,'$'
+kerm	db	'Kermit-86 $'					;[32a]
+pktlin	db	cr,'Number of packets:   '
+	db	cr,lf,'Number of retries:   '
+	db	cr,lf,'File name:  $'
+spmes	db	'Spack:  $'
+rpmes 	db	'Rpack:  $'
+hibit	db	'Warning - Non-ASCII char$'
+ender	db	bell,bell,'$'
+inms01	db	cr,lf,'[Kermit-86: Connecting to host...' ;[27][fdc]
+	db	cr,lf,'  Type $'			;[fdc]
+inms02	db	' C to return to PC, $'			;[fdc]
+inms25	db	' ? for help]$'				;[fdc]
+inms03	db	'[Kermit-86: Back at PC]$'			;[27]
+infms3	db	'Completed    $'
+infms4	db	'Failed       $'
+infms5	db	'Renaming file to $'
+infms6	db	'%Function not implemented$'
+infms7	db	'Interrupted  $'				;[19f]
+infms8	db	'File interrupt (^X)  $'			;[19f]
+infms9	db	'File group interrupt (^Z)  $'			;[19f]
+infm10	db	' Type: ^X to interrupt file,  ^Z to '		;[19f][30c]
+	db	'interrupt group,  ^C to "abort".$'		;[19g][30c]
+infm11	db	'[Kermit-86: Logging to $'			;[24a][27]
+infm12	db	']$'						;[24a]
+infm13	db	'[Kermit-86: Logging terminated]$'		;[24a][27]
+timoms	db	bell,'Timeout$'
+ermes1	db	bell,'?Unrecognized command$'
+ermes2	db	bell,'?Illegal character$'
+ermes3	db	bell,'?Unrecognized command option$'
+ermes4	db	bell,'?Unable to rename file$'
+ermes5	db	bell,'?No receive file specification given$'
+ermes7	db	bell,'?Unable to receive initiate$'
+ermes8	db	bell,'?Unable to receive file name$'
+ermes9	db	bell,'?Unable to receive end of file$'
+erms10	db	bell,'?Unable to receive data$'
+erms11	db	bell,'?Disk directory area full$'			;[28c]
+erms14	db	bell,'?Unable to receive an acknowledgement from the host$'
+erms15	db	bell,'?Unable to find file $'			;[28b]
+erms17	db	bell,'?Disk data area full$'				;[28c]
+erms18	db	bell,'?Unable to tell host that session is finished$'
+erms19	db	bell,'?Unable to tell host to logout$'
+erms20	db	bell,'?Illegal value$'				;[10]
+erms21	db	'* Aborted *$'					;[12]
+erms22	db	bell,'?Cannot open log file $'			;[24a]
+erms23	db	bell,'?Specify new default drive and'
+	db	' (optional) user number as DU:$' ;[32a]
+erms24	db	bell,'?Specify drive as D:$'			;[32d]
+erms25	db	bell,'?Not enough memory for sort buffer:'	;[34c]
+	db	cr,lf,'   Local DIRECTORY, DELETE, and TYPE operations'
+	db	cr,lf,'   and wildcard SENDs will not be supported.$'
+erms26	db	bell,'?Illegal filename$'
+erms27	db	bell,'?Memory buffer overflow$'
+erms28	db	bell,'?No filenames above specified starting name$'	;[34c]
+
+; Cursor addressing items (row,col)			;[19b],[30c] begin
+
+scrhdr	db	3,1		;Place for version header
+scrnp	db	5,22		;Place for number of packets.
+scrnrt	db	6,22		;Place for number of retries.
+scrfln	db	7,12		;Place for file name.
+screrr	db	13,1		;Place for error messages.
+scrst	db	5,53		;Place for "Complete".
+scrrpr	db	14,1		;Place for prompt.
+scrhi	db	7,53		;8th bit on in character.
+scrfr	db	8,1		;Rename file.			;[31]
+scrsp	db	9,1		;Send packet
+scrrp	db	11,1		;Receive
+scrint	db	6,53		;[19f] interrupt acknowledge
+scrhlp	db	24,1		;[19f] help line
+
+	; Impure storage
+
+extflg	db	0		;Exit flag;non zero to exit.
+ecoflg	db	defeco		;Echo flag; non zero for local echoing.
+escchr	db	defesc		;Escape character for the connect command.
+debug	db	diasw		;Are we in debug mode?
+tmrflg	db	deftmr		;Is the timer enabled?
+cpmdrv	db	0		;Initial drive and user		;[32a] begin
+cpmusr	db	0
+defdrv	db	0		;Current default drive and user
+defusr	db	0
+newdrv	db	0		;Storage for resetting drive and user
+newusr	db	0						;[32a] end
+
+
+	ESEG			;Extra segment.
+
+	INCLUDE C86CMD.A86	;Get the COMND routines.
+	INCLUDE C86FIL.A86	;Get the file routines.
+
+;Note, the following file does not exist.  You have to copy one of the system
+;dependent files like C86XRB.A86 to a file of this name.
+	INCLUDE C86XIBM.A86	;Get the I/O routines
+
+	INCLUDE C86PRO.A86	;Get the protocol routines.
+	INCLUDE C86TRM.A86	;Get terminal emulation [26]
+	INCLUDE C86UTL.A86	;Get the utility routines.
+
+	DSEG $			;Resume data segment.
+
+	DB	0		;Is this really necessary?
+				;No, but without it you need to specify
+				;link options to GENCMD so as to make the
+				;load address allow for uninitialized storage.
+				;This bypasses that necessity by including
+				;all uninitialized storage in the load
+				;module. - RonB
+
+	END
+
