@@ -457,56 +457,39 @@ shprt3:	call	tmsg
 
 
 ; ---------------------------------------------------------------------------
-; Screen control -- ANSI escape sequences (IBM PC with ANSI.SYS or compatible)
+; Screen control -- VT52 escape sequences
 
 ; poscur -- position cursor to row,col pointed to by DX (1 byte each)
+; VT52: ESC Y <row+31> <col+31>  (space = 0x20, so row 1 col 1 = ESC Y ! !)
 poscur:	mov	bx, dx
-	mov	cl, 10
-	mov	al, [bx]
-	sub	ah, ah
-	div	cl
-	add	ax, '00'
-	mov	word ptr anspos+2, ax
-	mov	al, 1[bx]
-	sub	ah, ah
-	div	cl
-	add	ax, '00'
-	mov	word ptr anspos+5, ax
-	mov	dx, offset anspos
+	mov	al, [bx]	; row (1-based)
+	add	al, 1fh		; add 31 (space-1)
+	mov	vt52pos+2, al
+	mov	al, 1[bx]	; col (1-based)
+	add	al, 1fh		; add 31 (space-1)
+	mov	vt52pos+3, al
+	mov	dx, offset vt52pos
 	call	tmsg
 	ret
 
 ; clrscr -- home cursor and clear screen
-clrscr:	mov	dx, offset anscls
+; VT52: ESC H (home) then ESC J (clear to end of screen)
+clrscr:	mov	dx, offset vt52cls
 	call	tmsg
 	ret
 
 ; clrlin -- clear from start of line to cursor (CR then clreol)
 clrlin:	mov	dl, cr
 	call	bout
-clreol:	mov	dx, offset ansclr
+clreol:	mov	dx, offset vt52clr
 	call	tmsg
 	ret
 
-; revon -- reverse video on
-revon:	mov	dx, offset ansron
-	call	tmsg
-	ret
-
-; revoff -- reverse video off
-revoff:	mov	dx, offset ansrof
-	call	tmsg
-	ret
-
-; bldon -- bold on
-bldon:	mov	dx, offset ansbon
-	call	tmsg
-	ret
-
-; bldoff -- bold off
-bldoff:	mov	dx, offset ansbof
-	call	tmsg
-	ret
+; revon/revoff/bldon/bldoff -- VT52 has no video attributes; no-ops
+revon:	ret
+revoff:	ret
+bldon:	ret
+bldoff:	ret
 
 ; dotab -- tab handling (pass through, let terminal handle it)
 dotab:	jmp	rskp
@@ -582,18 +565,17 @@ cm1st	db	'COM1',cr,lf,'$'
 cm2st	db	'COM2',cr,lf,'$'
 
 ; ---------------------------------------------------------------------------
-; ANSI screen control strings
+; VT52 screen control strings
 
 ; delstr -- displayed on DEL key: erase the echoed character
 delstr	db	' ',10O,10O,'$'
 
-anspos	db	esc,'[00;00H$'
-anscls	db	esc,'[H',esc,'[J$'
-ansclr	db	esc,'[K$'
-ansron	db	esc,'[7m$'
-ansrof	db	esc,'[m$'
-ansbon	db	esc,'[1m$'
-ansbof	db	esc,'[m$'
+; vt52pos: ESC Y <row> <col> -- bytes +2 and +3 are patched at runtime
+vt52pos	db	esc,'Y',020h,020h,'$'
+; vt52cls: ESC H (home) + ESC J (erase to end of screen)
+vt52cls	db	esc,'H',esc,'J$'
+; vt52clr: ESC K (erase to end of line)
+vt52clr	db	esc,'K$'
 
 ; ---------------------------------------------------------------------------
 ; System identification string
