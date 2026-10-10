@@ -1,6 +1,6 @@
-ASM86=cpm_asm86
+ASM86=cpm86_asm86
 ASM80=cpm_asm80
-GENCMD=cpm_gencmd
+GENCMD=cpm86_gencmd
 HEXCOM=hexcom
 XLT86=cpm_xlt86
 
