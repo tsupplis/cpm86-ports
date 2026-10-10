@@ -47,8 +47,10 @@ module is included as `C86XIBM.A86`.
 | `shobd`  | Display current baud rate |
 | `shoprt` | Display current port |
 
-### Screen control (ANSI)
+### Screen control (VT52)
 `poscur`, `clrscr`, `clrlin`, `clreol`, `revon`, `revoff`, `bldon`, `bldoff`, `dotab`
+
+VT52 sequences: cursor position (`ESC Y row col`), clear screen (`ESC H ESC J`), erase to EOL (`ESC K`). Reverse video and bold are no-ops (VT52 has no video attributes).
 
 ### Hardware
 - **UART:** 8250 on COM1 (`03F8h`) or COM2 (`02F8h`)

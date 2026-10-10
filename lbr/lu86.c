@@ -181,6 +181,7 @@ struct ludir {			/* Internal library ldir structure */
 int     errcnt, nfiles, nslots;
 int	endsec;			/* first free sector at the end of the library */
 bool	verbose = false;
+int	newslots = 0;		/* slots requested via -n option */
 char	*cmdname;
 
 char   *getname(), *sprintf(), *nopath(), *index(), *strcat(), *fgets();
@@ -223,34 +224,47 @@ char  **argv;
     filenames (argc, argv);
 
     for(flagp = argv[1]; *flagp; flagp++)
-	switch (isupper(*flagp) ? *flagp - 'A' + 'a' : *flagp) {
-	case '-':
-		break;
-	case 'u': 
-	case 'a':
-	    setfunc(update);
-	    break;
-	case 't': 
-	case 'l':
-	    setfunc(table);
-	    break;
-	case 'e': 
-	    setfunc(extract);
-	    break;
-	case 'p': 
-	    setfunc(print);
-	    break;
-	case 'd': 
-	    setfunc(delete);
-	    break;
-	case 'r': 
-	    setfunc(reorg);
-	    break;
-	case 'v':
-	    verbose = true;
-	    break;
-	default: 
-	    help ();
+ switch (isupper(*flagp) ? *flagp - 'A' + 'a' : *flagp) {
+ case '-':
+  break;
+ case 'n':
+     flagp++;
+     if (*flagp == '\0') {
+  fprintf(stderr, "Option -n requires a slot count (e.g. -n32)\n");
+  help();
+     }
+     newslots = atoi(flagp);
+     while (*(flagp+1)) flagp++;	/* consume rest of flag string */
+     if (newslots < 1 || newslots > MAXFILES) {
+  fprintf(stderr, "Slot count must be between 1 and %d\n", MAXFILES);
+  exit(1);
+     }
+     break;
+ case 'u':
+ case 'a':
+     setfunc(update);
+     break;
+ case 't':
+ case 'l':
+     setfunc(table);
+     break;
+ case 'e':
+     setfunc(extract);
+     break;
+ case 'p':
+     setfunc(print);
+     break;
+ case 'd':
+     setfunc(delete);
+     break;
+ case 'r':
+     setfunc(reorg);
+     break;
+ case 'v':
+     verbose = true;
+     break;
+ default:
+     help ();
     }
 
     if(function == NULL) {
@@ -263,7 +277,7 @@ char  **argv;
 
 /* print error message and exit */
 help () {
-    fprintf (stderr, "Usage: %s [-]{utepdr}[v] library[.LBR] [files] ...\n", cmdname);
+    fprintf (stderr, "Usage: %s [-]{utepdr}[n<slots>][v] library[.LBR] [files] ...\n", cmdname);
     fprintf (stderr, "Functions are:\n\tu - Update, add files to library (or a)\n");
     fprintf (stderr, "\tt - Table of contents (or l)\n");
     fprintf (stderr, "\te - Extract files from library\n");
@@ -271,7 +285,7 @@ help () {
     fprintf (stderr, "\td - Delete files in library\n");
     fprintf (stderr, "\tr - Reorginize library\n");
 
-    fprintf (stderr, "Flags are:\n\tv - Verbose\n");
+    fprintf (stderr, "Flags are:\n\tv - Verbose\n\tn<slots> - Number of slots for new library (required when creating)\n");
     fprintf (stderr, "Files may use the * and ? wildcards.\n");
     exit (1);
 }
@@ -427,25 +441,15 @@ FILE *f;
 {
     register int    i;
     int     numsecs;
-    char    line[80];
     static struct ludir blankentry = {
 	UNUSED,
 	"        ",
 	"   "
     };
 
-    for (;;) {
-	printf ("Number of slots to allocate: ");
-	if (fgets (line, 80, stdin) == NULL)
-	    error ("EOF when reading input");
-	nslots = atoi (line);
-	if (nslots < 1)
-	    printf ("Must have at least one!\n");
-	else if (nslots > MAXFILES)
-	    printf ("Too many slots\n");
-	else
-	    break;
-    }
+    if (newslots < 1)
+ error ("Number of slots not specified: use -n<count> on the command line");
+    nslots = newslots;
 
     numsecs = (nslots + 1 + SLOTS_SEC - 1) / SLOTS_SEC;	/* + directory */
     nslots = numsecs * SLOTS_SEC;

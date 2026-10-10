@@ -8,6 +8,7 @@
 ; Supports SET PORT COM1 / COM2 and SET BAUD 300..9600.
 ; Uses interrupt-driven receive into a circular ring buffer (same design
 ; as the Rainbow module).  Transmit is polled via the LSR THRE bit.
+; Screen control uses VT52 escape sequences (emu2 default terminal).
 ;
 ; 8250 register map (base = 03F8h for COM1, 02F8h for COM2):
 ;   base+0  THR (write) / RBR (read) / DLL (baud, DLAB=1)
