@@ -8,11 +8,38 @@ all:
 		$(MAKE) -C $$d $@; \
 	done
 
+# --------------------------------------------------------------------
+# Binary zip
+# --------------------------------------------------------------------
+
+dist: ports.zip
+
+ports.zip: all
+	mkdir -p tmp-dist
+	rm -f ports.zip
+	for d in $(SUBDIRS1); do \
+	    for i in $$d/*.cmd;do cp $$i tmp-dist;done; \
+	done
+	for d in $(SUBDIRS2); do \
+	    for i in $$d/*.cmd;do cp $$i tmp-dist;done; \
+	done
+	cp vtl2/*.vtl tmp-dist
+	cp tinybas/*.bas tmp-dist
+	cp sokoban/*.hlp tmp-dist
+	cp sokoban/*.dat tmp-dist
+	cp xlisp/*.lsp tmp-dist
+	cp ndbm/*.h tmp-dist
+	cp ndbm/*.lib tmp-dist
+	cp ratfor/*.r tmp-dist
+	(cd tmp-dist;zip -j ../ports.zip *)
+	rm -rf tmp-dist
+
+
 clean:
 	for d in $(SUBDIRS); do \
 		$(MAKE) -C $$d $@; \
 	done
-	rm -f tmp.img cpmtest1.img
+	rm -f tmp.img cpmtest1.img ports.zip
 
 test: cpmtest1.img cpmtest2.img
 	./cpm86 

@@ -4,6 +4,7 @@ rom
 **/*.lock
 **/*.lha
 **/*.zip
+tmp-dist
 **/.D*
 **/*.log
 **/*.cmd
