@@ -19,6 +19,7 @@ Further tools are available from companion projects:
 | general cli tools | copycon, mem, mode, tod, zpdump, rtc/at time, dump, conio demos | [CP/M-86 Hacking Tools](https://github.com/tsupplis/cpm86-hacking) |
 | vi editor | vi | [CP/M-86 VI](https://github.com/tsupplis/cpm86-vi) |
 | menus and submit orchestration | menu, msub | [CP/M-86 Menu](https://github.com/tsupplis/cpm86-menu) |
+| make build utility | make | [CP/M-86 Make](https://github.com/tsupplis/cpm86-make) |
 | microsoft basic | msbasic | [CP/M-86 MS-BASIC](https://github.com/tsupplis/cpm86-msbasic) |
 | vedit editor | vedit | [VEDIT Project](https://github.com/johnsonjh/VEDIT) |
 
@@ -137,5 +138,6 @@ The goal of this collection is to keep small classic programming tools usable in
 | [cpm86-ports](https://github.com/tsupplis/cpm86-ports)       | CP/M-86 application ports in C and assembler |
 | [cpm86-vi](https://github.com/tsupplis/cpm86-vi)             | STevie vi port for CP/M-86 and PC-DOS 1.1 |
 | [cpm86-msbasic](https://github.com/tsupplis/cpm86-msbasic)   | A recreaction of msbasic-86 for CP/M-86 and PC-DOS 1.1 from gwbasic sources |
-| [cpm86-menu](https://github.com/tsupplis/cpm86-menu)   | A submit replacement and a menu system for submit orchestration |
+| [cpm86-menu](https://github.com/tsupplis/cpm86-menu)   | A submit replacement and a menu system for submit orchestration for CP/M-86 1.1 |
+| [cpm86-make](https://github.com/tsupplis/cpm86-make)   | A simple submit based make tool for CP/M-86 1.1 |
 | [pcdos11-hacking](https://github.com/tsupplis/pcdos11-hacking) | PC-DOS 1.1 distribution, tools and notes |

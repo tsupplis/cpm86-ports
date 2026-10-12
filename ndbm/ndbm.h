@@ -1,3 +1,6 @@
+#ifndef NDBM_H
+#define NDBM_H
+
 /*
  * Copyright (c) 1983 Regents of the University of California.
  * All rights reserved.  The Berkeley software License Agreement
@@ -60,3 +63,5 @@ datum   dbm_nextkey();
 long    dbm_forder();
 int     dbm_delete();
 int     dbm_store();
+
+#endif
