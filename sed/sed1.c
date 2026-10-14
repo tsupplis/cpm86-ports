@@ -20,8 +20,8 @@ pageline()
 	if (!pflag || ++plines < PAGELEN)
 		return;
 	plines = 0;
-	conputs("-- Press a key to continue, ^C to quit --");
-	while ((c = bdos(6, 0xFF) & 0xFF) == 0)
+    conputs("[more]");
+	while ((c = bdos(6, 0xFF) & 0xFF) == 0 && c!='q' && c!='Q')
 		continue;
 	conputs("\r                                        \r");
 	if (c == 3)

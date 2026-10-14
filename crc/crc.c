@@ -113,6 +113,11 @@ static UNS_32_BITS crc_32_tab[] = { /* CRC polynomial 0xedb88320 */
 int pflag = 0;
 int oflag = 0;
 int plines = 0;
+int nflag = 0;
+unsigned long total_crc32 = 0xFFFFFFFF;
+long total_charcnt = 0;
+int files_processed = 0;
+char last_file_name[128];
 #define PAGELEN 23
 
 void conputs(s)
@@ -129,8 +134,8 @@ void pageline()
 	if (!pflag || ++plines < PAGELEN)
 		return;
 	plines = 0;
-	conputs("-- Press a key to continue, ^C to quit --");
-	while ((c = bdos(6, 0xFF) & 0xFF) == 0)
+	conputs("[more]");
+	while ((c = bdos(6, 0xFF) & 0xFF) == 0 && c!='q' && c!='Q')
 		continue;
 	conputs("\r                                        \r");
 	if (c == 3)
@@ -153,6 +158,9 @@ char **argp;
 		case 'p':
 			pflag = 1;
 			continue;
+		case 'n':
+			nflag = 1;
+			continue;
 		case 'o':
 			--argc;
 			++argp;
@@ -174,13 +182,29 @@ char **argp;
 	}
 
 	if (argc <= 0) {
-		fprintf(stderr, "usage: crc [-p] [-o outfile] file ...\n");
+		fprintf(stderr, "usage: crc [-pn] [-o outfile] file ...\n");
 		exit(1);
 	}
+
+	total_crc32 = 0xFFFFFFFF;
+	total_charcnt = 0;
+	files_processed = 0;
 
 	while (argc-- > 0) {
 		errors |= crc32file(*argp++);
 	}
+
+	if (!nflag && files_processed > 0) {
+		unsigned long final_crc = ~total_crc32;
+		if (files_processed == 1) {
+			printf("%08lX %7ld %s\n", final_crc, total_charcnt, last_file_name);
+		} else {
+			printf("%08lX %7ld total\n", final_crc, total_charcnt);
+		}
+		fflush(stdout);
+		pageline();
+	}
+
 	exit(errors != 0);
 }
 
@@ -194,7 +218,13 @@ char *name;
 	register c;
 	register long charcnt;
 
-	oldcrc32 = 0xFFFFFFFF; charcnt = 0;
+	if (nflag) {
+		oldcrc32 = 0xFFFFFFFF;
+	} else {
+		oldcrc32 = total_crc32;
+	}
+	charcnt = 0;
+
 #ifdef M_I86SM
 	if ((fin=fopen(name, "rb"))==NULL)
 #else
@@ -215,11 +245,26 @@ char *name;
 	}
 	fclose(fin);
 
-	crc32 = oldcrc32;  oldcrc = oldcrc32 = ~oldcrc32;
-
-	printf("%08lX %7ld %s\n", oldcrc, charcnt, name);
-	fflush(stdout);
-	pageline();
+	if (charcnt >= 0) {
+		files_processed++;
+		if (nflag) {
+			/* Individual file mode: print now */
+			crc32 = oldcrc32;  oldcrc = oldcrc32 = ~oldcrc32;
+			printf("%08lX %7ld %s\n", oldcrc, charcnt, name);
+			fflush(stdout);
+			pageline();
+		} else {
+			/* Cumulative mode: accumulate and print at the end */
+			total_crc32 = oldcrc32;
+			total_charcnt += charcnt;
+			{
+				int i;
+				for (i = 0; i < 127 && name[i]; i++)
+					last_file_name[i] = name[i];
+				last_file_name[i] = '\0';
+			}
+		}
+	}
 
 	return OK;
 }
