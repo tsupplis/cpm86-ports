@@ -47,6 +47,7 @@ Ancillary goals:
 | --- | --- | --- | --- |
 | banner | Print large-text banners | RetroBSD / Vadim Antonov, ported by Serge Vakulenko | Public domain |
 | dc | Arbitrary precision reverse Polish desk calculator | Plan 9 / Unix Research Edition dc | MIT |
+| crc | Calculate 32-bit CRC checksum of files | RetroBSD / Gary S. Brown | BSD 3-Clause |
 | diff | Compare two files line by line | RetroBSD / BSD Unix diff | BSD 3-Clause |
 | grep | Search a file for a pattern | RetroBSD / DiscoBSD, originally Berkeley grep | BSD 3-Clause |
 | sed | Stream editor | RetroBSD / BSD Unix sed | BSD 3-Clause |
@@ -59,6 +60,7 @@ Ancillary goals:
 | Project | What | From | License |
 | --- | --- | --- | --- |
 | disk7 | DISK7, a full-screen file manager, translated from CP/M-80 with XLT86 | Frank Gaudé | Non-commercial (© 1984) |
+| diskstat | DISKSTAT 1.2, display a disk drive's DPB, DPH and usage statistics (used / free blocks), translated from CP/M-80 with XLT86 | D. Powys-Lybbe, MML Systems (1983); 8086 conversion by John Elliott (2015) | Freeware / Abandonware |
 | filer | VFILER, a full-screen file manager | ZCPR2 VFILER by Rich Conn, CP/M-86 translation by H. M. Van Tassell | Public domain / Abandonware |
 | fv | FileView, view and amend a file in hex and ASCII | Stephen Hunt | Public domain |
 | lbr | LU library (.LBR) tools: luu creates and maintains libraries (add, list, extract, print, delete, reorganize), lbrdir lists a library, lbrtype types a member, delbr extracts all members | lu86 / Stephen C. Hemminger, Bill Bolton; lbrdir/lbrtype by Charlie Godet-Ceraolo; delbr by Jeff Martin | Public domain / Abandonware |

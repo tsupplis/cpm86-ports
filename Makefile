@@ -1,6 +1,7 @@
-SUBDIRS1=filer lbr fv seemem disk7 wash15 xsq uucp ratfor banner diff ndbm life kermit
+SUBDIRS1=filer lbr fv seemem disk7 wash15 xsq uucp ratfor banner diff ndbm life kermit \
+    crc
 
-SUBDIRS2=ansi2kr tinybas xlisp yacc vtl2 dc grep sed cpu edlin sokoban
+SUBDIRS2=ansi2kr tinybas xlisp yacc vtl2 dc grep sed cpu edlin sokoban diskstat
 
 SUBDIRS=$(SUBDIRS1) $(SUBDIRS2)
 all:
