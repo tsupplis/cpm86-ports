@@ -9,12 +9,12 @@
 ;	09/22/84 ADD INTERNAL REPARSE WHICH CPM-86 HASNT
 ;	09/18/84 CUT .CMD FILE SIZE FOR FASTER LOADING (WDE)
 ;	09/17/84 FLAG USAGE FIXED, MP/M FUNCTS REPLACED SO
-;	CAN BE RUN UNDER CP/M-86. WILL NOW RUN WM.CPM OK (WDE)
+;	CAN BE RUN UNDER CP/M-86. WILL NOW RUN WM.COM OK (WDE)
 ;
 ;	GENCMD Z80 EXTRA[MC00]
 ;
 ;	INVOCATION:
-;		Z80 filename<.typ>	(typ defaults to .CPM)
+;		Z80 filename<.typ>	(typ defaults to .COM)
 ;
 ;	**** 8080 OP CODES ARE ALLOWED ***
 ;	**** A FEW Z-80 INSTR. ARE SUPPORTED (NOT MANY) ****
@@ -219,7 +219,7 @@ LOAD_Z80:
 	CMP	AL,' '
 	JNE	TYPSET
 	MOV	FCBT1,'C'
-	MOV	FCBT2,'MP'
+	MOV	FCBT2,'MO'
 TYPSET:	
     MOV	CL,BDOS_OPENF
 	MOV	DX,OFFSET FCB
@@ -394,7 +394,7 @@ MSG_Z80_OP	DB	'Z80 op code detected, only 8080 allowed$'
 MSG_Z80		DB	'Z80:$'
 MSG_CR_LF	DB	CR,LF,'$'
 HLP_MSG	DB	'Syntax: Z80 cmd <parameters>',cr,lf
-	DB	'Where cmd is 8080 file (default .CPM)',cr,lf
+	DB	'Where cmd is 8080 file (default .COM)',cr,lf
 	DB	'and <parameters> are the normal arguments.',cr,lf,'$'
 ;	START OF HI RAM IMAGE
 BIOSIMG: 
