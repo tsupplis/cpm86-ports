@@ -76,6 +76,8 @@ Ancillary goals:
 | --- | --- | --- | --- |
 | life | Conway's Game of Life for VT52 terminals, 20×60 grid | Kevin Boone, May 2021 | Public domain |
 | sokoban | Sokoban puzzle game for VT52 terminals | CP/M-80 C sources | Freeware / Copyright |
+| trek | Star Trek, the classic 1970s text-mode strategy game: hunt down the Klingon fleet before the stardate deadline (C port of the BASIC original, built with Aztec C) | Classic Star Trek BASIC game | Public domain / Abandonware |
+
 
 ### Development tools and interpreters
 
