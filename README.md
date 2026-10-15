@@ -1,6 +1,6 @@
 # CP/M-86 Ports
 
-A small collection of classic software tools adapted or ported for CP/M-86. The repository contains language interpreters, compilers, conversion utilities, and other retro-computing experiments assembled for the CP/M environment. All are rebuilt some source, and cleansed, and tested and curated progressively. Please do not hesitate to raise issues.
+A small collection of classic software tools adapted or ported for CP/M-86 to make this crude CP/M 2.2 usable and keep history tracks of software produced or usable on this old OS. The repository contains language interpreters, compilers, conversion utilities, and other retro-computing experiments assembled for the CP/M environment. All are rebuilt some source, and cleansed, and tested and curated progressively. Here and there the code is corrected/adjusted in a minimal way to keep the original intent. Please do not hesitate to raise issues.
 
 In particular, those tools give a much more friendly user interaction with the old and crude CP/M-86 1.1 that is otherwise reminiscent of CP/M-80 2.2 which is its base.
 
