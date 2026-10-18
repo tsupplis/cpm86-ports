@@ -34,8 +34,15 @@ keydb.com: keydb.o ndbm.lib
 # --------------------------------------------------------------------
 # Test
 # --------------------------------------------------------------------
-test: keydb.cmd keydb.com
+testdb.cmd: testdb.o ndbm.lib
+	$(LD) -o $@ testdb.o ndbm.lib $(CPM_LDFLAGS)
+
+testdb.com: testdb.o ndbm.lib
+	$(LD) -o $@ testdb.o ndbm.lib $(DOS_LDFLAGS)
+
+test: keydb.cmd keydb.com testdb.cmd testdb.com
 	sh test.sh
+	python3 test-integrity.py
 
 clean:
 	rm -f *.o *.lib *.cmd *.com

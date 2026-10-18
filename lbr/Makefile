@@ -43,3 +43,8 @@ clean:
 	rm -rf *.xxd *.map *.o
 	rm -rf cpmtest?.img
 
+
+test: all
+	python3 test.py
+
+.PHONY: all test clean

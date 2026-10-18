@@ -24,3 +24,8 @@ clean:
 	$(RM) *.o *.h86 *.log *.sym *.prn *.lst *.obj *.cmd
 
 
+
+test: all
+	python3 test.py
+
+.PHONY: all test clean
