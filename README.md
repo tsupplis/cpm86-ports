@@ -45,8 +45,8 @@ Ancillary goals:
 
 | Project | What | From | License |
 | --- | --- | --- | --- |
-| banner | Print large-text banners | RetroBSD / Vadim Antonov, ported by Serge Vakulenko | Public domain |
-| crc | Calculate 32-bit CRC checksums | RetroBSD / Gary S. Brown | BSD 3-Clause |
+| [banner](banner/) | Print large-text banners | RetroBSD / Vadim Antonov, ported by Serge Vakulenko | Public domain |
+| [crc](crc/README.md) | Calculate 32-bit CRC checksums | RetroBSD / Gary S. Brown | BSD 3-Clause |
 | [dc](dc/README.md) | Arbitrary precision reverse Polish calculator | Plan 9 / Unix Research Edition | MIT |
 | [diff](diff/README.md) | Compare two files line by line | RetroBSD / BSD Unix | BSD 3-Clause |
 | [grep](grep/README.md) | Search text files for regular-expression matches | RetroBSD / DiscoBSD / Berkeley grep | BSD 3-Clause |
@@ -54,57 +54,57 @@ Ancillary goals:
 | [sort](sort/README.md) | Sort lines, merge sorted files, or check order | BSD Unix / DiscoBSD | BSD 3-Clause |
 | [tr](tr/README.md) | Translate, delete, or squeeze characters | BSD Unix / DiscoBSD | BSD 3-Clause |
 | [uniq](uniq/README.md) | Filter or count adjacent duplicate lines | BSD Unix / DiscoBSD | BSD 3-Clause |
-| uudecode | Decode a uuencoded file | BSD Unix uudecode | BSD 3-Clause |
-| uuencode | Encode a binary file for mail transfer | BSD Unix uuencode | BSD 3-Clause |
+| [uudecode](uucp/) | Decode a uuencoded file | BSD Unix uudecode | BSD 3-Clause |
+| [uuencode](uucp/) | Encode a binary file for mail transfer | BSD Unix uuencode | BSD 3-Clause |
 
 
 ### CP/M-80 culture
 
 | Project | What | From | License |
 | --- | --- | --- | --- |
-| disk7 | DISK7, a full-screen file manager, translated from CP/M-80 with XLT86 | Frank Gaudé | Non-commercial (© 1984) |
-| diskstat | DISKSTAT 1.2, display a disk drive's DPB, DPH and usage statistics (used / free blocks), translated from CP/M-80 with XLT86 | D. Powys-Lybbe, MML Systems (1983); 8086 conversion by John Elliott (2015) | Freeware / Abandonware |
-| filer | VFILER, a full-screen file manager | ZCPR2 VFILER by Rich Conn, CP/M-86 translation by H. M. Van Tassell | Public domain / Abandonware |
-| fv | FileView, view and amend a file in hex and ASCII | Stephen Hunt | Public domain |
-| lbr | LU library (.LBR) tools: luu creates and maintains libraries (add, list, extract, print, delete, reorganize), lbrdir lists a library, lbrtype types a member, delbr extracts all members | lu86 / Stephen C. Hemminger, Bill Bolton; lbrdir/lbrtype by Charlie Godet-Ceraolo; delbr by Jeff Martin | Public domain / Abandonware |
-| seemem | Full-screen memory browser for CP/M-86 on the IBM PC | Frank Kotler and Kirk Lawrence | Freeware / Public domain |
-| wash15 | WASH, a directory maintenance utility, translated from CP/M-80 with XLT86 | Michael J. Karas, Simon J. Ewins | Public domain, non-commercial |
-| xsq | xsq, xusq and xtype: squeeze, unsqueeze and type squeezed (.?Q?) files | Richard Greenlaw, with Dick Greenlaw, Chuck Forsberg and W. Earnest | Public domain / Abandonware |
-| kermit (WIP) | Kermit-86 v2.9 file transfer, IBM PC/XT port (COM1/COM2, 8250 UART, interrupt-driven) | Columbia University Kermit-86 v2.9 | Public domain |
+| [disk7](disk7/README.md) | DISK7, a full-screen file manager, translated from CP/M-80 with XLT86 | Frank Gaudé | Non-commercial (© 1984) |
+| [diskstat](diskstat/README.md) | DISKSTAT 1.2, display a disk drive's DPB, DPH and usage statistics (used / free blocks), translated from CP/M-80 with XLT86 | D. Powys-Lybbe, MML Systems (1983); 8086 conversion by John Elliott (2015) | Freeware / Abandonware |
+| [filer](filer/README.md) | VFILER, a full-screen file manager | ZCPR2 VFILER by Rich Conn, CP/M-86 translation by H. M. Van Tassell | Public domain / Abandonware |
+| [fv](fv/README.md) | FileView, view and amend a file in hex and ASCII | Stephen Hunt | Public domain |
+| [lbr](lbr/) | LU library (.LBR) tools: lu86 manages libraries; lbrdir lists members, lbrtype displays them, and delbr extracts them | lu86 / Stephen C. Hemminger, Bill Bolton; lbrdir/lbrtype by Charlie Godet-Ceraolo; delbr by Jeff Martin | Public domain / Abandonware |
+| [seemem](seemem/README.md) | Full-screen memory browser for CP/M-86 on the IBM PC | Frank Kotler and Kirk Lawrence | Freeware / Public domain |
+| [wash15](wash15/README.md) | WASH, a directory maintenance utility, translated from CP/M-80 with XLT86 | Michael J. Karas, Simon J. Ewins | Public domain, non-commercial |
+| [xsq](xsq/README.md) | sq, usq and sqtype: squeeze, unsqueeze and display squeezed (.?Q?) files | Richard Greenlaw, with Dick Greenlaw, Chuck Forsberg and W. Earnest | Public domain / Abandonware |
+| [kermit](kermit/README.md) (WIP) | Kermit-86 v2.9 file transfer, IBM PC/XT port (COM1/COM2, 8250 UART, interrupt-driven) | Columbia University Kermit-86 v2.9 | Public domain |
 
 
 ### Games
 
 | Project | What | From | License |
 | --- | --- | --- | --- |
-| life | Conway's Game of Life for VT52 terminals, 20×60 grid | Kevin Boone, May 2021 | Public domain |
-| sokoban | Sokoban puzzle game for VT52 terminals | CP/M-80 C sources | Freeware / Copyright |
-| trek | Star Trek, the classic 1970s text-mode strategy game: hunt down the Klingon fleet before the stardate deadline (C port of the BASIC original, built with Aztec C) | Classic Star Trek BASIC game | Public domain / Abandonware |
+| [life](life/README.md) | Conway's Game of Life for VT52 terminals, 20×60 grid | Kevin Boone, May 2021 | Public domain |
+| [sokoban](sokoban/README.md) | Sokoban puzzle game for VT52 terminals | CP/M-80 C sources | Freeware / Copyright |
+| [trek](trek/README.md) | Star Trek, the classic 1970s text-mode strategy game: hunt down the Klingon fleet before the stardate deadline (C port of the BASIC original) | Classic Star Trek BASIC game | Public domain / Abandonware |
 
 
 ### Development tools and interpreters
 
 | Project | What | From | License | Notes |
 | --- | --- | --- | --- | --- |
-| ansi2kr | ANSI C to K&R C converter for BDS C and MSX-C | masakioba / upstream ansi2kr sources | BSD 2-Clause | Used by [cpm86-crossdev](https://github.com/tsupplis/cpm86-crossdev) |
-| cpu | CPU tools: 80x86 (8080-to-8086 source translator), vcpm (V20 hardware 8080 emulator), z80 (software 8080 emulator) and cpuid (processor detection) | Harold V. McIntosh; Stephen Hunt; Pat Hester and Bill Earnest; Richard C. Leinecker and Kirk Lawrence | Mixed / Freeware | |
-| ratfor | RATFOR v1.05 preprocessor — translates structured Fortran to standard Fortran 77; use `-u` for DR Fortran-77 compatible upper-case output | Brian Gaeke / oz (UofA), compiled with z88dk | Public domain | Used by [cpm86-crossdev](https://github.com/tsupplis/cpm86-crossdev) |
-| tinybas | Tiny BASIC interpreter | Classic Tiny BASIC sources | Public domain / Abandonware | |
-| xlisp | Lisp interpreter and runtime | David Betz | Public domain / Abandonware | |
-| yacc | YACC-compatible parser generator | RetroBSD / original yacc sources | BSD-style | |
+| [ansi2kr](ansi2kr/README.md) | ANSI C to K&R C converter for BDS C and MSX-C | masakioba / upstream ansi2kr sources | BSD 2-Clause | Used by [cpm86-crossdev](https://github.com/tsupplis/cpm86-crossdev) |
+| [cpu](cpu/README.md) | CPU tools: 80x86 (8080-to-8086 source translator), vcpm (V20 hardware 8080 emulator), z80 (software 8080 emulator) and cpuid (processor detection) | Harold V. McIntosh; Stephen Hunt; Pat Hester and Bill Earnest; Richard C. Leinecker and Kirk Lawrence | Mixed / Freeware | |
+| [ratfor](ratfor/README.md) | RATFOR v1.05 preprocessor — translates structured Fortran to standard Fortran 77; use `-u` for DR Fortran-77 compatible upper-case output | Brian Gaeke / UofA Ratfor C sources | Public domain | Used by [cpm86-crossdev](https://github.com/tsupplis/cpm86-crossdev) |
+| [tinybas](tinybas/README.md) | Tiny BASIC interpreter | Classic Tiny BASIC sources | Public domain / Abandonware | |
+| [xlisp](xlisp/) | Lisp interpreter and runtime | David Betz | Public domain / Abandonware | |
+| [yacc](yacc/) | YACC-compatible parser generator | RetroBSD / original yacc sources | BSD-style | |
 
 ### Libraries
 
 | Project | What | From | License |
 | --- | --- | --- | --- |
-| ndbm | Hashed key/value database library (ndbm) with `keydb` CLI tool (add, get, del, list) | 2.11BSD ndbm by UC Berkeley | BSD |
+| [ndbm](ndbm/) | Hashed key/value database library (ndbm) with `keydb` CLI tool (add, get, del, list) | 2.11BSD ndbm by UC Berkeley | BSD |
 
 ### Archeology
 
 | Project | What | From | License |
 | --- | --- | --- | --- |
-| edlin | Edlin line editor port from PC DOS 1.1 | Microsoft sources | MIT |
-| vtl2 | VTL-2 interpreter; regression test for the XLT86 CP/M-80→86 translator | MITS VTL-2 source, adapted for CP/M | Public domain / Abandonware |
+| [edlin](edlin/README.md) | Edlin line editor port from PC DOS 1.1 | Microsoft sources | MIT |
+| [vtl2](vtl2/README.md) | VTL-2 interpreter; regression test for the XLT86 CP/M-80→86 translator | MITS VTL-2 source, adapted for CP/M | Public domain / Abandonware |
 
 ## Build notes
 
