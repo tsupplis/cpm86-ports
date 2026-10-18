@@ -43,7 +43,7 @@ want() {
 		else
 			input=/dev/null
 		fi
-		out=$(timeout $TIMEOUT $(emulator_for $target) "$script" \
+		out=$(timeout -k 1 $TIMEOUT $(emulator_for $target) "$script" \
 			< $input 2>&1 | tr -d '\r')
 		ok=yes
 		for pattern in "$@"; do
@@ -57,7 +57,7 @@ want() {
 # reject <script> <pattern>    the pattern must not appear
 reject() {
 	for target in com cmd; do
-		out=$(timeout $TIMEOUT $(emulator_for $target) "$1" \
+		out=$(timeout -k 1 $TIMEOUT $(emulator_for $target) "$1" \
 			< /dev/null 2>&1 | tr -d '\r')
 		ok=yes
 		printf '%s\n' "$out" | grep -qF "$2" && ok=no
@@ -93,7 +93,7 @@ want rubout.tmp '5'
 # No argument means interactive, so the OK prompt must still appear.
 echo "== prompt =="
 for target in com cmd; do
-	out=$(timeout $TIMEOUT $(emulator_for $target) < /dev/null 2>&1 |
+	out=$(timeout -k 1 $TIMEOUT $(emulator_for $target) < /dev/null 2>&1 |
 		head -c 40 | tr -d '\r')
 	ok=yes
 	printf '%s\n' "$out" | grep -qF 'OK' || ok=no
@@ -103,7 +103,7 @@ done
 # A loaded script suppresses that prompt before its own output.
 echo "== no prompt before script output =="
 for target in com cmd; do
-	out=$(timeout $TIMEOUT $(emulator_for $target) ex0.vtl < /dev/null 2>&1 |
+	out=$(timeout -k 1 $TIMEOUT $(emulator_for $target) ex0.vtl < /dev/null 2>&1 |
 		tr -d '\r')
 	ok=yes
 	[ "$(printf '%s\n' "$out" | sed -n '1p')" = 'VTL2 Interpreter 1.0' ] || ok=no

@@ -47,7 +47,7 @@ pass "ratfor.cmd preprocesses fib.r to fib.f77"
 echo "== fortran compilation =="
 
 # Step 2: compile fib.f77 -> fib.obj
-drfcpm_fc fib.f77 > out.tmp 2>&1
+timeout $TIMEOUT drfcpm_fc fib.f77 > out.tmp 2>&1
 if [ ! -f fib.obj ]; then
 	echo "FAIL  drfcpm_fc produced no fib.obj"
 	cat out.tmp
@@ -56,7 +56,7 @@ fi
 pass "drfcpm_fc compiles fib.f77"
 
 # Step 3: link fib.obj -> fib.cmd
-drfcpm_link 'fib.cmd=fib' > out.tmp 2>&1
+timeout $TIMEOUT drfcpm_link 'fib.cmd=fib' > out.tmp 2>&1
 if [ ! -f fib.cmd ]; then
 	echo "FAIL  drfcpm_link produced no fib.cmd"
 	cat out.tmp

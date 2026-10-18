@@ -25,7 +25,13 @@ def stop_suite(proc):
         proc.wait()
 
 
+def interrupted(signum, frame):
+    raise KeyboardInterrupt
+
+
 def main():
+    signal.signal(signal.SIGTERM, interrupted)
+    signal.signal(signal.SIGHUP, interrupted)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--make', default='make', help='make executable')
     parser.add_argument('projects', nargs='+', help='subprojects with automated tests')
