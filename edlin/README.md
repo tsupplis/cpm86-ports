@@ -35,6 +35,7 @@ under the `cpm86` emulator from
 
 ```
 make clean && make
+make test
 ```
 
 ```
@@ -43,6 +44,9 @@ pcdev_link    edlin.obj         -> edlin.exe   ("no stack segment" warning is ex
 pcdev_exe2bin edlin.exe         -> edlin.bin
 bin2cmd -m 10000 edlin.bin      -> edlin.cmd
 ```
+
+`make test` checks insertion, backup creation, and saving across multiple buffer
+loads, plus simulated smaller allocations. It uses emu2 without PCE.
 
 `cmdinfo edlin.cmd` must show `MAX(64.0k=65536)` for the code group (see
 [Memory size](#6-memory-size-psp06h-means-nothing)).
@@ -274,12 +278,11 @@ and edlin sizes its text buffer from it. The CP/M-86 base page has a group
 length at 06h (a 24 bit value, part of the group descriptors at 00h-11h),
 which is not a free-memory count.
 
-The port books the whole 64 KB group in the CMD header (`bin2cmd -m 10000`
-sets the code group `MAX` to 64 KB) and uses a constant:
-
-```asm
-seg_max         equ     0FFFFh          ; last usable address
-```
+The CMD header requests up to 64 KB (`bin2cmd -m 10000`). At startup,
+the editor reads the actual 24-bit allocation size from base-page offsets
+00h-02h and sets the last usable buffer address from it. Smaller allocations
+therefore give a smaller text buffer. Allocations without room for the work
+area and at least 1 KB of text are rejected before any file is changed.
 
 ### 7. FCBs: same offsets, different meaning past byte 11
 
@@ -339,12 +342,12 @@ handlers (`break_cmd`, `break_ins`) are left in place but are never reached.
 
 | Routine | Change |
 |---|---|
-| equates | `bdos_*` function numbers; `seg_max`; `stack_size` 256; work area grows by `rd_pos`, `wr_cnt`, `rd_buf`, `wr_buf` |
+| equates | `bdos_*` function numbers; `stack_size` 256; work area grows by `rd_pos`, `wr_cnt`, `rd_buf`, `wr_buf` |
 | `bdos` macro | new: `int 0E0h`, then DS = ES = CS |
-| `_start` | DS, ES, SS = CS; SP = `stack_top` |
+| `_start` | DS, ES, SS = CS; SP = `stack_top`; read and validate actual allocation |
 | `init` | set DMA segment; clear AL for the drive test |
 | `create_tmp` | zero FCB 2 bytes 12-35; reload DX for `create` |
-| `init_buf` | no record size; `rd_pos` / `wr_cnt` reset; `seg_max`; `blk_read`; ^Z handling |
+| `init_buf` | no record size; `rd_pos` / `wr_cnt` reset; `blk_read`; ^Z handling |
 | `command`, `insert_cmd` | `int 23h` installs removed; registers saved around buffered input |
 | `append_cmd` | `blk_read`; rewind on `rd_pos` |
 | `write_recs` | `blk_write`; reload DX for `close` on disk full |
@@ -366,11 +369,8 @@ handlers (`break_cmd`, `break_ins`) are left in place but are never reached.
   it.
 - **^C reboots.** The temporary `name.$$$` is left behind and unsaved edits
   are lost. Leave with `E` or `Q`.
-- **64 KB is assumed.** `seg_max` takes the whole 64 KB group booked in the
-  CMD header for granted. On a system with less free memory than that, the
-  loader can grant less than `MAX` (the minimum is the 3 KB image) and the
-  text buffer would run past the end of the allocation. A sturdier version
-  would take the real group length from base page 00h-02h.
+- **Memory allocation.** The text buffer uses the actual allocation, up to
+  64 KB. Very small allocations exit with "Insufficient memory".
 - **Files larger than memory** work as on DOS, with `W` and `A`; `E` copies
   the rest of the input file through memory.
 - **Output size.** The saved file always ends with a ^Z and is padded to a

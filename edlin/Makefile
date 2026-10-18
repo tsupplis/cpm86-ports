@@ -27,6 +27,9 @@ edlin.obj: edlin.asm
 	$(MASM) $(basename $@),$(basename $@)\;
 	[ -f $@ ]
 
+test: all
+	python3 test.py
+
 run: edlin.cmd
 	emu2 $< $(FILE)
 
@@ -37,4 +40,4 @@ clean:
 final-test: all
 	$(MAKE) -C .. final-test
 
-.PHONY: all clean run final-test
+.PHONY: all clean test run final-test

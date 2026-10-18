@@ -108,8 +108,8 @@ fcb_fname_words equ     6               ; Drive + name + extension: 12 bytes
 ; ---------------------------------------------------------------------------
 ; CPM86 PORT: psp_memsize (PSP:06h) is NOT available memory under CP/M-86;
 ; CP/M-86 stores the code group length there, not the TPA ceiling.
-; Use seg_max (compile-time equate) + CMD header -m 10000 instead.
-;psp_memsize     equ     06h             ; NOT USED under CP/M-86 -- see seg_max
+; Use the actual code-group allocation at base-page 00h-02h instead.
+;psp_memsize     equ     06h             ; NOT USED under CP/M-86
 fcb1            equ     5Ch             ; Default FCB 1 (file named on the command line)
 fcb1_name       equ     fcb1 + 1        ; File name (8 chars, space padded)
 fcb1_ext        equ     fcb1 + 9        ; Extension (3 chars)
@@ -144,7 +144,6 @@ bdos_wrrand     equ     22h             ; F_WRITERAND: write 1 record at FCB ran
 ; ---------------------------------------------------------------------------
 ; Limits and special values
 ; ---------------------------------------------------------------------------
-seg_max         equ     0FFFFh          ; Full 64 KB segment -- booked in CMD header via -m 10000
 last_line       equ     0FFFEh          ; Line number returned for "#"
 all_lines       equ     0FFFFh          ; "Every line" count
 numlim          equ     1999h           ; 6553 = 65535 / 10: next digit would overflow
@@ -165,6 +164,26 @@ _start:
                 mov     ax, cs
                 mov     ds, ax
                 mov     es, ax
+                ; CPM86 PORT: base-page 00h holds the allocated byte count
+                ; (24 bits). Clamp a full or larger group to offset FFFFh.
+                mov     ax, 0FFFFh
+                cmp     byte ptr ds:[2], 0
+                jne     short memory_ready
+                mov     ax, word ptr ds:[0]
+                cmp     ax, offset buf_start + 1024
+                jae     short memory_sized
+                ; No work-area writes or file changes on this path.
+                mov     dx, offset memful
+                mov     cl, bdos_print
+                bdos
+                xor     cx, cx
+                xor     dx, dx
+                bdos
+memory_sized:
+                dec     ax                      ; Byte count -> last usable offset
+memory_ready:
+                mov     word ptr ds:[mem_top], ax
+                mov     ax, cs
                 mov     ss, ax                  ; CPM86 PORT: SS:SP may be the CCP stack
                 mov     sp, offset stack_top    ; on entry; move to ours before any BDOS call
                 jmp     short init
@@ -262,9 +281,8 @@ init_buf:
                 mov     word ptr ds:[fcb2_rr + 2], ax
                 mov     word ptr ds:[wr_cnt], ax ; CPM86 PORT: write record buffer empty
                 mov     di, offset buf_start    ; CPM86 PORT: no DTA, blk_read takes DI
-                ; CPM86 PORT ST3: use seg_max (compile-time 64 KB) instead of psp_memsize
-                mov     cx, seg_max             ; Full 64 KB segment booked in CMD header
-                mov     word ptr ds:[mem_top], cx ; Last usable address of the buffer
+                ; CPM86 PORT: use the actual group allocation instead of DOS PSP:06h
+                mov     cx, word ptr ds:[mem_top] ; Actual allocation, sized at entry
                 test    byte ptr ds:[newfile_flg], 0FFh
                 jnz     short init_vars         ; New file: nothing to read
                 sub     cx, offset buf_start    ; Buffer capacity in bytes

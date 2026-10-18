@@ -13,7 +13,7 @@ all:
 
 # Only projects with runnable automated suites or build checks belong here.
 # Interactive PCE sessions are reserved for final-test.
-TEST_SUBDIRS=$(filter lbr xsq uucp dc grep sed diff ndbm tr uniq sort tinybas xlisp vtl2 ratfor sokoban,$(SUBDIRS))
+TEST_SUBDIRS=$(filter edlin lbr xsq uucp dc grep sed diff ndbm tr uniq sort tinybas xlisp vtl2 ratfor sokoban,$(SUBDIRS))
 
 test:
 	python3 tools/run-tests.py --make "$(MAKE)" $(TEST_SUBDIRS)
