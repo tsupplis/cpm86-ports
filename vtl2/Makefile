@@ -28,7 +28,7 @@ vtl2.a86: vtl2.asm
 		$(basename $<).a86 > $(basename $<).a86.tmp
 	mv $(basename $<).a86.tmp $(basename $<).a86
 
-test:
+test: all
 	sh test.sh
 
 clean:

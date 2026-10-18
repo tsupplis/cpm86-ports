@@ -33,10 +33,8 @@ run: edlin.cmd
 clean:
 	rm -rf *.h86 *.lst *.sys *.cmd *.hex *.sym *.log *.bin *.exe *.com
 
-cpmtest.img: binaries
-	cpmrm -f ibmpc-514ss cpmtest.img 0:*.*
-	cpmcp -f ibmpc-514ss cpmtest.img $(BINARIES) 0:
-	cpmls -F -f ibmpc-514ss cpmtest.img 0:*.*
+# Use the repository's configured PCE images and launcher for manual checks.
+final-test: all
+	$(MAKE) -C .. final-test
 
-test: cpmtest.img
-	./cpm86
+.PHONY: all clean run final-test

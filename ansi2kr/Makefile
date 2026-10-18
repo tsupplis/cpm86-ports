@@ -33,13 +33,13 @@ clean:
 	$(RM) cpmtest.img
 
 cpmtest.img: binaries Makefile orig.c
-	(cd pce;make binaries)
 	cp cpmbase.img cpmtest.img
 	cpmcp -f ibmpc-514ss cpmtest.img $(BINARIES) 0:
 	cpmcp -f ibmpc-514ss cpmtest.img orig.c 0:
 	cpmls -F -f ibmpc-514ss cpmtest.img 0:*.*
 
-test: cpmtest
-
-cpmtest: cpmtest.img
+# Interactive PCE validation; excluded from automated make test.
+final-test: cpmtest.img
 	@./cpm86
+
+.PHONY: all binaries clean final-test
