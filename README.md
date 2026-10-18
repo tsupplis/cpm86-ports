@@ -112,10 +112,16 @@ The root Makefile builds the subprojects in order:
 
 ```sh
 make
+make test        # available automated suites and build checks; no PCE
+make final-test  # manual PCE session with the assembled disk images
 make clean
 ```
 
 Each subdirectory typically contains its own Makefile and CP/M or DOS build artifacts.
+`make test` runs the projects listed in `TEST_SUBDIRS`, reports every failed suite,
+and returns failure if any fail. Projects without runnable suites are excluded.
+Suites run without a controlling terminal so emulators cannot alter the console.
+PCE sessions in `ansi2kr` and `edlin` are available only through `final-test`.
 
 ## Cross-development environment
 

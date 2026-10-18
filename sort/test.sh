@@ -12,7 +12,7 @@ def check(args, data, expected=None, output=False, diagnostic=None, extra=None):
             (wd/'IN.TXT').write_text(data)
             for name, contents in (extra or {}).items(): (wd/name).write_text(contents)
             p = subprocess.run(['emu2', str(root/(root.name+'.'+ext)), *args],
-                               cwd=wd, capture_output=True, timeout=20)
+                               cwd=wd, stdin=subprocess.DEVNULL, start_new_session=True, capture_output=True, timeout=20)
             text = p.stdout.decode('latin1').replace('\r', '')
             if diagnostic:
                 assert diagnostic in text + p.stderr.decode('latin1'), (ext,args,text,p.stderr)
@@ -80,7 +80,7 @@ for ext in ('cmd','com'):
                 wd=pathlib.Path(folder)
                 (wd/'IN.TXT').write_bytes(data)
                 args=(['-M'] if merge else [])+['-O','OUT.TXT','IN.TXT']
-                p=subprocess.run(['emu2',str(root/('sort.'+ext)),*args],cwd=wd,capture_output=True,timeout=20)
+                p=subprocess.run(['emu2',str(root/('sort.'+ext)),*args],cwd=wd,stdin=subprocess.DEVNULL,start_new_session=True,capture_output=True,timeout=20)
                 assert p.returncode == 0, (ext,args,p.stderr)
                 raw=(wd/'OUT.TXT').read_bytes()
                 if ext == 'cmd':
@@ -98,7 +98,7 @@ for ext in ('cmd','com'):
             original=b'a\r\nb\r\n'
             (wd/'IN.TXT').write_bytes(original)
             (wd/'OUT.TXT').write_bytes(b'keep me')
-            p=subprocess.run(['emu2',str(root/('sort.'+ext)),'-C','-O',output,'IN.TXT'],cwd=wd,capture_output=True,timeout=20)
+            p=subprocess.run(['emu2',str(root/('sort.'+ext)),'-C','-O',output,'IN.TXT'],cwd=wd,stdin=subprocess.DEVNULL,start_new_session=True,capture_output=True,timeout=20)
             assert p.returncode == 0, (ext,output,p.stderr)
             assert (wd/'IN.TXT').read_bytes() == original
             assert (wd/'OUT.TXT').read_bytes() == b'keep me'

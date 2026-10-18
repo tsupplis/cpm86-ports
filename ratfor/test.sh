@@ -71,16 +71,16 @@ timeout $TIMEOUT emu2 fib.cmd > out.tmp 2>/dev/null < /dev/null
 got=$(tr -d '\r' < out.tmp)
 
 expected="
-FIB( 1) =      0
-FIB( 2) =      1
-FIB( 3) =      1
-FIB( 4) =      2
-FIB( 5) =      3
-FIB( 6) =      5
-FIB( 7) =      8
-FIB( 8) =     13
-FIB( 9) =     21
-FIB(10) =     34"
+fib( 1) =      0
+fib( 2) =      1
+fib( 3) =      1
+fib( 4) =      2
+fib( 5) =      3
+fib( 6) =      5
+fib( 7) =      8
+fib( 8) =     13
+fib( 9) =     21
+fib(10) =     34"
 
 if [ "$got" = "$expected" ]; then
 	pass "fib.cmd produces correct fibonacci sequence"

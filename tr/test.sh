@@ -12,7 +12,7 @@ def check(args, data, expected=None, output=False, diagnostic=None, extra=None):
             (wd/'IN.TXT').write_text(data)
             for name, contents in (extra or {}).items(): (wd/name).write_text(contents)
             p = subprocess.run(['emu2', str(root/(root.name+'.'+ext)), *args],
-                               cwd=wd, capture_output=True, timeout=20)
+                               cwd=wd, stdin=subprocess.DEVNULL, start_new_session=True, capture_output=True, timeout=20)
             text = p.stdout.decode('latin1').replace('\r', '')
             if diagnostic:
                 assert diagnostic in text + p.stderr.decode('latin1'), (ext,args,text,p.stderr)
@@ -51,7 +51,7 @@ for ext in ('cmd', 'com'):
             (wd/'IN.TXT').write_bytes(data)
             args = EOL_ARGS
             p = subprocess.run(['emu2', str(root/(root.name+'.'+ext)), *args],
-                               cwd=wd, capture_output=True, timeout=20)
+                               cwd=wd, stdin=subprocess.DEVNULL, start_new_session=True, capture_output=True, timeout=20)
             raw = (wd/'OUT.TXT').read_bytes()
             assert p.returncode == 0, (ext, p.stderr)
             if ext == 'cmd':

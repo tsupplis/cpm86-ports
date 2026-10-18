@@ -16,13 +16,7 @@ all:
 TEST_SUBDIRS=$(filter uucp dc grep sed diff ndbm tr uniq sort tinybas vtl2 ratfor sokoban,$(SUBDIRS))
 
 test:
-	@failed=; \
-	for d in $(TEST_SUBDIRS); do \
-		if ! $(MAKE) -C $$d test; then failed="$$failed $$d"; fi; \
-	done; \
-	if test -n "$$failed"; then \
-		echo "Failed test projects:$$failed" >&2; exit 1; \
-	fi
+	python3 tools/run-tests.py --make "$(MAKE)" $(TEST_SUBDIRS)
 
 # --------------------------------------------------------------------
 # Binary zip

@@ -29,7 +29,8 @@ def check_tool(tool):
             for name, data in files.items():
                 (wd/name).write_bytes(data)
             proc = subprocess.run(['emu2', str(root/(tool+'.'+ext)), *args],
-                                  cwd=wd, capture_output=True, timeout=10)
+                                  cwd=wd, stdin=subprocess.DEVNULL, start_new_session=True,
+                                  capture_output=True, timeout=10)
             if ext == 'com':
                 assert proc.returncode == status, (tool, ext, args, proc.returncode, proc.stdout, proc.stderr)
             raw = (wd/'OUT.TXT').read_bytes()
@@ -132,8 +133,12 @@ def check_tool(tool):
                     assert marker and before.count(b'\n')==23, (tool,ext,flags,captured)
                     checks+=1
                 finally:
-                    if proc.poll() is None: proc.kill()
-                    proc.communicate(timeout=2)
+                    if proc.poll() is None: proc.terminate()
+                    try:
+                        proc.communicate(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.communicate()
     print('%s: %d consistency checks passed' % (tool,checks))
 
     return checks
