@@ -11,6 +11,11 @@ all:
 		$(MAKE) -C $$d $@; \
 	done
 
+test:
+	for d in $(SUBDIRS); do \
+		$(MAKE) -C $$d $@; \
+	done
+
 # --------------------------------------------------------------------
 # Binary zip
 # --------------------------------------------------------------------
@@ -47,7 +52,7 @@ clean:
 	done
 	rm -f tmp.img cpmtest1.img ports.zip
 
-test: cpmtest1.img cpmtest2.img cpmtest3.img
+final-test: cpmtest1.img cpmtest2.img cpmtest3.img
 	./cpm86 
 
 cpmtest1.img:  all

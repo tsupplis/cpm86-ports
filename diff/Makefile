@@ -24,6 +24,7 @@ diff.cmd: $(OBJS)
 
 test: binaries
 	sh test.sh
+	python3 ../tools/test-consistency.py diff
 
 clean:
 	rm -rf *.o *.cmd *.com

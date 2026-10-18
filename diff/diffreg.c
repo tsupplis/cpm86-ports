@@ -68,6 +68,11 @@
 
 #define	prints(s)	fputs(s,stdout)
 
+static int textend[MAXSTREAM], partial[MAXSTREAM];
+static FILE *textopen();
+static int textgetc();
+static void textseek();
+
 FILE	*input[2];
 
 struct cand {
@@ -163,11 +168,11 @@ diffreg()
 	char buf1[BUFSIZ], buf2[BUFSIZ];
 
 	chrtran = (iflag ? cup2low : clow2low);
-	if ((f1 = fopen(file1, "r")) == NULL) {
+	if ((f1 = textopen(file1)) == NULL) {
 		fprintf(stderr, "diff: cannot open %s\n", file1);
 		done(0);
 	}
-	if ((f2 = fopen(file2, "r")) == NULL) {
+	if ((f2 = textopen(file2)) == NULL) {
 		fprintf(stderr, "diff: cannot open %s\n", file2);
 		fclose(f1);
 		done(0);
@@ -247,7 +252,7 @@ prepare(i, fd)
 	register struct line *p;
 	register int j, h;
 
-	fseek(fd, (long)0, 0);
+	textseek(fd, 0L);
 	p = (struct line *)talloc(3*sizeof(line));
 	for(j=0; h=readhash(fd);) {
 		p = (struct line *)ralloc((char *)p,(++j+3)*sizeof(line));
@@ -414,11 +419,11 @@ check()
 	long ctold, ctnew;
 	register int c,d;
 
-	if ((input[0] = fopen(file1,"r")) == NULL) {
+	if ((input[0] = textopen(file1)) == NULL) {
 		fprintf(stderr, "diff: cannot open %s\n", file1);
 		done(0);
 	}
-	if ((input[1] = fopen(file2,"r")) == NULL) {
+	if ((input[1] = textopen(file2)) == NULL) {
 		fprintf(stderr, "diff: cannot open %s\n", file2);
 		done(0);
 	}
@@ -428,17 +433,19 @@ check()
 	ctold = ctnew = 0;
 	for(i=1;i<=len[0];i++) {
 		if(J[i]==0) {
-			ixold[i] = ctold += skipline(0);
+			skipline(0);
+            ixold[i] = ctold = ftell(input[0]);
 			continue;
 		}
 		while(j<J[i]) {
-			ixnew[j] = ctnew += skipline(1);
+			skipline(1);
+            ixnew[j] = ctnew = ftell(input[1]);
 			j++;
 		}
 		if(bflag || wflag || iflag) {
 			for(;;) {
-				c = getc(input[0]);
-				d = getc(input[1]);
+				c = textgetc(input[0]);
+				d = textgetc(input[1]);
 				ctold++;
 				ctnew++;
 				if(bflag && isspace(c) && isspace(d)) {
@@ -446,19 +453,19 @@ check()
 						if(c=='\n')
 							break;
 						ctold++;
-					} while(isspace(c=getc(input[0])));
+					} while(isspace(c=textgetc(input[0])));
 					do {
 						if(d=='\n')
 							break;
 						ctnew++;
-					} while(isspace(d=getc(input[1])));
+					} while(isspace(d=textgetc(input[1])));
 				} else if ( wflag ) {
 					while( isspace(c) && c!='\n' ) {
-						c=getc(input[0]);
+						c=textgetc(input[0]);
 						ctold++;
 					}
 					while( isspace(d) && d!='\n' ) {
-						d=getc(input[1]);
+						d=textgetc(input[1]);
 						ctnew++;
 					}
 				}
@@ -478,7 +485,7 @@ check()
 			for(;;) {
 				ctold++;
 				ctnew++;
-				if((c=getc(input[0])) != (d=getc(input[1]))) {
+				if((c=textgetc(input[0])) != (d=textgetc(input[1]))) {
 					/* jackpot++; */
 					J[i] = 0;
 					if(c!='\n')
@@ -491,12 +498,13 @@ check()
 					break;
 			}
 		}
-		ixold[i] = ctold;
-		ixnew[j] = ctnew;
+		ixold[i] = ctold = ftell(input[0]);
+		ixnew[j] = ctnew = ftell(input[1]);
 		j++;
 	}
 	for(;j<=len[1];j++) {
-		ixnew[j] = ctnew += skipline(1);
+		skipline(1);
+            ixnew[j] = ctnew = ftell(input[1]);
 	}
 	fclose(input[0]);
 	fclose(input[1]);
@@ -565,7 +573,7 @@ int f;
 {
 	register int i, c;
 
-	for(i=1;(c=getc(input[f]))!='\n';i++)
+	for(i=1;(c=textgetc(input[f]))!='\n';i++)
 		if (c < 0)
 			return(i);
 	return(i);
@@ -577,8 +585,8 @@ output()
 	int m;
 	register int i0, i1, j1;
 	int j0;
-	input[0] = fopen(file1,"r");
-	input[1] = fopen(file2,"r");
+	input[0] = textopen(file1);
+	input[1] = textopen(file2);
 	m = len[0];
 	J[0] = 0;
 	J[m+1] = len[1]+1;
@@ -604,10 +612,11 @@ output()
 	if (opt==D_IFDEF) {
 		for (;;) {
 #define	c i0
-			c = getc(input[0]);
+			c = textgetc(input[0]);
 			if (c < 0)
 				return;
 			putchar(c);
+            if (c == '\n') pageline();
 		}
 #undef c
 	}
@@ -651,8 +660,10 @@ int a, b, c, d;
 	if (anychange == 0) {
 		anychange = 1;
 		if(opt == D_CONTEXT) {
-			printf("*** %s\n--- %s\n", file1, file2);
-			pageline();
+			printf("*** %s\n", file1);
+            pageline();
+            printf("--- %s\n", file2);
+            pageline();
 			context_vec_start = (struct context_vec *)
 						malloc(MAX_CONTEXT *
 						   sizeof(struct context_vec));
@@ -718,14 +729,18 @@ int a, b, c, d;
 	}
 	if(opt == D_NORMAL || opt == D_IFDEF) {
 		fetch(ixold,a,b,input[0],"< ", 1);
-		if(a<=b&&c<=d && opt == D_NORMAL)
+		if(a<=b&&c<=d && opt == D_NORMAL) {
 			prints("---\n");
+            pageline();
+        }
 	}
 	fetch(ixnew,c,d,input[1],opt==D_NORMAL?"> ":"", 0);
-	if ((opt ==D_EDIT || opt == D_REVERSE) && c<=d)
+	if ((opt ==D_EDIT || opt == D_REVERSE) && c<=d) {
 		prints(".\n");
+        pageline();
+    }
 	if (inifdef) {
-		fprintf(stdout, "#endif %s\n", endifname);
+		{ fprintf(stdout, "#endif %s\n", endifname); pageline(); }
 		inifdef = 0;
 	}
 }
@@ -763,39 +778,44 @@ int oldfile;
 		long curpos = ftell(lb);
 		/* print through if append (a>b), else to (nb: 0 vs 1 orig) */
 		nc = f[a>b? b : a-1 ] - curpos;
-		for (i = 0; i < nc; i++)
-			putchar(getc(lb));
+		while (ftell(lb) < f[a>b? b : a-1]) {
+            c = textgetc(lb);
+            if (c == EOF) break;
+            putchar(c);
+            if (c == '\n') pageline();
+        }
 	}
 	if (a > b)
 		return;
 	if (opt == D_IFDEF) {
 		if (inifdef)
-			fprintf(stdout, "#else %s%s\n", oneflag && oldfile==1 ? "!" : "", ifdef2);
+			{ fprintf(stdout, "#else %s%s\n", oneflag && oldfile==1 ? "!" : "", ifdef2); pageline(); }
 		else {
 			if (oneflag) {
 				/* There was only one ifdef given */
 				endifname = ifdef2;
 				if (oldfile)
-					fprintf(stdout, "#ifndef %s\n", endifname);
+					{ fprintf(stdout, "#ifndef %s\n", endifname); pageline(); }
 				else
-					fprintf(stdout, "#ifdef %s\n", endifname);
+					{ fprintf(stdout, "#ifdef %s\n", endifname); pageline(); }
 			}
 			else {
 				endifname = oldfile ? ifdef1 : ifdef2;
-				fprintf(stdout, "#ifdef %s\n", endifname);
+				{ fprintf(stdout, "#ifdef %s\n", endifname); pageline(); }
 			}
 		}
 		inifdef = 1+oldfile;
 	}
 
 	for(i=a;i<=b;i++) {
-		fseek(lb,f[i-1],0);
+		textseek(lb,f[i-1]);
 		nc = f[i]-f[i-1];
 		if (opt != D_IFDEF)
 			prints(s);
 		col = 0;
-		for(j=0;j<nc;j++) {
-			c = getc(lb);
+		for(j=0;;j++) {
+            c = textgetc(lb);
+            if (c == EOF) break;
 			if (c == '\t' && tflag)
 				do
 					putchar(' ');
@@ -804,12 +824,13 @@ int oldfile;
 				putchar(c);
 				col++;
 			}
+            if (c == '\n') break;
 		}
 		pageline();
 	}
 
 	if (inifdef && !wantelses) {
-		fprintf(stdout, "#endif %s\n", endifname);
+		{ fprintf(stdout, "#endif %s\n", endifname); pageline(); }
 		inifdef = 0;
 	}
 }
@@ -837,7 +858,7 @@ register FILE *f;
 	space = 0;
 	if(!bflag && !wflag) {
 		if(iflag)
-			for(shift=0;(t=getc(f))!='\n';shift+=7) {
+			for(shift=0;(t=textgetc(f))!='\n';shift+=7) {
 				if(t==-1)
 					return(0);
 				sum += (long)chrtran[t] << (shift
@@ -848,7 +869,7 @@ register FILE *f;
 #endif
 			}
 		else
-			for(shift=0;(t=getc(f))!='\n';shift+=7) {
+			for(shift=0;(t=textgetc(f))!='\n';shift+=7) {
 				if(t==-1)
 					return(0);
 				sum += (long)t << (shift
@@ -860,7 +881,7 @@ register FILE *f;
 			}
 	} else {
 		for(shift=0;;) {
-			switch(t=getc(f)) {
+			switch(t=textgetc(f)) {
 			case -1:
 				return(0);
 			case '\t':
@@ -898,8 +919,14 @@ asciifile(f)
 	register int cnt;
 	register char *cp;
 
-	fseek(f, (long)0, 0);
-	cnt = fread(buf, 1, BUFSIZ, f);
+	textseek(f, 0L);
+	cnt = 0;
+    while (cnt < BUFSIZ) {
+        int c;
+        c = textgetc(f);
+        if (c == EOF) break;
+        buf[cnt++] = c;
+    }
 	cp = buf;
 	while (--cnt >= 0)
 		if (*cp++ & 0200)
@@ -926,7 +953,9 @@ dump_context_vec()
 	lowc = max(1, cvp->c - context);
 	upd  = min(len[1], context_vec_ptr->d + context);
 
-	printf("***************\n*** ");
+	printf("***************\n");
+    pageline();
+    printf("*** ");
 	range(lowa,upb,",");
 	printf(" ****\n");
 	pageline();
@@ -1001,4 +1030,42 @@ dump_context_vec()
 	}
 
 	context_vec_ptr = context_vec_start - 1;
+}
+
+/* Binary getc keeps physical offsets, while this layer supplies text semantics.
+ * Repositioning resets EOF, so repeated passes and seeks work on CP/M too. */
+static FILE *
+textopen(name)
+char *name;
+{
+    FILE *fp;
+    fp = fopen(name, "r");
+    if (fp) { textend[fp-Cbuffs] = 0; partial[fp-Cbuffs] = 0; }
+    return(fp);
+}
+
+static void
+textseek(fp, pos)
+FILE *fp;
+long pos;
+{
+    fseek(fp, pos, 0);
+    textend[fp-Cbuffs] = partial[fp-Cbuffs] = 0;
+}
+
+static int
+textgetc(fp)
+FILE *fp;
+{
+    int c, slot;
+    slot = fp-Cbuffs;
+    if (textend[slot]) return(EOF);
+    do { c = getc(fp); } while (c == '\r' || c == 0);
+    if (c == EOF || c == 0x1a) {
+        textend[slot] = 1;
+        if (partial[slot]) { partial[slot] = 0; return('\n'); }
+        return(EOF);
+    }
+    partial[slot] = c != '\n';
+    return(c);
 }

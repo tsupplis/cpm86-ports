@@ -3,6 +3,8 @@
 #include "sed.h"
 
 #define PAGELEN 23
+extern int oflag;
+static int lookchar;
 
 static void
 conputs(s)
@@ -17,15 +19,32 @@ pageline()
 {
 	int c;
 
-	if (!pflag || ++plines < PAGELEN)
+	if (oflag || !pflag || ++plines < PAGELEN)
 		return;
 	plines = 0;
+    fflush(stdout);
     conputs("[more]");
-	while ((c = bdos(6, 0xFF) & 0xFF) == 0 && c!='q' && c!='Q')
+	while ((c = bdos(6, 0xFF) & 0xFF) == 0)
 		continue;
 	conputs("\r                                        \r");
 	if (c == 3)
 		exit(0);
+}
+
+/* Count every emitted newline, including N/H/G multi-line pattern spaces. */
+static void
+outchar(c)
+int c;
+{
+    if (aputc(c, stdout) == EOF) exit(2);
+    if (c == '\n') pageline();
+}
+
+static void
+outstring(s)
+char *s;
+{
+    while (*s) outchar(*s++);
 }
 
 int	 match(char *, int);
@@ -91,6 +110,7 @@ char *file;
 
 	ebp = ibuf;
 	cbp = ibuf;
+    lookchar = agetc(finp);
 
 	if(pending) {
 		ipc = pending;
@@ -181,14 +201,13 @@ char *file;
 		}
 		if(!nflag && !delflag) {
 			for(p1 = linebuf; p1 < spend; p1++)
-				putc(*p1, stdout);
-			putc('\n', stdout);
-			pageline();
+				outchar(*p1);
+			outchar('\n');
+
 		}
 
 		if(aptr > abuf) {
 			arout();
-			pageline();
 		}
 
 		delflag = 0;
@@ -474,9 +493,9 @@ union reptr	*ipc;
 			delflag = 1;
 			if(!ipc->A.inar || dolflag) {
 				for(p1 = ipc->A.re1; *p1; )
-					putc(*p1++, stdout);
-				putc('\n', stdout);
-				pageline();
+					outchar(*p1++);
+				outchar('\n');
+
 			}
 			break;
 		case DCOM:
@@ -499,8 +518,9 @@ union reptr	*ipc;
 			break;
 
 		case EQCOM:
-			fprintf(stdout, "%ld\n", lnum);
-			pageline();
+			sprintf(genbuf, "%ld", lnum);
+            outstring(genbuf); outchar('\n');
+
 			break;
 
 		case GCOM:
@@ -539,9 +559,9 @@ union reptr	*ipc;
 
 		case ICOM:
 			for(p1 = ipc->A.re1; *p1; )
-				putc(*p1++, stdout);
-			putc('\n', stdout);
-			pageline();
+				outchar(*p1++);
+			outchar('\n');
+
 			break;
 
 		case BCOM:
@@ -559,8 +579,8 @@ union reptr	*ipc;
 						while(*p2++ = *p3++)
 							if(p2 >= lcomend) {
 								*p2 = '\\';
-								fprintf(stdout, "%s\n", genbuf);
-									pageline();
+								outstring(genbuf); outchar('\n');
+
 									p2 = genbuf;
 								}
 							p2--;
@@ -570,8 +590,8 @@ union reptr	*ipc;
 						*p2++ = *p1++;
 						if(p2 >= lcomend) {
 							*p2 = '\\';
-							fprintf(stdout, "%s\n", genbuf);
-							pageline();
+							outstring(genbuf); outchar('\n');
+
 							p2 = genbuf;
 						}
 					} else {
@@ -579,24 +599,24 @@ union reptr	*ipc;
 						while(*p2++ = *p3++)
 							if(p2 >= lcomend) {
 								*p2 = '\\';
-								fprintf(stdout, "%s\n", genbuf);
-								pageline();
+								outstring(genbuf); outchar('\n');
+
 								p2 = genbuf;
 							}
 						p2--;
 						p1++;
 					}
 				*p2 = 0;
-				fprintf(stdout, "%s\n", genbuf);
-				pageline();
+				outstring(genbuf); outchar('\n');
+
 				break;
 
 		case NCOM:
 			if(!nflag) {
 				for(p1 = linebuf; p1 < spend; p1++)
-					putc(*p1, stdout);
-				putc('\n', stdout);
-				pageline();
+					outchar(*p1);
+				outchar('\n');
+
 			}
 
 			if(aptr > abuf)
@@ -623,24 +643,24 @@ union reptr	*ipc;
 
 		case PCOM:
 			for(p1 = linebuf; p1 < spend; p1++)
-				putc(*p1, stdout);
-			putc('\n', stdout);
-			pageline();
+				outchar(*p1);
+			outchar('\n');
+
 			break;
 		case CPCOM:
 	cpcom:
 			for(p1 = linebuf; *p1 != '\n' && *p1 != '\0'; )
-				putc(*p1++, stdout);
-			putc('\n', stdout);
-			pageline();
+				outchar(*p1++);
+			outchar('\n');
+
 			break;
 
 		case QCOM:
 			if(!nflag) {
 				for(p1 = linebuf; p1 < spend; p1++)
-					putc(*p1, stdout);
-				putc('\n', stdout);
-				pageline();
+					outchar(*p1);
+				outchar('\n');
+
 			}
 			if(aptr > abuf)	arout();
 			fclose(stdout);
@@ -661,9 +681,9 @@ union reptr	*ipc;
 			if(ipc->A.pfl && i)
 				if(ipc->A.pfl == 1) {
 					for(p1 = linebuf; p1 < spend; p1++)
-						putc(*p1, stdout);
-					putc('\n', stdout);
-					pageline();
+						outchar(*p1);
+					outchar('\n');
+
 				}
 				else
 					goto cpcom;
@@ -705,64 +725,27 @@ union reptr	*ipc;
 
 }
 
-/* CP/M pads the last record with NUL or ^Z: drop trailing padding */
-int
-trimpad(nr)
-int	nr;
-{
-	while(nr > 0 && (ibuf[nr - 1] == 0 || ibuf[nr - 1] == 0x1a))
-		nr--;
-	return(nr);
-}
-
+/* A one-character lookahead preserves $ and the last unterminated line.
+ * Never read again after Aztec reports a text EOF marker. */
 char *
 gline(addr, fin)
-char	*addr;
-FILE	*fin;
+char *addr;
+FILE *fin;
 {
-	register char	*p1, *p2;
-	register int	c;
-	int	nr;
-	p1 = addr;
-	p2 = cbp;
-	for (;;) {
-		if (p2 >= ebp) {
-			nr = fread(ibuf, 1, BUFSIZ, fin);
-			if (nr > 0)
-				nr = trimpad(nr);
-			if (nr <= 0) {
-				return(badp);
-			}
-			p2 = ibuf;
-			ebp = ibuf + nr;
-		}
-		if ((c = *p2++) == '\n') {
-			if(p2 >= ebp) {
-				/* buffer exhausted after newline — refill */
-				nr = fread(ibuf, 1, BUFSIZ, fin);
-				if(nr > 0)
-					nr = trimpad(nr);
-				if(nr <= 0) {
-					if(eargc == 0)
-						dolflag = 1;
-					p2 = ibuf;
-					ebp = ibuf;
-				} else {
-					p2 = ibuf;
-					ebp = ibuf + nr;
-				}
-			}
-			break;
-		}
-		if(c)
-		if(p1 < lbend)
-			*p1++ = c;
-	}
-	lnum++;
-	*p1 = 0;
-	cbp = p2;
-
-	return(p1);
+    char *p;
+    int c;
+    if (lookchar == EOF) return(badp);
+    p = addr;
+    while (lookchar != EOF) {
+        c = lookchar;
+        lookchar = agetc(fin);
+        if (c == '\n') break;
+        if (c && p < lbend) *p++ = c;
+    }
+    dolflag = lookchar == EOF && eargc == 0;
+    lnum++;
+    *p = 0;
+    return(p);
 }
 
 int
@@ -787,14 +770,16 @@ arout()
 	while(*++aptr) {
 		if((*aptr)->A.command == ACOM) {
 			for(p1 = (*aptr)->A.re1; *p1; )
-				putc(*p1++, stdout);
-			putc('\n', stdout);
+				outchar(*p1++);
+			outchar('\n');
+
 		} else {
 			if((fi = fopen((*aptr)->A.re1, "r")) == NULL)
 				continue;
-			while((t = getc(fi)) != EOF) {
+			while((t = agetc(fi)) != EOF) {
 				c = t;
-				putc(c, stdout);
+				outchar(c);
+
 			}
 			fclose(fi);
 		}

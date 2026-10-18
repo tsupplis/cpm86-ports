@@ -24,6 +24,7 @@ sed.cmd: $(OBJS)
 
 test: binaries
 	sh test.sh
+	python3 ../tools/test-consistency.py sed
 
 clean:
 	rm -rf *.o *.cmd *.com

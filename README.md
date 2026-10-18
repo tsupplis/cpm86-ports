@@ -46,11 +46,14 @@ Ancillary goals:
 | Project | What | From | License |
 | --- | --- | --- | --- |
 | banner | Print large-text banners | RetroBSD / Vadim Antonov, ported by Serge Vakulenko | Public domain |
-| dc | Arbitrary precision reverse Polish desk calculator | Plan 9 / Unix Research Edition dc | MIT |
-| crc | Calculate 32-bit CRC checksum of files | RetroBSD / Gary S. Brown | BSD 3-Clause |
-| diff | Compare two files line by line | RetroBSD / BSD Unix diff | BSD 3-Clause |
-| grep | Search a file for a pattern | RetroBSD / DiscoBSD, originally Berkeley grep | BSD 3-Clause |
-| sed | Stream editor | RetroBSD / BSD Unix sed | BSD 3-Clause |
+| crc | Calculate 32-bit CRC checksums | RetroBSD / Gary S. Brown | BSD 3-Clause |
+| [dc](dc/README.md) | Arbitrary precision reverse Polish calculator | Plan 9 / Unix Research Edition | MIT |
+| [diff](diff/README.md) | Compare two files line by line | RetroBSD / BSD Unix | BSD 3-Clause |
+| [grep](grep/README.md) | Search text files for regular-expression matches | RetroBSD / DiscoBSD / Berkeley grep | BSD 3-Clause |
+| [sed](sed/README.md) | Edit text using scripts | RetroBSD / BSD Unix | BSD 3-Clause |
+| [sort](sort/README.md) | Sort lines, merge sorted files, or check order | BSD Unix / DiscoBSD | BSD 3-Clause |
+| [tr](tr/README.md) | Translate, delete, or squeeze characters | BSD Unix / DiscoBSD | BSD 3-Clause |
+| [uniq](uniq/README.md) | Filter or count adjacent duplicate lines | BSD Unix / DiscoBSD | BSD 3-Clause |
 | uudecode | Decode a uuencoded file | BSD Unix uudecode | BSD 3-Clause |
 | uuencode | Encode a binary file for mail transfer | BSD Unix uuencode | BSD 3-Clause |
 

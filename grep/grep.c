@@ -336,7 +336,9 @@ char *file;
 {
     register char *p1, *p2;
     register int c;
+    int ended;
 
+    ended = 0;
     if (file) {
         if (freopen(file, "r", stdin) == NULL) {
             fprintf(stderr, "grep: can't open %s\n", file);
@@ -348,14 +350,19 @@ char *file;
     tln = 0;
     for (;;) {
         lnum++;
+        if (ended) goto inputend;
         p1 = linebuf;
         while ((c = getchar()) != '\n') {
             if (c == EOF) {
+                ended = 1;
+                if (p1 != linebuf) break;
+inputend:
                 if (cflag) {
                     if (nfile>1)
                         printf("%s:", file);
                     printf("%ld\n", tln);
                     fflush(stdout);
+                    pageline();
                 }
                 return;
             }
@@ -567,11 +574,12 @@ pageline()
 {
     int c;
 
-    if (!pflag || ++plines < PAGELEN)
+    if (oflag || !pflag || ++plines < PAGELEN)
         return;
     plines = 0;
+    fflush(stdout);
     conputs("[more]");
-	while ((c = bdos(6, 0xFF) & 0xFF) == 0 && c!='q' && c!='Q')
+	while ((c = bdos(6, 0xFF) & 0xFF) == 0)
         continue;
     conputs("\r                                        \r");
     if (c == 3)

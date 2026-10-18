@@ -29,6 +29,7 @@ int	jflag;
 int	numbra;
 int	delflag;
 int	pflag;
+int	oflag;
 int	plines;
 long	lnum;
 char	linebuf[LBSIZE+1];
@@ -197,7 +198,8 @@ char	*argv[];
 			continue;
 
 		case 'f':
-			if(eargc-- <= 0)	exit(2);
+			if(eargc <= 1) { fprintf(stderr, "sed: -f requires a filename\n"); exit(2); }
+            eargc--;
 
 			if((fin = fopen(*++eargv, "r")) == NULL) {
 				fprintf(stderr, "Cannot open pattern-file: %s\n", *eargv);
@@ -209,6 +211,7 @@ char	*argv[];
 			continue;
 
 		case 'e':
+            if (eargc <= 1) { fprintf(stderr, "sed: -e requires a script\n"); exit(2); }
 			eflag++;
 			/* apply case layer: CCP uppercased the command tail */
 			casefold(*++eargv);
@@ -231,6 +234,7 @@ char	*argv[];
 				fprintf(stderr, "sed: cannot open output file: %s\n", *eargv);
 				exit(2);
 			}
+			oflag = 1;
 			pflag = 0;	/* -o and -p are incompatible; -o wins */
 			continue;
 
@@ -253,7 +257,7 @@ char	*argv[];
 		/* inline script: apply case layer then compile */
 		eargv--;
 		eargc++;
-		casefold(*eargv);
+		casefold(eargv[1]);
 		eflag++;
 		fcomp();
 		eargv++;
@@ -978,10 +982,12 @@ char	*lbuf;
 		return(1);
 	}
 
-	while((t = getc(fin)) != EOF) {
+	if (feof(fin)) return(-1);
+	while((t = agetc(fin)) != EOF) {
 		*++p = t;
 		if(*p == '\\') {
-			t = getc(fin);
+			t = agetc(fin);
+            if (t == EOF) { *p = 0; return(-1); }
 			*++p = t;
 		}
 		else if(*p == '\n') {
@@ -990,7 +996,7 @@ char	*lbuf;
 		}
 	}
 	*++p = '\0';
-	return(-1);
+	return(p > lbuf ? 1 : -1);
 }
 
 char *

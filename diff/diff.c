@@ -39,11 +39,12 @@ pageline()
 {
 	int c;
 
-	if (!pflag || ++plines < PAGELEN)
+	if (oflag || !pflag || ++plines < PAGELEN)
 		return;
 	plines = 0;
+    fflush(stdout);
 	conputs("[more]");
-	while ((c = bdos(6, 0xFF) & 0xFF) == 0 && c!='q' && c!='Q')
+	while ((c = bdos(6, 0xFF) & 0xFF) == 0)
 		continue;
 	conputs("\r                                        \r");
 	if (c == 3)
@@ -144,8 +145,16 @@ main(argc, argv)
 				wantelses = 1;
 				ifdef1 = "";
 				opt = D_IFDEF;
-				ifdef2 = argp;
-				*--argp = 0;
+                if (*argp) ifdef2 = argp;
+                else {
+                    if (argc <= 0) {
+                        fprintf(stderr, "diff: -D requires a name\n");
+                        done(0);
+                    }
+                    ifdef2 = *argv++; argc--;
+                }
+                casefold(ifdef2);
+                argp = "";
 				continue;
 			case 'e':
 				opt = D_EDIT;

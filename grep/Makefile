@@ -21,6 +21,7 @@ grep.cmd: $(OBJS)
 
 test: binaries
 	sh test.sh
+	python3 ../tools/test-consistency.py grep
 
 clean:
 	rm -rf *.o *.cmd *.com

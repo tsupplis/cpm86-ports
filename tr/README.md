@@ -1,68 +1,56 @@
 # tr
 
-Translate, delete, or squeeze characters.
+Translate, delete, or squeeze repeated characters.
+
+## Usage
 
 ```
-tr [-cdsp] [-o file] string1 [string2 [input]]
+tr [-cds] [-o file] [-p] string1 [string2 [input]]
 ```
 
-- `-c`: complement string1 (all non-NUL bytes outside the set).
-- `-d`: delete characters in string1.
-- `-s`: squeeze repeated characters from the translated destination set.
-- `-o file`: output file; `-p`: page screen output.
+With no input file, read the console. To supply a file when deleting, give
+an unused second set, as in the second example below.
 
-Sets accept ranges (`a-z`) and backslash octal escapes (`\141` is lower
-case a). A short destination set repeats its last character. NUL bytes are
-ignored, as in the original source. Modern character classes such as
-`[:alpha:]` are not supported.
+| Option | Meaning |
+| --- | --- |
+| `-c` | Complement the first character set. |
+| `-d` | Delete characters in the first set. |
+| `-s` | Squeeze repeated characters in the destination set. |
 
-An optional third operand supplies input without shell redirection. For
-example, on CP/M-86:
+Sets accept ranges (`a-z`) and octal escapes (`\141` for lower case a).
+A short destination set repeats its last character. `--` ends options for
+a set beginning with `-`.
+
+## Examples
 
 ```
 tr -o upper.txt A-Z %A-%Z input.txt
-tr -d \170 Z input.txt
+tr -d X Z input.txt
+tr -s X X input.txt
 ```
 
-The second example deletes lower case x; Z is an unused destination set.
-Character sets follow sed's command-tail case convention: letters become
-lower case by default; `%` toggles case for the rest of the current word.
-Digits and `_` keep the toggle; punctuation resets it. Thus `A-Z` means
-`a-z`, and `%A-%Z` means `A-Z`. `\%` is a literal percent. Octal escapes
-remain available for exact character values. This convention applies to
-both CP/M-86 and DOS, just as in sed. `--` ends option processing for a set beginning with a dash.
+The second example deletes lower case x; the third squeezes repeated x.
 
-## Building and checking
+## Notes
 
-```
-make          # CP/M-86 .cmd and PC-DOS .com, using Aztec C86 4.2
-make test     # both binaries under emu2; requires Python 3
-make clean
-```
+Option letters accept either case. `-o file` writes output and disables `-p`
+in either order. `-p` pauses every 23 output lines; any key continues and
+Ctrl-C quits. `-?` shows help.
 
-Option letters accept either case because the CP/M-86 CCP uppercases the
-command tail. `-?` prints a usage summary. `-o file` writes to a file;
-file output disables `-p` regardless of option order. `-p` pauses every
-23 output lines; any key continues and Ctrl-C quits. Paging uses BDOS
-console I/O and must be checked interactively; the automated tests do not
-wait for console input.
+Text input accepts LF/CRLF and stops at Ctrl-Z; output uses CRLF. Bare CR-only
+files are not supported.
 
-Input and output are text files. With no input file, the console is read.
-DOS reports status 0 on success and 1 on error; CP/M-86 has no useful
-process exit status. Diagnostics go to the console on CP/M-86.
+Letters in command-line text default to lower case. `%` toggles case within
+a word; punctuation resets it, while digits and `_` keep it. `\%` is a
+literal percent. This convention also applies on DOS.
 
-Based on the BSD / DiscoBSD source supplied with this repository.
+Both sets use this convention: `A-Z` means `a-z`; `%A-%Z` means `A-Z`.
+NUL bytes are ignored. Character classes such as `[:alpha:]` are unsupported.
+A final unterminated line stays unterminated.
 
-## Porting notes
+## Build
 
-Added file input, file output, paging, option validation, and case-insensitive
-options. Text input uses Aztec's `agetc` through `getchar` so CP/M text EOF
-padding is not translated. Set parsing no longer writes into empty literals.
+`make` builds CP/M-86 `.cmd` and PC-DOS `.com` binaries with Aztec C86 4.2.
+`make test` runs emulator checks; `make clean` removes build output.
 
-## Text line endings
-
-LF and CRLF input are accepted; output uses CRLF through Aztec text I/O.
-Ctrl-Z ends text input. CP/M output is padded to 128-byte records with
-Ctrl-Z marking the end of the text. Bare CR is discarded by the runtime,
-so old Macintosh CR-only files are not treated as separate lines.
-`tr` preserves an unterminated final line.
+BSD Unix / DiscoBSD source; BSD 3-Clause.

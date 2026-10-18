@@ -21,6 +21,7 @@ tr.cmd: $(OBJS)
 
 test: binaries
 	sh test.sh
+	python3 ../tools/test-consistency.py tr
 
 clean:
 	rm -rf *.o *.cmd *.com
