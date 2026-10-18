@@ -1,9 +1,11 @@
-/* Small binary-persistence and write-error acceptance tests. */
+/* Binary persistence across page splits, with bounded write-error checks. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
 #include "ndbm.h"
+
+#define NKEYS 200
 
 static char keybuf[4], value[1024];
 static int checks;
@@ -42,7 +44,7 @@ int changed, deleted;
 {
     int i;
     datum k, expected, got;
-    for (i = 0; i < 12; i++) {
+    for (i = 0; i < NKEYS; i++) {
         k = key(i); got = dbm_fetch(db, k);
         if (deleted && i % 3 == 0) need(got.dptr == NULL, "deleted key persisted");
         else {
@@ -60,10 +62,10 @@ char **argv;
 {
     DBM *db;
     datum k, v, got;
-    int i, n, seen[12];
+    int i, n, seen[NKEYS];
     db = dbm_open("BINARY", O_RDWR, 0666);
     need(db != NULL, "create database");
-    for (i = 0; i < 12; i++) {
+    for (i = 0; i < NKEYS; i++) {
         if (dbm_store(db,key(i),val(i,0),DBM_INSERT)!=0) { printf("FAIL: store binary pair %d flags %d\n",i,db->dbm_flags); exit(1); }
         checks++;
     }
@@ -73,8 +75,8 @@ char **argv;
     dbm_close(db);
     db = dbm_open("BINARY", O_RDWR, 0); need(db != NULL,"reopen");
     verify(db,0,0);
-    for (i=0; i<12; i+=2) need(dbm_store(db,key(i),val(i,1),DBM_REPLACE)==0,"replace growing value");
-    for (i=0; i<12; i+=3) need(dbm_delete(db,key(i))==0,"delete");
+    for (i=0; i<NKEYS; i+=2) need(dbm_store(db,key(i),val(i,1),DBM_REPLACE)==0,"replace growing value");
+    for (i=0; i<NKEYS; i+=3) need(dbm_delete(db,key(i))==0,"delete");
     dbm_close(db);
     db=dbm_open("BINARY",O_RDONLY,0); need(db != NULL,"reopen read only");
     verify(db,1,1);
@@ -84,10 +86,10 @@ char **argv;
     for (k=dbm_firstkey(db); k.dptr; k=dbm_nextkey(db)) {
         need(k.dsize==4,"iteration key size");
         i=(unsigned char)k.dptr[1]+256*(unsigned char)k.dptr[2];
-        need(i<12 && i%3!=0 && !seen[i],"iteration returns each surviving key once");
+        need(i<NKEYS && i%3!=0 && !seen[i],"iteration returns each surviving key once");
         seen[i]=1; n++;
     }
-    need(n==8 && !dbm_error(db),"iteration count");
+    need(n==NKEYS-(NKEYS+2)/3 && !dbm_error(db),"iteration count");
     dbm_close(db);
     /* An oversized replacement must not destroy the previous on-disk value. */
     db=dbm_open("BINARY",O_RDWR,0); need(db!=NULL,"reopen oversized test");

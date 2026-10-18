@@ -31,14 +31,17 @@
 #define BYTESIZ 8
 #undef setbit
 
-/* fstat is not in Aztec c86 libc.  Probe the file size with lseek. */
+/* A seek-to-end size probe is unreliable with Aztec's CP/M-86 runtime.
+ * Count existing directory records on this newly opened descriptor instead. */
 static long _filesize(fd)
     int fd;
 {
-    long cur = lseek(fd, 0L, 1);   /* SEEK_CUR = 1 */
-    long end = lseek(fd, 0L, 2);   /* SEEK_END = 2 */
-    lseek(fd, cur, 0);             /* restore */
-    return end;
+    char buf[128];
+    long size = 0;
+    int n;
+    while ((n = read(fd, buf, sizeof(buf))) > 0) size += n;
+    lseek(fd, 0L, 0);
+    return n < 0 ? -1L : size;
 }
 
 /* memmove is not in Aztec c86 libc.  Byte loop handles overlap correctly. */
@@ -130,6 +133,7 @@ dbm_open(file, flags, mode)
 	int flags, mode;
 {
 	register DBM *db;
+    long size;
 
 	if ((db = (DBM *)malloc(sizeof *db)) == 0) {
 		errno = ENOMEM;
@@ -148,7 +152,9 @@ dbm_open(file, flags, mode)
 	db->dbm_dirf = open(db->dbm_pagbuf, flags, mode);
 	if (db->dbm_dirf < 0)
 		goto bad1;
-	db->dbm_maxbno = _filesize(db->dbm_dirf)*BYTESIZ-1;
+	size = _filesize(db->dbm_dirf);
+    if (size < 0) { close(db->dbm_dirf); goto bad1; }
+    db->dbm_maxbno = size*BYTESIZ-1;
 	db->dbm_pagbno = db->dbm_dirbno = -1;
 	return (db);
 bad1:

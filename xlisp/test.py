@@ -29,6 +29,7 @@ preamble='''(defun fact (n) (cond ((<= n 1) 1) (t (* n (fact (- n 1))))))
 (setq kept (list 17 23 42))
 (repeat 300 (list 1 2 3 4))
 (gc)
+(princ "STRING:" (strcat "CP" "/M") "\\n")
 (setq f (fopen "DATA.BIN" "w"))
 (putc 65 f)
 (putc 0 f)
@@ -45,6 +46,7 @@ for eol in ('\n','\r\n'):
         p=subprocess.run(['emu2',str(root/'xlisp.cmd'),'CHECK.LSP'],cwd=wd,
                          stdin=subprocess.DEVNULL,capture_output=True,start_new_session=True,timeout=10)
         text=(p.stdout+p.stderr).decode('latin1')
+        assert 'STRING:CP/M' in text,text
         assert 'error:' not in text.lower() and 'FAIL:' not in text,text
         for name,_ in checks: assert text.count('PASS:'+name+'"')==1,(name,text)
         data=next(wd.glob('*.[bB][iI][nN]')).read_bytes()
