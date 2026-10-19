@@ -12,7 +12,7 @@
 #define COLOR_BRIGHT_CYAN 11
 #define COLOR_BRIGHT_RED 12
 #define COLOR_YELLOW 14
-#define sk_getchar() getch()
+#define sk_getchar() game_getkey()
 #define sk_printf printf
 #endif
 

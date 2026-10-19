@@ -426,6 +426,7 @@ FILER:
         MOV    SP,(Offset STACK)       ;start local stack
         STI
         MOV    Word Ptr DATA_SEG,AX    ;save data segment
+        CALL   KEYINIT                 ;concurrent raw function keys
         CALL   IDU                     ;set initial disk/user
         MOV    BX,(Offset BUFENTRY)    ;base address
         MOV    Word Ptr RING,BX        ;beginning of ring
@@ -715,6 +716,7 @@ QUIT:
 ; e x i t
 ; return to cp/m ccp
 CPM@CCP:
+        CALL   KEYOFF                  ;normal expansion before returning
         MOV    AL,Byte Ptr O@USR       ;get and set original..
         CALL   SET@USR                 ;..user area and..
         MOV    DX,TBUF                 ;..tidy up..
@@ -1093,17 +1095,43 @@ HELPMSG:
         DB     ' <SP> Scroll Line Forward       H - Detailed HELP',CR,LF
  ENDIF
         DB     '  < > - Entry Back,Forth      ?,/ - This Help Screen                            ',cr,lf
+        DB     0
+        CMP    Byte Ptr CCKEYS,0
+        JE     HELPECHAIN
+        CALL   ILPRT
+        DB '   ',16,'  - Entry Right             E - Enter command line                        ',cr,lf,0
+        JMP    HELPEDONE
+HELPECHAIN:
+        CALL   ILPRT
         DB '   ',16,'  - Entry Right             E - Enter command line[*]                     ',cr,lf
+        DB     0
+HELPEDONE:
+        CALL   ILPRT
         DB '   ',17,'  - Entry Left              L - Login DIR[USR#]          c0 = drv[c][usr0] ',cr,lf
         DB '   ',30,'  - Entry Up                N - reNew current Screen                       ',cr,lf
         DB '   ',31,'  - Entry Dn                S - Status of disk [drv]                       ',cr,lf
         DB      ' PgUp - Next Page         [Esc],Q - Quit FILER                                ',cr,lf
+        DB      0
+        CMP    Byte Ptr CCKEYS,0
+        JNE    HELPCLI
+        JMP    HELPCHAIN
+HELPCLI:
+        CALL   ILPRT
+        DB     ' PgUp - Prev Page               X - eXecute CMD file                         ',cr,lf
+        DB     '                                                                               ',cr,lf
+        DB     '                               E/X return to FILER after the command ends.    ',cr,lf
+        DB     0
+        JMP    HELPEXECEND
+HELPCHAIN:
+        CALL   ILPRT
         DB      ' PgUp - Prev Page               X - eXecute CP/M-86 CMD file[*]                ',cr,lf
         DB      '                                                                               ',cr,lf 
         DB      '                               [*]Does NOT return to FILER                    ',cr,lf
-        DB      '                               [*]F1-F9 keys not yet implemented.              ',cr,lf  
-        DB     cr,lf
         DB     0
+HELPEXECEND:
+        CALL   ILPRT
+        DB     '                               F1-F9 keys not yet implemented.                ',cr,lf
+        DB     cr,lf,0
         CALL   ENDHELP
         RET
 
@@ -1217,12 +1245,100 @@ CHAIN:
         REP    MOVSB                   ;move it
         MOV    ES:Byte Ptr [DI],0      ;end with a zero
 
-        MOV    CL,47                   ;Chain function
-        MOV    DX,0FFFFH               ;chain flag
+        CALL   KEYOFF                  ;normal keys for the action
+        CMP    Byte Ptr CCKEYS,0
+        JNE    RUNCLI
+        MOV    CL,47                   ;CP/M-86 retains P_CHAIN
+        MOV    DX,0FFFFH
         INT    224
+        JMP    RUNFINISH
 
-        CALL   SCREFRESH
-        RET
+; Resident concurrent execution, using the native P_CLI control block.
+; Priority is set before launch, ahead of both the parent and TMP.
+RUNCLI:
+        MOV    Byte Ptr CLIERR,0
+        MOV    CX,32
+        MOV    DX,0FFH
+        INT    224
+        MOV    CLIUSER,AL
+        MOV    CX,25
+        INT    224
+        MOV    CLIDRIVE,AL
+        MOV    CX,156                  ;P_PDADR: ES:BX -> our descriptor
+        INT    224
+        MOV    AL,ES:Byte Ptr 5[BX]
+        MOV    CLIPRIO,AL
+        MOV    BX,ES:Word Ptr 1EH[BX]
+        MOV    DX,197                  ;no parent: native SUBMIT fallback
+        OR     BX,BX
+        JZ     CLIPSET
+        XOR    DX,DX
+        MOV    DL,ES:Byte Ptr 5[BX]
+        CMP    DX,64
+        JA     CLIPSAFE
+        JMP    CLINOSAFE
+CLIPSAFE:
+        DEC    DX
+        CMP    DX,197
+        JBE    CLIPSET
+        MOV    DX,197
+CLIPSET:
+        MOV    CX,145                  ;P_PRIORITY
+        INT    224
+        MOV    AX,Word Ptr DATA_SEG
+        MOV    ES,AX
+        MOV    SI,TBUF
+        MOV    DI,OFFSET CLICB+1
+        MOV    CX,128
+        CLD
+        REP    MOVSB                   ;bounded, NUL-terminated by CHAIN
+        MOV    Byte Ptr CLICB,0
+        MOV    Byte Ptr CLICB+129,0
+        MOV    DX,OFFSET CLICB
+        MOV    CX,150                  ;P_CLI
+        INT    224
+        OR     BX,BX                   ;native CLI returns launch status in BX
+        JZ     CLIWAIT
+        MOV    Byte Ptr CLIERR,1
+        JMP    CLIPRESTORE
+CLIWAIT:
+        XOR    DX,DX
+        MOV    CX,146                  ;C_ATTACH: wait before screen I/O
+        INT    224
+CLIPRESTORE:
+        XOR    DX,DX
+        MOV    DL,CLIPRIO
+        MOV    CX,145
+        INT    224
+        JMP    CLICONTEXT
+CLINOSAFE:
+        MOV    Byte Ptr CLIERR,1        ;do not launch at a system priority
+CLICONTEXT:
+        XOR    DX,DX
+        MOV    DL,CLIUSER
+        MOV    CX,32
+        INT    224
+        XOR    DX,DX
+        MOV    DL,CLIDRIVE
+        MOV    CX,14
+        INT    224
+        MOV    DX,TBUF
+        MOV    CX,26                   ;restore default DMA
+        INT    224
+RUNFINISH:
+        MOV    AX,Word Ptr DATA_SEG
+        MOV    ES,AX
+        CALL   KEYON
+        MOV    SP,OFFSET STACK         ;CHAIN callers use both CALL and JMP
+        CALL   REFRESH
+        CMP    Byte Ptr CCKEYS,0
+        JE     RUNREADY
+        CMP    Byte Ptr CLIERR,0
+        JE     RUNREADY
+        CALL   ERMSG
+        DB     'Cannot launch command',0
+RUNREADY:
+        JMP    LOOPFN
 
 UC_CMD:        ;make string ending in 0h upper case
 ;      ENTRY:  BX -> string
@@ -3046,11 +3162,20 @@ CIN:   ;Input from console - no echo   (getchar)
         PUSH   BX
         PUSH   CX
 
-; Concurrent CP/M traps the PC BIOS keyboard interrupt, so read through the
-; BDOS. Cursor keys then arrive as VT52 escape sequences instead of scan
-; codes, so map them back to the codes FTABLE expects. Console status is not
-; dependable here, so the byte after ESC is always read; ESC twice still quits.
+; Use BDOS on both systems. CP/M-86 sends VT52 sequences, whereas
+; concurrent XIOS sends high-bit scan codes with PFK expansion disabled.
         CALL    CINRAW
+        CMP     Byte Ptr CCKEYS,0
+        JE      CINESCP
+        CMP     AL,0C7H                ;Home..Delete, including all arrows
+        JB      CINESCP
+        CMP     AL,0D3H
+        JA      CINESCP
+        MOV     AH,AL
+        AND     AH,7FH                 ;scan code expected by FTABLE
+        XOR     AL,AL
+        JMP     CIN4
+CINESCP:
         CMP     AL,ESC
         JNZ     CIN3                    ;ordinary key
         CALL    CINRAW                  ;second byte selects the cursor key
@@ -3080,6 +3205,38 @@ CIN4:
         POP     CX
         POP     BX
         POP     DX
+        RET
+
+KEYINIT:
+        MOV     CL,12
+        INT     224
+        CMP     AL,30H
+        JB      KEYINITDONE
+        TEST    AH,5
+        JZ      KEYINITDONE
+        MOV     Byte Ptr CCKEYS,1
+        CALL    KEYON
+KEYINITDONE:
+        RET
+
+; These helpers preserve the command-chain registers (including CX/SI/DI).
+KEYON:
+        PUSH    AX
+        MOV     AL,'6'
+        JMP     KEYMODE
+KEYOFF:
+        PUSH    AX
+        MOV     AL,'7'
+KEYMODE:
+        CMP     Byte Ptr CCKEYS,0
+        JE      KEYMODEDONE
+        PUSH    AX
+        MOV     AL,ESC
+        CALL    TTYPE
+        POP     AX
+        CALL    TTYPE
+KEYMODEDONE:
+        POP     AX
         RET
 
 CINRAW:                                 ;wait for one byte, no echo
@@ -3924,6 +4081,13 @@ ESCTAB  DB     'A'
         DB     PG@UP
         DB     0                        ;end of table
 
+CLIERR         DB      0
+CLIUSER        DB      0
+CLIDRIVE       DB      0
+CLIPRIO        DB      0
+CLICB          DB      0
+               RS      129
+CCKEYS         DB      0                ;concurrent keyboard backend
 HELPFLG        DB      0                ;is HELP available externally?  0=No
 
 HEADMSG        DB      'File: ',0

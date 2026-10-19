@@ -49,8 +49,11 @@ clean:
 	done
 	rm -f tmp.img cpmtest1.img ports.zip
 
-final-test: cpmtest1.img cpmtest2.img cpmtest3.img
+cpm86test: cpmtest1.img cpmtest2.img cpmtest3.img
 	./cpm86 
+
+ccpm86test: cpmtest1.img cpmtest2.img cpmtest3.img
+	./ccpm86 
 
 cpmtest1.img: all
 	cp cpmbase.img $@
@@ -73,8 +76,9 @@ cpmtest2.img: all
 	done
 	set -e; for i in vtl2/*.vtl tinybas/*.bas; do cpmcp -f cpm86-320 tmp.img $$i 0:; done
 	cpmcp -f cpm86-320 tmp.img xlisp/*.lsp 0:
+	cpmcp -f cpm86-320 tmp.img sokoban/*.hlp 0:
+	cpmcp -f cpm86-320 tmp.img sokoban/*.dat 0:
 	cpmcp -f cpm86-320 tmp.img cpu/samples/ver.com 0:
-	cpmcp -f cpm86-320 tmp.img cpu/samples/hello.com 0:
 	cpmls -F -f cpm86-320 tmp.img
 	python3 tools/cpm86twist.py twist tmp.img $@
 	rm -f tmp.img
@@ -92,4 +96,4 @@ cpmtest3.img: all
 	rm -f tmp.img
 
 .DELETE_ON_ERROR:
-.PHONY: all clean test final-test dist $(SUBDIRS)
+.PHONY: all clean test cpm86test ccpm86test dist $(SUBDIRS)

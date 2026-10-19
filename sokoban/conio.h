@@ -1,27 +1,68 @@
 #ifndef _CONIO_H_
 #define _CONIO_H_
 
-/*
-  Minimal conio.h for Aztec C on CP/M-86.
-  Provides getch(), clrscr(), gotoxy(), textcolor() and cputs()
-  using BDOS calls and VT52 terminal escape sequences.
 
-  Based on the conio implementation in cpm86-hacking
-  (https://github.com/tsupplis/cpm86-hacking).
+/*
+  Licensed under the MIT license. See LICENSE file in the project root for details.
 */
 
+#define WRAPLINE_OFF 0
+#define WRAPLINE_ON  1
+
+#define STATLINE_OFF 0
+#define STATLINE_ON  1
+
+#define CURSOR_OFF     0
+#define CURSOR_ON      1
+#define CURSOR_SAVE    2
+#define CURSOR_RESTORE 3
+
+#define SCRMODE_DEFAULT 0 
+#define SCRMODE_COL80   1
+#define SCRMODE_COL40   2
+#define SCRMODE_MONO    4
+#define SCRMODE_COLOR   8
+
+/* crtreset also clears/homes the active text mode on DOS Plus to reset
+ * XIOS scrolling state through the installed BIOS interrupt hook. */
 #ifndef __STDC__
+int kbhit();
+int getch();
+clrscr();
+crtreset();
+clreol();
+clreos();
+delline();
+insline();
+delchar();
+cursor();
+statline();
+wrapline();
+gotoxy();
+textcolor();
+setstatus();
+int cputs();
+int cputc();
+scrmode();
+#else
+int kbhit();
 int getch();
 void clrscr();
+void crtreset();
+void clreol();
+void clreos();
+void delline();
+void insline();
+void delchar();
+void cursor(int on);
+void statline(int on);
+void wrapline(int on);
 void gotoxy(int x, int y);
 void textcolor(int fg);
-void cputs(char *str);
-#else
-int getch(void);
-void clrscr(void);
-void gotoxy(int x, int y);
-void textcolor(int fg);
-void cputs(const char *str);
+void setstatus(char * s);
+int cputs(char *);
+int cputc(char);
+void scrmode(int);
 #endif
 
 #endif

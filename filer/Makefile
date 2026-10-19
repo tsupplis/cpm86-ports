@@ -16,3 +16,11 @@ clean:
 	rm -rf *.h86 *.lst *.sym *.h86 *.cmd *.log *.bin
 	rm -rf *.xxd *.map
 
+
+.PHONY: test-keys
+test-keys:
+	python3 testkeys.py
+
+.PHONY: test-exec
+test-exec:
+	python3 testexec.py

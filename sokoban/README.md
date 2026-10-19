@@ -66,5 +66,22 @@ make
 ```
 
 This produces `sokoban.cmd` linked against the CP/M-86 C library (`-lc86`).
-Terminal I/O uses VT52 escape sequences via a minimal `conio.h`/`conio.c`
+Terminal I/O uses the shared `conio.h` and `util.lib` from `cpm86-hacking`
 that provides `getch()`, `clrscr()`, `gotoxy()` and `textcolor()`.
+
+## Concurrent CP/M keyboard
+
+On concurrent BDOS >= 3.0, the game selects raw function keys with `ESC 6`
+and maps the XIOS arrow codes to its existing movement commands. Exit restores
+normal expansion with `ESC 7`. CP/M-86 and terminal escape handling are
+unchanged. Buffered console bytes are returned unsigned by the shared library.
+
+`make test-keys` runs the game adapter on the host with mocked shared-console
+calls, checking high-bit keys, coordinates and mode restoration. Verify
+physical arrow movement and normal function keys after quitting on the target.
+
+The build uses local copies of `util.lib`, `conio.h` and `util.h` supplied from
+`cpm86-hacking`. It does not build or require the sibling project. There is no
+local conio implementation. `gameio.c` contains game-specific key translation
+and a coordinate adapter: Sokoban uses column,row while the shared `gotoxy`
+takes row,column.

@@ -22,6 +22,11 @@
 #include "conio.h"
 #endif
 
+#if defined(AZTEC)
+#include "gameio.h"
+#define gotoxy(x, y) game_gotoxy(x, y)
+#endif
+
 #if defined(USE_ANSI)
 #define clrscr() printf("\033[2J\033[;H")
 #define gotoxy(x, y) printf("\033[%d;%dH", y + 1, x + 1)
@@ -946,7 +951,13 @@ int main(int argc, char *argv[])
             level = optlevel;
         }
     }
+#if defined(AZTEC)
+    game_keys_init();
+#endif
     ret = gameloop();
+#if defined(AZTEC)
+    game_keys_exit();
+#endif
     errmess(ret);
     return ret;
 }
