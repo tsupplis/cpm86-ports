@@ -1,5 +1,5 @@
 ;
-; SEEMEM - Version 0.1  [For 'CP/M-86 For The IBM']
+; SEEMEM - Version 0.2 [For 'CP/M-86 For The IBM']
 ; CP/M-86 Memory Browser
 ; Freeware from Frank Kotler and Kirk Lawrence
 ;
@@ -10,19 +10,35 @@
         org     100h                    ;leave room for base page
         jmp     start                   ;go start the program
 ;
-line    db      ' pSpEpEpMpEpMp p0p.p1p p',221,'p pSpepgpmpepnptp:p p+p p-p p'
+line    db      ' pSpEpEpMpEpMp p0p.p2p p',221,'p pSpepgpmpepnptp:p p+p p-p p'
         db      ' p pOpfpfpspeptp:p pPpgpDpnp pPpgpUppp p',25,'p p',24,'p p'
         db      'Hpopmpep pEpnpdp p p pGp=pGpOpTpOp p p pEpSpCp=pQpupiptp p p'
 off     db      27,'0',27,'n',27,'E$'
 onn     db      27,'m',27,'1',27,'E'
-        db      'You''ve been using SEEMEM Version 0.1',13,10
+        db      'SEEMEM Version 0.2, '
         db      'Freeware from Frank Kotler and Kirk Lawrence',13,10,'$'
 sgmt    dw      0
 ofst    dw      0
+cckeys  db      0
+vidseg  dw      0
 ;
 ; Turn off the CP/M-86 status line and cursor, and clear the screen.
 ;
 start:
+        mov     cx,12
+        int     224
+        cmp     al,30h
+        jb      keyinit_done
+        test    ah,5
+        jz      keyinit_done
+        mov     cs:cckeys,1
+        mov     cx,2
+        mov     dx,27
+        int     224
+        mov     cx,2
+        mov     dx,'6'                  ;disable PFK expansion
+        int     224
+keyinit_done:
         mov     cl,9                    ;function 9 - print string
         mov     dx,offset off           ;point to screen control sequence
         int     224                     ;call BDOS services
@@ -33,12 +49,26 @@ start:
 ; Check for TTL monochrome video.  If found, set the appropriate address.
 ;
         mov     dx,0B800h               ;set color video address in DX
+        cmp     cs:cckeys,0
+        je      equipment_bios
+; Concurrent XIOS traps INT 11h and terminates the caller. Read the
+; same equipment word from the IBM BIOS data area instead.
+        push    ds
+        mov     ax,40h
+        mov     ds,ax
+        mov     bx,10h
+        mov     ax,[bx]
+        pop     ds
+        jmp     equipment_done
+equipment_bios:
         int     11h                     ;call BIOS equipment check
+equipment_done:
         and     ax,30h                  ;test the return in AX
         cmp     ax,30h                  ;do we have TTL monochrome video?
         jne     not_ttl                 ;no, so assume color
         mov     dx,0B000h               ;yes, so set monochrome video address
 not_ttl:
+        mov     cs:vidseg,dx
         mov     es,dx                   ;set Extra Segment to video address
 ;
         call    prt_line                ;go print our program's status line
@@ -83,8 +113,7 @@ same_ds:
 ; NOTE: we're checking =SCAN CODES= here; not ASCII codes.
 ;
 pozz:
-        mov     ah,0                    ;function 0 - wait for keypress
-        int     16h                     ;call ROM BIOS keyboard services
+        call    readkey                 ;BDOS on concurrent, BIOS on CP/M
         cmp     ah,51h                  ;was PGDN pressed?
         je      d0                      ;yes, so go display next screen
         cmp     ah,49h                  ;was PGUP pressed?
@@ -194,12 +223,88 @@ gee:
 exit:
         pop     ds                      ;restore our Data Segment
         pop     es                      ;restore our Extra Segment
+        cmp     cs:cckeys,0
+        je      keyexit_done
+        mov     cx,2
+        mov     dx,27
+        int     224
+        mov     cx,2
+        mov     dx,'7'                  ;normal PFK expansion
+        int     224
+keyexit_done:
         call    clr_line                ;go clear our program's status line
         mov     cl,9                    ;function 9 - print string
         mov     dx,offset onn           ;point to screen control sequence
         int     224                     ;call BDOS services
         xor     cx,cx                   ;function 0 - reset system
         int     224                     ;call BDOS services
+;
+; Return the BIOS-style AX expected by both the browser and GOTO prompt.
+; DS is the memory being browsed, ES the screen; preserve them and all
+; working registers across BDOS calls. Never invoke INT 16h concurrently.
+readkey:
+        push    bx
+        push    cx
+        push    dx
+        push    si
+        push    di
+        push    ds
+        push    es
+        cmp     cs:cckeys,0
+        jne     readkey_bdos
+        mov     ah,0
+        int     16h
+        jmp     readkey_done
+readkey_bdos:
+        push    cs
+        pop     ds
+readkey_wait:
+        mov     cx,6
+        mov     dx,0ffh
+        int     224
+        or      al,al
+        jz      readkey_wait
+        cmp     al,0c7h
+        jb      readkey_ascii
+        cmp     al,0d3h
+        ja      readkey_ascii
+        mov     ah,al
+        and     ah,7fh
+        xor     al,al
+        jmp     readkey_done
+readkey_ascii:
+        xor     ah,ah
+        cmp     al,27
+        jne     readkey_bs
+        mov     ah,01h
+readkey_bs:
+        cmp     al,8
+        jne     readkey_g
+        mov     ah,0eh
+readkey_g:
+        cmp     al,'g'
+        je      readkey_setg
+        cmp     al,'G'
+        jne     readkey_plus
+readkey_setg:
+        mov     ah,22h
+readkey_plus:
+        cmp     al,'+'
+        jne     readkey_minus
+        mov     ah,4eh
+readkey_minus:
+        cmp     al,'-'
+        jne     readkey_done
+        mov     ah,4ah
+readkey_done:
+        pop     es
+        pop     ds
+        pop     di
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        ret
 ;
 sdump:
         push    ax                      ;preserve AX
@@ -307,6 +412,20 @@ prt_line:
 ; can't touch screen line 24 with an ordinary 'clear screen').
 ;
 clr_line:
+        cmp     cs:cckeys,0
+        je      clr_line_bios
+; INT 10h is also trapped by Concurrent XIOS. Clear the status row
+; through the same video-memory path used to draw it.
+        push    es
+        mov     ax,cs:vidseg
+        mov     es,ax
+        mov     di,80*48
+        mov     cx,80
+        mov     ax,0720h
+        rep     stosw
+        pop     es
+        ret
+clr_line_bios:
         mov     ax,0700h                ;function 7 - scroll a 'window'
         mov     bx,0700h                ;BH = foreground, BL = background color
         mov     ch,24                   ;start at row 24
@@ -330,7 +449,7 @@ return:
         ret                             ;return to caller
 ;
 ; Routines for handling the GOTO ('G') function.
-; (newly added in Version 0.1)
+; (newly added in Version 0.2)
 ;
 ; Pop up a small on-screen 'window' for user input.
 ;
@@ -413,8 +532,7 @@ back_sp:
 get_hex_number:
         mov     cx,4
 get_key:
-        mov     ah,0
-        int     16h
+        call    readkey
         cmp     ah,01h
         jz      got_address
         cmp     ah,0Eh
