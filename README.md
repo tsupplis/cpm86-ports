@@ -162,5 +162,5 @@ The goal of this collection is to keep small classic programming tools usable in
 
 ## License
 
-The whole repository is as public domain. (License)[LICENSE.md] unless specified otherwise in a subdirectory.
+The whole repository is as public domain. [License](LICENSE.md) unless specified otherwise in a subdirectory.
 
