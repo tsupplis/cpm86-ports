@@ -3,7 +3,7 @@ SUBDIRS1=filer lbr fv seemem disk7 wash15 xsq uucp dc grep sed diff ndbm life ke
 
 SUBDIRS2=ansi2kr tinybas xlisp yacc vtl2 ratfor cpu diskstat sokoban edlin
     
-SUBDIRS3=trek
+SUBDIRS3=trek setboot
 
 SUBDIRS=$(SUBDIRS1) $(SUBDIRS2) $(SUBDIRS3)
 all:
