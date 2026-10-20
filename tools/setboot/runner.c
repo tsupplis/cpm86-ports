@@ -59,6 +59,7 @@ static uint8_t disk[512];
 static int mode, failread, failwrite, mismatch, absent, busy, queuefail,
     releasefail;
 static int nmis, os_calls;
+static unsigned reboot_flag;
 static int reads, writes, resets, rebooted, locked, lock_calls, unlock_calls,
     flushes, quit, exitcode, had_write;
 static int race, console_busy, remote, priority_calls, expected_unit = 0x80;
@@ -304,7 +305,9 @@ int main(int argc, char **argv) {
     for (unsigned step = 0; step < 1000000 && !quit; step++) {
         if (sregs[CS] == 0xffff && ip == 0) {
             rebooted = 1;
-            assert(get16(0x472) == 0x1234);
+            reboot_flag = get16(0x472);
+            assert(reboot_flag == 0 || reboot_flag == 0x1234);
+            assert(!IF);
             quit = 1;
             break;
         }
@@ -359,9 +362,9 @@ int main(int argc, char **argv) {
     assert(fwrite(disk, 1, 512, f) == 512);
     fclose(f);
     printf("nmi=%d reads=%d writes=%d resets=%d reboot=%d locks=%d unlocks=%d "
-           "flushes=%d code=%d\n",
+           "flushes=%d code=%d resetflag=%u\n",
            nmis, reads, writes, resets, rebooted, lock_calls, unlock_calls,
-           flushes, exitcode);
+           flushes, exitcode, reboot_flag);
     printf("%s", output);
     return 0;
 }

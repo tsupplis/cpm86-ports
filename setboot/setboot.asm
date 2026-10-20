@@ -4,7 +4,8 @@
 ; Self-contained source: no INCLUDE files or external object modules.
 ; Reference disassemblies and disk-command sources are not build inputs.
 ;
-; Syntax: SETBOOT [disk:] [partition] [/R | [R | [R]]
+; Syntax: SETBOOT [disk:] [partition] [/WB | /CB]
+; CP/M also accepts [WB or [WB], and [CB or [CB].
 ; Physical disk 1 = BIOS 80h. Primary slots retain their MBR
 ; numbers 1-4.
 ; No extended-chain traversal, partition boot, or partition-table
@@ -48,6 +49,9 @@ entry:
 OS_DOS                  equ     0
 OS_CPM                  equ     1
 OS_CCPM                 equ     2
+REBOOT_NONE             equ     0
+REBOOT_WARM             equ     1
+REBOOT_COLD             equ     2
 
 ; Runtime state.
 ; launch interface / selected backend (OS_* constants)
@@ -56,8 +60,8 @@ os_kind                 db      OS_DOS
 cpm_version             dw      0
 ; 0 = list only; otherwise primary slot 1..4
 chosen                  db      0
-; 1 = reboot after successful or already-active selection
-reboot                  db      0
+; REBOOT_NONE, REBOOT_WARM or REBOOT_COLD after activation
+reboot                  db      REBOOT_NONE
 ; zero-based physical disk; BIOS drive = 80h + disk_unit
 disk_unit               db      0
 ; 1 = an explicit disk: token was supplied
@@ -66,6 +70,8 @@ disk_seen               db      0
 show_usage              db      0
 ; 1 after displaying at least one occupied primary entry
 listed                  db      0
+; digit count used to align 32-bit fields on 16-column tab stops
+decimal_digits          db      0
 type_id                 db      0
 tries                   db      0
 ; transfer request retained across resets/retries
@@ -102,11 +108,13 @@ queue_block             db      8 dup (0),'MXdisk  ',6 dup (0)
 
 ; Console text.
 newline                 db      13,10,'$'
-msg_space               db      '  $'
 msg_disk                db      'Physical disk $'
-msg_columns             db      13,10,'Slot Active Type Start-LBA Sectors Name',13,10,'$'
-msg_legend              db      '* = active. Counts are 512-byte sectors. Logical '
-                        db      'partitions are not listed.',13,10,'$'
+; Default console tab stops are every eight columns. The two numeric
+; columns start at 24 and 40; the description starts at 56.
+msg_columns             db      13,10,'Slot',9,'Active',9,'Type',9
+                        db      'Start-LBA',9,'Sectors',9,9,'Name',13,10,'$'
+msg_legend              db      '* active; sizes in 512-byte sectors. '
+                        db      'Primary partitions only.',13,10,'$'
 msg_no_parts            db      'No nonempty primary partitions.',13,10,'$'
 msg_already             db      'Selected primary partition is already active.',13,10,'$'
 msg_activated           db      'Primary partition activated; MBR write verified.',13,10,'$'
@@ -132,19 +140,22 @@ err_queue               db      'Cannot acquire CCP/M MXdisk queue.',13,10,'$'
 err_release             db      'Cannot release CCP/M MXdisk queue. No reboot.',13,10,'$'
 
 ; OS-specific command syntax.
-usage_dos               db      'Usage: SETBOOT [disk:] [partition] [/R]',13,10
+usage_dos               db      'Usage: SETBOOT [disk:] [partition] [/WB | /CB]',13,10
                         db      '  disk: physical disk 1..128 (default 1); '
                         db      'partition: primary slot 1..4.',13,10
-                        db      '  No partition: list only. /R: reboot after '
-                        db      'successful activation.',13,10
-                        db      '  Examples: SETBOOT   SETBOOT 2:   SETBOOT 2: 3 /R',13,10,'$'
+                        db      '  No partition: list only. /WB: warm boot; '
+                        db      '/CB: cold boot after successful activation.',13,10
+                        db      '  Examples: SETBOOT   SETBOOT 2:   '
+                        db      'SETBOOT 2: 3 /WB',13,10,'$'
 
-usage_cpm               db      'Usage: SETBOOT [disk:] [partition] [R]',13,10
+usage_cpm               db      'Usage: SETBOOT [disk:] [partition] [WB] or [CB]',13,10
                         db      '  disk: physical disk 1..128 (default 1); '
                         db      'partition: primary slot 1..4.',13,10
-                        db      '  No partition: list only. [R] (or [R): reboot '
-                        db      'after successful activation.',13,10
-                        db      '  Examples: SETBOOT   SETBOOT 2:   SETBOOT 2: 3 [R]',13,10,'$'
+                        db      '  No partition: list only. [WB]: warm boot; '
+                        db      '[CB]: cold boot after successful activation.',13,10
+                        db      '  Closing bracket is optional.',13,10
+                        db      '  Examples: SETBOOT   SETBOOT 2:   '
+                        db      'SETBOOT 2: 3 [WB]',13,10,'$'
 
 ; Names are identification hints, not proof of boot code or filesystem health.
 types                   label   byte
@@ -187,12 +198,12 @@ types                   label   byte
 
 ; Partition-type descriptions.
 name_fat12              db      'DOS FAT12$'
-name_fat16s             db      'DOS FAT16 (<32 MB)$'
+name_fat16s             db      'DOS FAT16 (<32M)$'
 name_fat16              db      'DOS FAT16$'
 name_fat16l             db      'FAT16 (LBA)$'
 name_fat32              db      'FAT32$'
 name_fat32l             db      'FAT32 (LBA)$'
-name_extended           db      'Extended (logical partitions omitted)$'
+name_extended           db      'Extended$'
 name_hpfs               db      'HPFS / NTFS / exFAT$'
 name_hidden12           db      'Hidden FAT12$'
 name_hidden16           db      'Hidden FAT16$'
@@ -200,20 +211,20 @@ name_hidden7            db      'Hidden HPFS / NTFS$'
 name_hidden32           db      'Hidden FAT32$'
 name_venix              db      'Venix 80286$'
 name_ppc                db      'PowerPC PReP$'
-name_dynamic            db      'Windows dynamic / legacy type 42$'
+name_dynamic            db      'Windows dynamic$'
 name_cpm80              db      'CP/M-80$'
-name_unix               db      'Unix / GNU Hurd / SCO$'
+name_unix               db      'Unix / Hurd / SCO$'
 name_netware            db      'Novell NetWare$'
 name_swap               db      'Linux swap / Solaris$'
-name_linux              db      'Linux filesystem$'
+name_linux              db      'Linux$'
 name_lvm                db      'Linux LVM$'
 name_freebsd            db      'FreeBSD / BSD$'
 name_openbsd            db      'OpenBSD$'
 name_netbsd             db      'NetBSD$'
-name_nonfs              db      'Non-filesystem data$'
-name_cpm86              db      'Digital Research CP/M-86 / Concurrent CP/M$'
-name_gpt                db      'GPT protective container$'
-name_efi                db      'EFI system partition$'
+name_nonfs              db      'Data$'
+name_cpm86              db      'CP/M-86 / CCP/M-86$'
+name_gpt                db      'GPT protective$'
+name_efi                db      'EFI system$'
 name_raid               db      'Linux RAID$'
 name_unknown            db      'Unknown$'
 
@@ -391,11 +402,18 @@ activation_done:
                         call    flush_os
                         mov     dx,offset msg_reboot
                         call    puts
-; IBM warm reset through the processor reset vector, not a CP/M warm start.
+; Set the BIOS reset flag only after verification, cleanup and flush.
+; 1234h requests warm POST; 0000h requests cold POST. Both reset the PC
+; through FFFF:0000 rather than using CP/M's program-termination service.
+                        xor     ax,ax
+                        cmp     reboot,REBOOT_COLD
+                        je      reset_flag_ready
+                        mov     ax,1234h
+reset_flag_ready:
                         cli
-                        mov     ax,40h
-                        mov     es,ax
-                        mov     word ptr es:[72h],1234h
+                        mov     bx,40h
+                        mov     es,bx
+                        mov     word ptr es:[72h],ax
                         db      0eah
                         dw      0,0ffffh
 success:
@@ -613,9 +631,10 @@ partition_not_repeated:
                         jmp     near ptr token_end
 
 ; ----------------------------------------------------------------------
-; Remember '/' or '[' in BL. Accept /R, [R or [R], ignoring letter case.
-; Only '[' permits the optional closing bracket. token_end rejects any
-; other suffix, and arguments_done requires a partition with reboot.
+; Remember '/' or '[' in BL. Require WB (warm) or CB (cold), ignoring
+; letter case. Only '[' permits an optional closing bracket. token_end
+; rejects extra suffixes; arguments_done requires a partition with reboot.
+; A second reboot option is rejected, including conflicting warm/cold modes.
 ; ----------------------------------------------------------------------
 reboot_token:
                         mov     bl,al
@@ -631,11 +650,25 @@ reboot_has_letter:
                         lodsb
                         dec     cx
                         and     al,0dfh
-                        cmp     al,'R'
-                        je      reboot_letter_valid
+                        cmp     al,'W'
+                        je      choose_warm_boot
+                        cmp     al,'C'
+                        je      choose_cold_boot
                         jmp     near ptr bad_arguments
-reboot_letter_valid:
-                        mov     reboot,1
+choose_warm_boot:
+                        mov     reboot,REBOOT_WARM
+                        jmp     short reboot_need_b
+choose_cold_boot:
+                        mov     reboot,REBOOT_COLD
+reboot_need_b:
+                        jcxz    reboot_missing_letter
+                        lodsb
+                        dec     cx
+                        and     al,0dfh
+                        cmp     al,'B'
+                        je      reboot_mode_valid
+                        jmp     near ptr bad_arguments
+reboot_mode_valid:
                         jcxz    reboot_at_end
                         jmp     short reboot_has_next
 reboot_at_end:
@@ -846,6 +879,7 @@ invalid_table:
 ; Skip empty entries without renumbering later ones. Mark flag 80h with '*'.
 ; Print raw hexadecimal type plus a name when known; names do not establish
 ; bootability. LBA and length are exact counts of 512-byte sectors.
+; Row starts: slot 0, active 8, type 16, LBA 24, size 40, name 56.
 ; ----------------------------------------------------------------------
 listing:
                         mov     dx,offset msg_disk
@@ -867,30 +901,23 @@ list_entry:
                         mov     dx,bp
                         add     dl,'0'
                         call    putch
-                        mov     dx,offset msg_space
-                        call    puts
+                        call    puttab
                         mov     dl,' '
                         cmp     byte ptr [si],80h
                         jne     not_active
                         mov     dl,'*'
 not_active:
                         call    putch
-                        mov     dx,offset msg_space
-                        call    puts
+                        call    puttab
                         mov     al,[si+4]
                         call    hexbyte
-                        mov     dx,offset msg_space
-                        call    puts
+                        call    puttab
                         mov     ax,[si+8]
                         mov     dx,[si+10]
-                        call    decimal32
-                        mov     dx,offset msg_space
-                        call    puts
+                        call    decimal_field
                         mov     ax,[si+12]
                         mov     dx,[si+14]
-                        call    decimal32
-                        mov     dx,offset msg_space
-                        call    puts
+                        call    decimal_field
                         mov     al,[si+4]
                         call    type_name
                         call    puts
@@ -996,6 +1023,22 @@ hex_digit:
 digit_ready:
                         call    putch
                         ret
+; Move to the next standard eight-column tab stop.
+puttab:
+                        mov     dl,9
+                        jmp     near ptr putch
+
+; Numeric fields occupy sixteen columns, beginning at an eight-column
+; boundary. One to seven digits need two tabs; eight to ten need one.
+; Thus even FFFFFFFFh (4294967295) cannot shift the following column.
+decimal_field:
+                        call    decimal32
+                        cmp     decimal_digits,8
+                        jae     decimal_field_last_tab
+                        call    puttab
+decimal_field_last_tab:
+                        jmp     short puttab
+
 ; Unsigned 32-bit decimal DX:AX; 8086 two-step division avoids overflow.
 
 ; ----------------------------------------------------------------------
@@ -1021,6 +1064,7 @@ divide_decimal:
                         mov     si,ax
                         or      si,dx
                         jnz     divide_decimal
+                        mov     decimal_digits,cl
 print_decimal:
                         pop     dx
                         add     dl,'0'
@@ -1030,8 +1074,8 @@ print_decimal:
                         ret
 
 ; ----------------------------------------------------------------------
-; Display the convention for this launch interface: /R on DOS, [R] on
-; CP/M. The parser accepts all three reboot spellings on either system.
+; Display /WB and /CB on DOS; [WB] and [CB] on CP/M. Both interfaces
+; accept slash options and bracket options with or without the closing ].
 ; ----------------------------------------------------------------------
 usage:
                         mov     dx,offset usage_dos

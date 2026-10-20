@@ -40,7 +40,7 @@ def mbr(entries=((0x80, 0x06, 63, 10000), (0, 0xDB, 10063, 20000),
 count = 0
 
 def run(mode, tail='', data=None, scenario='ok', text=None, writes=0, reboot=0,
-        usage=False, changes=False, reads=None, locks=None, nmi=0):
+        usage=False, changes=False, reads=None, locks=None, nmi=0, resetflag=0x1234):
     global count
     data = mbr() if data is None else data
     (WORK / 'input.mbr').write_bytes(data)
@@ -49,10 +49,14 @@ def run(mode, tail='', data=None, scenario='ok', text=None, writes=0, reboot=0,
                             capture_output=True, text=True, timeout=5)
     assert result.returncode == 0, (mode, tail, scenario, result.stdout, result.stderr)
     head, _, out = result.stdout.partition('\n')
+    out = out.expandtabs(8)
     stats = {k: int(v) for k, v in re.findall(r'(\w+)=(\d+)', head)}
     assert stats['nmi'] == nmi, result.stdout
     assert stats['writes'] == writes, (mode, tail, scenario, result.stdout)
     assert stats['reboot'] == reboot, result.stdout
+    assert stats['resetflag'] == (resetflag if reboot else 0), result.stdout
+    if reboot:
+        assert stats['flushes'] == 1, result.stdout
     if reads is not None:
         assert stats['reads'] == reads, result.stdout
     if locks is not None:
@@ -61,7 +65,7 @@ def run(mode, tail='', data=None, scenario='ok', text=None, writes=0, reboot=0,
         assert text in out, (mode, tail, text, result.stdout)
     assert ('Usage:' in out) == usage, result.stdout
     if usage:
-        assert ('[partition] [/R]' if mode == 0 else '[partition] [R]') in out
+        assert ('[partition] [/WB | /CB]' if mode == 0 else '[partition] [WB] or [CB]') in out
     actual = (WORK/'output.mbr').read_bytes()
     if changes:
         wanted = bytearray(data)
@@ -71,21 +75,26 @@ def run(mode, tail='', data=None, scenario='ok', text=None, writes=0, reboot=0,
     else:
         assert actual == data, 'Unexpected MBR mutation'
     count += 1
-    return result.stdout
+    return head + "\n" + out
 
 
 for mode in range(3):
-    out = run(mode, text='Digital Research CP/M-86', reads=1)
-    assert 'Extended (logical partitions omitted)' in out and 'Unknown' in out
+    out = run(mode, text='CP/M-86 / CCP/M-86', reads=1)
+    assert 'Extended' in out and 'Unknown' in out
     assert '70063' in out and '12345' in out and 'FAT16' in out
     assert out.count('Unknown') == 1
     run(mode, '2:', scenario='disk2', text='Physical disk 2', reads=1)
     run(mode, '2', text='MBR write verified', writes=1, changes=True, reads=2)
     run(mode, '4', text='MBR write verified', writes=1, changes=True)
     run(mode, '1', text='already active', reads=1)
-    for r in ('/R', '/r', '[R', '[R]', '[r]'):
-        run(mode, '2 '+r, text='Rebooting', writes=1, reboot=1, changes=True)
-        run(mode, '1 '+r, text='already active', reboot=1)
+    for flag, spellings in (
+        (0x1234, ('/WB', '/wb', '[WB', '[WB]', '[wb]')),
+        (0, ('/CB', '/cb', '[CB', '[CB]', '[cb]')),
+    ):
+        for option in spellings:
+            run(mode, '2 '+option, text='Rebooting', writes=1, reboot=1,
+                changes=True, resetflag=flag)
+            run(mode, '1 '+option, text='already active', reboot=1, resetflag=flag)
     for tail in ('x', '0', '5', '129:', '0:', '01:', '1: 2:', '1 2', '1x', '2:3',
                  '/R', '[R', '[R]', '2 /R /R', '2 [R]]', '2 /RX', '2 /', '2 [',
                  '2 [ R]', '2 R', '1:1', '99999999999:', '1 1:', '2 /R ]', '2 /R]'):
@@ -94,6 +103,16 @@ for mode in range(3):
             run(mode, tail, text='already active')
         else:
             run(mode, tail, text='Invalid parameters', usage=True, reads=0, locks=0)
+    for tail in ('/WB', '/CB', '[WB', '[WB]', '[CB', '[CB]',
+                 '2 /R', '2 [R', '2 [R]', '2 /W', '2 /C',
+                 '2 /WR', '2 /CR', '2 /WBB', '2 [CB]]', '2 /CB]',
+                 '2 /WB /CB', '2 /CB /WB', '2 [WB] [WB]', '2 [C B]'):
+        run(mode, tail, text='Invalid parameters', usage=True, reads=0, locks=0)
+    for option, flag in (('/CB', 0), ('/WB', 0x1234)):
+        run(mode, option+' 1: 1', text='already active', reboot=1, resetflag=flag)
+        for scenario in ('writefail', 'mismatch', 'verifyread'):
+            run(mode, '2 '+option, scenario=scenario, text='No reboot',
+                writes=3 if scenario=='writefail' else 1, changes=scenario!='writefail')
     run(mode, '3', text='container', usage=True)
     for typ in (0x0F, 0x85, 0xEE, 0x42):
         data = mbr();data[446+2*16+4] = typ
@@ -103,7 +122,7 @@ for mode in range(3):
     run(mode, '2', scenario='mismatch', text='does not match', writes=1, changes=True)
     run(mode, '2', scenario='verifyread', text='Cannot read back', writes=1, changes=True)
     for scenario in ('writefail', 'mismatch', 'verifyread'):
-        run(mode, '2 /R', scenario=scenario, text='No reboot',
+        run(mode, '2 /WB', scenario=scenario, text='No reboot',
             writes=3 if scenario=='writefail' else 1, changes=scenario!='writefail')
     run(mode, scenario='absent', text='Cannot read MBR', reads=3)
     # Explicit disk failure gets OS-specific usage.
@@ -121,15 +140,15 @@ for mode in range(3):
                  mbr(((0x80,6,63,10000),(0,0xdb,0xfffffffe,10)))):
         run(mode, '2', data=data, text='Invalid primary table')
     # Large unsigned fields exercise 32-bit decimal on the 8086.
-    run(mode, data=mbr(((0,0x83,0x80000000,0xffffffff),)), text='2147483648  4294967295')
+    run(mode, data=mbr(((0,0x83,0x80000000,0xffffffff),)), text='2147483648      4294967295')
     run(mode, '2', scenario='boundary', text='MBR write verified', writes=1, changes=True)
     run(mode, ' ' * 127, text='Physical disk 1', reads=1)
     run(mode, '\t2\t1:\t', text='MBR write verified', writes=1, changes=True)
 
 for scenario in ('busy', 'race', 'consolebusy', 'remote', 'queueopen', 'queueread'):
-    run(2, '2 /R', scenario=scenario, reads=0,
+    run(2, '2 /WB', scenario=scenario, reads=0,
         text='MXdisk' if scenario.startswith('queue') else 'local console')
-run(2, '2 /R', scenario='queuerelease', writes=1, changes=True, text='Cannot release')
+run(2, '2 /WB', scenario='queuerelease', writes=1, changes=True, text='Cannot release')
 for mode in (0, 1):
     run(mode, '128:', scenario='disk128', text='Physical disk 128')
 run(2, '3:', text='does not exist', usage=True, reads=0)
@@ -147,6 +166,25 @@ for mode in (1, 2):
         run(mode, scenario=scenario, reads=0, locks=0, nmi=1)
 run(0, scenario='bad_prefix', reads=0, locks=0, nmi=1)
 run(0, scenario='other_call5', text='Physical disk 1', reads=1)
+
+# Tab stops must align the screenshot's rows and full-width 32-bit values.
+for mode in range(3):
+    layout = mbr(((0x80,0xdb,1,18143),(0,4,18144,45360),
+                  (0,0x83,12345678,1234567),(0,0x83,2147483648,4294967295)))
+    rendered = run(mode, data=layout, text='CP/M-86 / CCP/M-86')
+    lines = rendered.splitlines()[1:]
+    heading = next(line for line in lines if line.startswith('Slot'))
+    for title, column in (('Slot',0),('Active',8),('Type',16),
+                          ('Start-LBA',24),('Sectors',40),('Name',56)):
+        assert heading.index(title) == column, heading
+    rows = [line for line in lines if line[:1] in ('1','2','3','4')]
+    assert len(rows) == 4
+    for row, (start, size) in zip(rows, ((1,18143),(18144,45360),
+                                        (12345678,1234567),(2147483648,4294967295))):
+        assert row[24:40].strip() == str(start), repr(row)
+        assert row[40:56].strip() == str(size), repr(row)
+        assert len(row) <= 79, repr(row)
+    assert all(len(line) <= 79 for line in lines), lines
 
 # CMD has the exact same payload at +128+256, padded to 128-byte records.
 com = (ROOT/'setboot.com').read_bytes()
