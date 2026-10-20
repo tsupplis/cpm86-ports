@@ -157,3 +157,10 @@ The goal of this collection is to keep small classic programming tools usable in
 | [cpm86-menu](https://github.com/tsupplis/cpm86-menu)   | A submit replacement and a menu system for submit orchestration for CP/M-86 1.1 |
 | [cpm86-make](https://github.com/tsupplis/cpm86-make)   | A simple submit based make tool for CP/M-86 1.1 |
 | [pcdos11-hacking](https://github.com/tsupplis/pcdos11-hacking) | PC-DOS 1.1 distribution, tools and notes |
+
+--
+
+## License
+
+The whole repository is as public domain. (License)[LICENSE.md] unless specified otherwise in a subdirectory.
+
