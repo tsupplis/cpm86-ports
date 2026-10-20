@@ -71,6 +71,7 @@ Ancillary goals:
 | [wash15](wash15/README.md) | WASH, a directory maintenance utility, translated from CP/M-80 with XLT86 | Michael J. Karas, Simon J. Ewins | Public domain, non-commercial |
 | [xsq](xsq/README.md) | sq, usq and sqtype: squeeze, unsqueeze and display squeezed (.?Q?) files | Richard Greenlaw, with Dick Greenlaw, Chuck Forsberg and W. Earnest | Public domain / Abandonware |
 | [kermit](kermit/README.md) (WIP) | Kermit-86 v2.9 file transfer, IBM PC/XT port (COM1/COM2, 8250 UART, interrupt-driven) | Columbia University Kermit-86 v2.9 | Public domain |
+| [setboot](setboot/README.md)| Active boot partition setter for CP/M-86, CCP/M-86 and DOS, also showing how to create a unique binary for both DOS and CP/M | Local | MIT |
 
 
 ### Games
