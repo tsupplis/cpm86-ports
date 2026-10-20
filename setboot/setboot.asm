@@ -1,8 +1,8 @@
 ; --------------------------------------------------------------------
 ; SETBOOT -- primary MBR partition selector, IBM PC, 8086/8088.
 ; MASM 1.10. Same payload in DOS COM and CP/M-86 8080-model CMD.
-; Written independently; ccpmio.a86 and setboot.dis are reference
-; only.
+; Self-contained source: no INCLUDE files or external object modules.
+; Reference disassemblies and disk-command sources are not build inputs.
 ;
 ; Syntax: SETBOOT [disk:] [partition] [/R | [R | [R]]
 ; Physical disk 1 = BIOS 80h. Primary slots retain their MBR
@@ -16,6 +16,23 @@
 ; reads are relative to the CP/M partition and cannot read the MBR.
 ; --------------------------------------------------------------------
 
+; Main flow:
+;   start -> detect_os -> select_backend -> arguments
+;         -> (CCP/M: concurrent_init -> take_disk) -> read MBR
+;         -> listing, or validate -> change flags -> write -> verify
+;         -> release_disk -> optional reboot -> terminate
+;
+; All routines are near labels in one segment. DS normally addresses
+; program data; ES is temporary for BIOS DMA and CCP/M system pointers.
+; detect_os must inspect the unmodified entry DS before normalization.
+;
+; MBR: 512 bytes, partition table at 446 (01BEh), signature at 510.
+; Each of four 16-byte entries contains:
+;   +0 boot flag (00h or 80h)       +4 partition type (00h = empty)
+;   +1..3 start CHS, +5..7 end CHS  +8 start LBA, +12 sector count
+; LBA and count are little-endian 32-bit values. CHS, bootstrap code,
+; disk signature and every other MBR byte must remain unchanged.
+;
 ; Packed partition-type row: byte ID followed by word string offset.
 ptype                   macro   type_code,type_text
                         db      type_code
@@ -33,31 +50,51 @@ OS_CPM                  equ     1
 OS_CCPM                 equ     2
 
 ; Runtime state.
+; launch interface / selected backend (OS_* constants)
 os_kind                 db      OS_DOS
+; raw BDOS function 12 result for backend selection
 cpm_version             dw      0
+; 0 = list only; otherwise primary slot 1..4
 chosen                  db      0
+; 1 = reboot after successful or already-active selection
 reboot                  db      0
+; zero-based physical disk; BIOS drive = 80h + disk_unit
 disk_unit               db      0
+; 1 = an explicit disk: token was supplied
 disk_seen               db      0
+; print usage after a parameter-related error
 show_usage              db      0
+; 1 after displaying at least one occupied primary entry
 listed                  db      0
 type_id                 db      0
 tries                   db      0
+; transfer request retained across resets/retries
 io_function             db      0
+; last BIOS failure status, returned in AH
 io_error                db      0
+; aligned transfer buffer, addressed as ES:0000
 dma_seg                 dw      0
 
 ; CCP/M pointers and acquired-resource state.
+; CCP/M system data segment
 sys_seg                 dw      0
+; process descriptor offset in sys_seg
 pd_off                  dw      0
+; current process user-data-area segment
 uda_seg                 dw      0
+; local virtual-console control block offset in sys_seg
 vc_off                  dw      0
+; XIOS far entry obtained from SYSDAT:0028h
 xios_vector             dd      0
+; original INT 13h far entry from XIOS setup data
 bios_vector             dd      0
 saved_keep              dw      0
 saved_priority          db      0
+; restore P_KEEP and priority only if acquired
 process_reserved        db      0
+; clear NoSwitch only if this command set it
 console_reserved        db      0
+; return the MXdisk token only if this command owns it
 disk_reserved           db      0
 
 ; CCP/M user queue control block: link, name, message length, buffer.
@@ -182,12 +219,20 @@ name_unknown            db      'Unknown$'
 
 ; Buffers and private stack.
                         even
+; working copy, later the expected image for verification
 mbr                     db      512 dup (0)
+; room to round up to a 512-byte physical boundary
 dma_space               db      1024 dup (0)
 ; Materialized storage: both loaders allocate it even without BSS metadata.
+; implicitly used below stack_end; this storage is required
 stack_space             db      1024 dup (0)
 stack_end               label   word
 
+
+; ----------------------------------------------------------------------
+; Install the private stack first. Leave DS unchanged until detect_os
+; checks the loader's entry value. Only then set DS and ES to our segment.
+; ----------------------------------------------------------------------
 start:
                         cli
                         mov     ax,cs
@@ -244,6 +289,12 @@ signature_ok:
                         call    release_disk
                         call    listing
                         jmp     near ptr success
+
+; ----------------------------------------------------------------------
+; Validate every entry before any write, even for an already-active slot.
+; Select the requested entry with (slot - 1) * 16; numbers always refer to
+; the original primary slots, including empty slots.
+; ----------------------------------------------------------------------
 activate:
 ; Validate the complete table before changing any bytes. Do not repair
 ; corrupt boot indicators or accept overlapping/wrapping primary extents.
@@ -280,6 +331,12 @@ selected_usable:
                         mov     dx,offset msg_already
                         call    puts
                         jmp     near ptr activation_done
+
+; ----------------------------------------------------------------------
+; The only intended disk changes are these four boot-indicator bytes.
+; Clear all four, then mark the selected one 80h. Keep the complete expected
+; sector in mbr so verification can detect changes outside the table too.
+; ----------------------------------------------------------------------
 modify_flags:
                         mov     byte ptr mbr+446,0
                         mov     byte ptr mbr+462,0
@@ -297,6 +354,12 @@ modify_flags:
                         jnc     write_done
                         mov     dx,offset err_write
                         jmp     near ptr failure
+
+; ----------------------------------------------------------------------
+; Read back into the DMA buffer, leaving mbr as the expected image.
+; Compare all 256 words below. A read failure or mismatch goes to failure
+; and cannot reach the reboot path.
+; ----------------------------------------------------------------------
 write_done:
                         mov     ah,2
                         call    sector_io
@@ -315,6 +378,12 @@ verify_read:
 verified:
                         mov     dx,offset msg_activated
                         call    puts
+
+; ----------------------------------------------------------------------
+; The write is verified, or the selected entry was already active.
+; Release CCP/M restrictions before flushing and before a possible reset.
+; A release error terminates inside release_disk instead of returning here.
+; ----------------------------------------------------------------------
 activation_done:
                         call    release_disk
                         cmp     reboot,0
@@ -330,10 +399,15 @@ activation_done:
                         db      0eah
                         dw      0,0ffffh
 success:
-                        xor     al,al
                         jmp     near ptr terminate
 parameter_failure:
                         mov     show_usage,1
+
+; ----------------------------------------------------------------------
+; Common recoverable-error exit. DX points to a $-terminated message.
+; Save DX across cleanup because it is still needed by puts. Acquisition
+; flags make release_disk safe even after partial CCP/M initialization.
+; ----------------------------------------------------------------------
 failure:
                         push    dx
                         call    release_disk
@@ -343,7 +417,6 @@ failure:
                         je      failure_exit
                         call    usage
 failure_exit:
-                        mov     al,1
 terminate:
                         cmp     os_kind,OS_DOS
                         jne     cpm_exit
@@ -423,47 +496,64 @@ backend_unknown:
                         jmp     near ptr unknown_os
 ; Bounded command-tail parser. FCBs are deliberately ignored: CP/M can
 ; interpret a drive token while constructing its default FCBs.
+
+; ----------------------------------------------------------------------
+; Parse the length-bounded tail at DS:0080h, not the default FCBs.
+; SI = next byte; CX = remaining bytes; BX = accumulated decimal number.
+; A trailing colon makes a number a disk selector; a bare number is a slot.
+; Tokens may be reordered, but duplicates and attached suffixes are errors.
+;
+; 8086 conditional jumps and JCXZ have short displacements only. The
+; conditional + JMP NEAR sequences bridge longer distances deliberately;
+; MASM 1.10 does not automatically expand these branches.
+; ----------------------------------------------------------------------
 arguments:
                         xor     cx,cx
                         mov     cl,byte ptr ds:[80h]
                         cmp     cx,127
-                        jbe     arg_branch_1
+                        jbe     tail_length_ok
                         jmp     near ptr bad_arguments
-arg_branch_1:
+tail_length_ok:
                         mov     si,81h
 next_token:
-                        jcxz    arg_branch_2
-                        jmp     short arg_branch_2_skip
-arg_branch_2:
+                        jcxz    args_at_end
+                        jmp     short args_have_byte
+args_at_end:
                         jmp     near ptr arguments_done
-arg_branch_2_skip:
+args_have_byte:
                         lodsb
                         dec     cx
                         cmp     al,' '
-                        jne     arg_branch_3
+                        jne     args_not_space
                         jmp     near ptr next_token
-arg_branch_3:
+args_not_space:
                         cmp     al,9
-                        jne     arg_branch_4
+                        jne     args_not_tab
                         jmp     near ptr next_token
-arg_branch_4:
+args_not_tab:
                         cmp     al,'/'
-                        jne     arg_branch_5
+                        jne     args_not_slash
                         jmp     near ptr reboot_token
-arg_branch_5:
+args_not_slash:
                         cmp     al,'['
-                        jne     arg_branch_6
+                        jne     args_not_bracket
                         jmp     near ptr reboot_token
-arg_branch_6:
+args_not_bracket:
                         cmp     al,'1'
-                        jae     arg_branch_7
+                        jae     args_digit_lower_ok
                         jmp     near ptr bad_arguments
-arg_branch_7:
+args_digit_lower_ok:
                         cmp     al,'9'
-                        jbe     arg_branch_8
+                        jbe     args_digit_upper_ok
                         jmp     near ptr bad_arguments
-arg_branch_8:
+args_digit_upper_ok:
                         xor     bx,bx
+
+; ----------------------------------------------------------------------
+; AL is the current digit. Accumulate BX = BX * 10 + digit.
+; The previous value is at most 128, so multiplication cannot overflow.
+; Checking each digit rejects long numeric tokens without a wider counter.
+; ----------------------------------------------------------------------
 number_digit:
                         sub     al,'0'
                         xor     ah,ah
@@ -475,35 +565,35 @@ number_digit:
                         pop     ax
                         add     bx,ax
                         cmp     bx,128
-                        jbe     arg_branch_9
+                        jbe     number_within_range
                         jmp     near ptr bad_arguments
-arg_branch_9:
-                        jcxz    arg_branch_10
-                        jmp     short arg_branch_10_skip
-arg_branch_10:
+number_within_range:
+                        jcxz    number_at_end
+                        jmp     short number_has_next
+number_at_end:
                         jmp     near ptr partition_token
-arg_branch_10_skip:
+number_has_next:
                         mov     al,[si]
                         cmp     al,':'
-                        jne     arg_branch_11
+                        jne     number_not_drive
                         jmp     near ptr disk_token
-arg_branch_11:
+number_not_drive:
                         cmp     al,'0'
-                        jae     arg_branch_12
+                        jae     number_digit_lower_ok
                         jmp     near ptr partition_token
-arg_branch_12:
+number_digit_lower_ok:
                         cmp     al,'9'
-                        jbe     arg_branch_13
+                        jbe     number_digit_upper_ok
                         jmp     near ptr partition_token
-arg_branch_13:
+number_digit_upper_ok:
                         inc     si
                         dec     cx
                         jmp     near ptr number_digit
 disk_token:
                         cmp     disk_seen,0
-                        je      arg_branch_14
+                        je      disk_not_repeated
                         jmp     near ptr bad_arguments
-arg_branch_14:
+disk_not_repeated:
                         mov     disk_seen,1
                         inc     si
                         dec     cx
@@ -512,75 +602,81 @@ arg_branch_14:
                         jmp     near ptr token_end
 partition_token:
                         cmp     bx,4
-                        jbe     arg_branch_15
+                        jbe     partition_in_range
                         jmp     near ptr bad_arguments
-arg_branch_15:
+partition_in_range:
                         cmp     chosen,0
-                        je      arg_branch_16
+                        je      partition_not_repeated
                         jmp     near ptr bad_arguments
-arg_branch_16:
+partition_not_repeated:
                         mov     chosen,bl
                         jmp     near ptr token_end
+
+; ----------------------------------------------------------------------
+; Remember '/' or '[' in BL. Accept /R, [R or [R], ignoring letter case.
+; Only '[' permits the optional closing bracket. token_end rejects any
+; other suffix, and arguments_done requires a partition with reboot.
+; ----------------------------------------------------------------------
 reboot_token:
                         mov     bl,al
                         cmp     reboot,0
-                        je      arg_branch_17
+                        je      reboot_not_repeated
                         jmp     near ptr bad_arguments
-arg_branch_17:
-                        jcxz    arg_branch_18
-                        jmp     short arg_branch_18_skip
-arg_branch_18:
+reboot_not_repeated:
+                        jcxz    reboot_missing_letter
+                        jmp     short reboot_has_letter
+reboot_missing_letter:
                         jmp     near ptr bad_arguments
-arg_branch_18_skip:
+reboot_has_letter:
                         lodsb
                         dec     cx
                         and     al,0dfh
                         cmp     al,'R'
-                        je      arg_branch_19
+                        je      reboot_letter_valid
                         jmp     near ptr bad_arguments
-arg_branch_19:
+reboot_letter_valid:
                         mov     reboot,1
-                        jcxz    arg_branch_20
-                        jmp     short arg_branch_20_skip
-arg_branch_20:
+                        jcxz    reboot_at_end
+                        jmp     short reboot_has_next
+reboot_at_end:
                         jmp     near ptr arguments_done
-arg_branch_20_skip:
+reboot_has_next:
                         cmp     bl,'['
                         jne     token_end
                         cmp     byte ptr [si],']'
-                        je      arg_branch_21
+                        je      reboot_close_bracket
                         jmp     near ptr token_end
-arg_branch_21:
+reboot_close_bracket:
                         inc     si
                         dec     cx
 token_end:
-                        jcxz    arg_branch_22
-                        jmp     short arg_branch_22_skip
-arg_branch_22:
+                        jcxz    token_at_end
+                        jmp     short token_has_next
+token_at_end:
                         jmp     near ptr arguments_done
-arg_branch_22_skip:
+token_has_next:
                         mov     al,[si]
                         cmp     al,' '
-                        jne     arg_branch_23
+                        jne     token_not_space
                         jmp     near ptr next_token
-arg_branch_23:
+token_not_space:
                         cmp     al,9
-                        jne     arg_branch_24
+                        jne     token_not_tab
                         jmp     near ptr next_token
-arg_branch_24:
+token_not_tab:
 bad_arguments:
                         mov     show_usage,1
                         mov     dx,offset err_args
                         jmp     near ptr failure
 arguments_done:
                         cmp     reboot,0
-                        jne     arg_branch_25
+                        jne     reboot_needs_partition
                         jmp     near ptr arguments_valid
-arg_branch_25:
+reboot_needs_partition:
                         cmp     chosen,0
-                        jne     arg_branch_26
+                        jne     reboot_partition_valid
                         jmp     near ptr bad_arguments
-arg_branch_26:
+reboot_partition_valid:
 arguments_valid:
 ; Disk failures show usage when a disk was explicitly specified.
                         mov     al,disk_seen
@@ -600,6 +696,14 @@ is_container:
 container_yes:
                         stc
                         ret
+
+; ----------------------------------------------------------------------
+; Inspect, but never modify, all four primary entries.
+; SI = current entry; BP = entries remaining; BX = active-entry count.
+; Allow flags 00h/80h, at most one active entry, nonzero starts/sizes,
+; nonwrapping 32-bit extents and no overlap between occupied primary slots.
+; Return on success; a malformed table jumps to the common failure exit.
+; ----------------------------------------------------------------------
 validate_table:
                         mov     si,offset mbr+446
                         mov     bp,4
@@ -607,77 +711,84 @@ validate_table:
 validate_entry:
                         mov     al,[si]
                         cmp     al,80h
-                        jne     table_branch_27
+                        jne     check_inactive_flag
                         jmp     near ptr count_active
-table_branch_27:
+check_inactive_flag:
                         or      al,al
-                        je      table_branch_28
+                        je      inactive_flag_valid
                         jmp     near ptr invalid_table
-table_branch_28:
+inactive_flag_valid:
                         jmp     near ptr flag_valid
 count_active:
                         inc     bx
                         cmp     bx,1
-                        jbe     table_branch_29
+                        jbe     active_count_valid
                         jmp     near ptr invalid_table
-table_branch_29:
+active_count_valid:
 flag_valid:
                         cmp     byte ptr [si+4],0
-                        je      table_branch_30
+                        je      check_empty_flag
                         jmp     near ptr check_extent
-table_branch_30:
+check_empty_flag:
 ; An empty slot may not be marked active.
                         cmp     byte ptr [si],0
-                        je      table_branch_31
+                        je      empty_flag_valid
                         jmp     near ptr invalid_table
-table_branch_31:
+empty_flag_valid:
                         jmp     near ptr validate_next
 check_extent:
                         mov     ax,[si+8]
                         mov     dx,[si+10]
                         mov     cx,ax
                         or      cx,dx
-                        jnz     table_branch_32
+                        jnz     extent_start_nonzero
                         jmp     near ptr invalid_table
-table_branch_32:
+extent_start_nonzero:
                         mov     cx,[si+12]
                         or      cx,[si+14]
-                        jnz     table_branch_33
+                        jnz     extent_size_nonzero
                         jmp     near ptr invalid_table
-table_branch_33:
+extent_size_nonzero:
                         add     ax,[si+12]
                         adc     dx,[si+14]
-                        jnc     table_branch_34
+                        jnc     extent_does_not_wrap
                         jmp     near ptr invalid_table
-table_branch_34:
+extent_does_not_wrap:
 ; Save exclusive end, then compare every later occupied primary slot.
                         push    bx
                         mov     di,si
                         mov     cx,bp
                         dec     cx
-                        jcxz    table_branch_35
-                        jmp     short table_branch_35_skip
-table_branch_35:
+                        jcxz    no_later_entries
+                        jmp     short later_entries_remain
+no_later_entries:
                         jmp     near ptr extent_checked
-table_branch_35_skip:
+later_entries_remain:
+
+; ----------------------------------------------------------------------
+; DX:AX holds current.start + current.size, the exclusive extent end.
+; DI walks later occupied entries; compare each pair only once.
+; Disjoint means later.start >= current.end OR later.end <= current.start.
+; Equality permits adjacent partitions. Save the outer active count in BX.
+; ----------------------------------------------------------------------
 compare_extent:
                         add     di,16
                         cmp     byte ptr [di+4],0
-                        jne     table_branch_36
+                        jne     compare_occupied_entry
                         jmp     near ptr compare_next
-table_branch_36:
+compare_occupied_entry:
 ; If later.start >= current.end, they are disjoint.
                         cmp     word ptr [di+10],dx
-                        jbe     table_branch_37
+                        jbe     compare_start_high
                         jmp     near ptr compare_next
-table_branch_37:
-                        jae     table_branch_38
+compare_start_high:
+                        jae     compare_start_low
                         jmp     near ptr test_other_end
-table_branch_38:
+compare_start_low:
                         cmp     word ptr [di+8],ax
-                        jb      table_branch_39
+                        jb      compare_other_end
                         jmp     near ptr compare_next
-table_branch_39:
+compare_other_end:
 test_other_end:
                         push    ax
                         push    dx
@@ -685,21 +796,26 @@ test_other_end:
                         mov     dx,[di+10]
                         add     ax,[di+12]
                         adc     dx,[di+14]
-                        jnc     table_branch_40
+                        jnc     other_end_does_not_wrap
                         jmp     near ptr overlap_found
-table_branch_40:
+other_end_does_not_wrap:
 ; If later.end <= current.start, they are disjoint.
                         cmp     dx,[si+10]
-                        jae     table_branch_41
+                        jae     compare_end_high
                         jmp     near ptr no_overlap
-table_branch_41:
-                        jbe     table_branch_42
+compare_end_high:
+                        jbe     compare_end_low
                         jmp     near ptr overlap_found
-table_branch_42:
+compare_end_low:
                         cmp     ax,[si+8]
-                        ja      table_branch_43
+                        ja      entries_overlap
                         jmp     near ptr no_overlap
-table_branch_43:
+entries_overlap:
+
+; ----------------------------------------------------------------------
+; Balance the saved extent-end words and active count before failure;
+; common cleanup must not inherit the inner comparison loop's stack.
+; ----------------------------------------------------------------------
 overlap_found:
                         pop     dx
                         pop     ax
@@ -715,15 +831,22 @@ extent_checked:
 validate_next:
                         add     si,16
                         dec     bp
-                        jz      table_branch_44
+                        jz      all_entries_checked
                         jmp     near ptr validate_entry
-table_branch_44:
+all_entries_checked:
                         ret
 invalid_table:
                         mov     dx,offset err_table
                         jmp     near ptr failure
 ; Display primary slots only. Raw IDs and exact LBA/sector counts remain
 ; useful even for unknown or nonbootable filesystems; no bootability claim.
+
+; ----------------------------------------------------------------------
+; Walk the four primary entries with SI; BP is the original slot 1..4.
+; Skip empty entries without renumbering later ones. Mark flag 80h with '*'.
+; Print raw hexadecimal type plus a name when known; names do not establish
+; bootability. LBA and length are exact counts of 512-byte sectors.
+; ----------------------------------------------------------------------
 listing:
                         mov     dx,offset msg_disk
                         call    puts
@@ -773,6 +896,11 @@ not_active:
                         call    puts
                         mov     dx,offset newline
                         call    puts
+
+; ----------------------------------------------------------------------
+; Advance for every slot, including empty ones. listed controls the
+; explicit message when no occupied primary entry was encountered.
+; ----------------------------------------------------------------------
 list_next:
                         add     si,16
                         inc     bp
@@ -786,6 +914,12 @@ list_finished:
                         mov     dx,offset msg_legend
                         call    puts
                         ret
+
+; ----------------------------------------------------------------------
+; Input AL = partition type. Return DS:DX -> $-terminated description.
+; Search (byte type, word string offset) rows until the zero sentinel.
+; Preserve SI, the caller's partition cursor; AX, BX and DX are scratch.
+; ----------------------------------------------------------------------
 type_name:
                         mov     type_id,al
                         push    si
@@ -839,6 +973,11 @@ putch_done:
                         pop     cx
                         pop     ax
                         ret
+
+; ----------------------------------------------------------------------
+; Print AL as two uppercase hexadecimal digits. AX/CX/DX are scratch.
+; AH keeps the original byte across the first digit; putch preserves AX.
+; ----------------------------------------------------------------------
 hexbyte:
                         mov     ah,al
                         mov     cl,4
@@ -858,6 +997,13 @@ digit_ready:
                         call    putch
                         ret
 ; Unsigned 32-bit decimal DX:AX; 8086 two-step division avoids overflow.
+
+; ----------------------------------------------------------------------
+; Print unsigned DX:AX, including zero and FFFFFFFFh.
+; Divide the high word by ten, then remainder:low by ten, yielding a full
+; 32-bit quotient using only 8086 DIV. Push remainders and pop them in
+; print order; CX counts digits. Preserve the caller's partition cursor SI.
+; ----------------------------------------------------------------------
 decimal32:
                         push    si
                         mov     bx,10
@@ -882,6 +1028,11 @@ print_decimal:
                         loop    print_decimal
                         pop     si
                         ret
+
+; ----------------------------------------------------------------------
+; Display the convention for this launch interface: /R on DOS, [R] on
+; CP/M. The parser accepts all three reboot spellings on either system.
+; ----------------------------------------------------------------------
 usage:
                         mov     dx,offset usage_dos
                         cmp     os_kind,OS_DOS
@@ -890,6 +1041,11 @@ usage:
 usage_print:
                         call    puts
                         ret
+
+; ----------------------------------------------------------------------
+; Run the OS disk-reset/flush service after releasing MXdisk, so BDOS
+; can obtain its own disk exclusion before the optional machine reset.
+; ----------------------------------------------------------------------
 flush_os:
                         cmp     os_kind,OS_DOS
                         jne     flush_cpm
@@ -904,6 +1060,14 @@ flush_cpm:
 ; an interrupt frame; PUSHF/CALL FAR provides it, including IF clear.
 ; Returns CF and AH. Callers reload their transfer cursors afterwards;
 ; AX, BX, CX, DX and ES are scratch. DS retains the program segment.
+
+; ----------------------------------------------------------------------
+; Transfer one sector at cylinder 0, head 0, sector 1: the physical MBR.
+; Input AH = 02h read / 03h write; disk_unit and dma_seg select disk/buffer.
+; Rebuild BIOS registers on every attempt. Retry at most three times,
+; resetting the controller after failure. Return CF and last AH status.
+; Callers reload numeric registers and cursors after this routine.
+; ----------------------------------------------------------------------
 sector_io:
                         mov     io_function,ah
                         mov     tries,3
@@ -934,6 +1098,13 @@ io_ok:
 io_return:
                         cld
                         ret
+
+; ----------------------------------------------------------------------
+; DOS and single-user CP/M use INT 13h. CCP/M calls its saved BIOS entry
+; only while take_disk's process/console/disk restrictions are held.
+; PUSHF + CALL FAR supplies the interrupt return frame expected by IRET;
+; CLI clears IF for entry while the pushed flags keep the caller's IF.
+; ----------------------------------------------------------------------
 bios_call:
                         cmp     os_kind,OS_CCPM
                         je      saved_bios
@@ -946,6 +1117,15 @@ saved_bios:
                         ret
 ; Obtain and validate the particular CCP/M 3.1 IBM PC interface. No
 ; application data transfers through XIOS's partition-relative read/write.
+
+; ----------------------------------------------------------------------
+; Read CCP/M-86 3.1 IBM PC pointers before acquiring any resources.
+; BDOS 154 returns SYSDAT in ES; 156 returns the process descriptor in BX;
+; 153 returns the console number. Follow SYSDAT to XIOS and console data.
+; XIOS 14/CX=0 supplies equipment data (hard-disk count at +2).
+; XIOS 14/CX=1 supplies setup data (original INT 13h vector at +0).
+; Ordinary XIOS reads are partition-relative and cannot address the MBR.
+; ----------------------------------------------------------------------
 concurrent_init:
 ; Function 154 returns SYSDAT in ES. Consume it before restoring ES.
                         mov     cl,154
@@ -1003,6 +1183,12 @@ get_bios_vector:
                         jmp     near ptr unknown_os
 concurrent_ready:
                         ret
+
+; ----------------------------------------------------------------------
+; Input CX = selector; return AX = offset inside sys_seg.
+; XIOS needs DS=SYSDAT and ES=UDA. Restore DS on return. Its callers reload
+; ES immediately, so saving ES here would serve no caller requirement.
+; ----------------------------------------------------------------------
 xios_pointer:
                         push    ds
                         mov     ds,sys_seg
@@ -1012,6 +1198,15 @@ xios_pointer:
                         pop     ds
                         cld
                         ret
+
+; ----------------------------------------------------------------------
+; Acquire CCP/M protections in order: process, console, then MXdisk.
+; Remember original P_KEEP/priority; set P_KEEP and request priority 150.
+; Require an unbuffered local console and no open files. Recheck open files
+; after acquiring MXdisk to close the race with another disk user.
+; Set each *_reserved flag only after acquiring that resource, allowing
+; a shared release_disk cleanup after any subsequent error.
+; ----------------------------------------------------------------------
 take_disk:
                         mov     es,sys_seg
                         cmp     word ptr es:[88h],0
@@ -1063,6 +1258,13 @@ queue_failed:
 concurrent_busy:
                         mov     dx,offset err_busy
                         jmp     near ptr failure
+
+; ----------------------------------------------------------------------
+; No-op outside CCP/M. Return the MXdisk token, clear our NoSwitch bit,
+; then restore the original P_KEEP bit and priority. Acquisition flags guard
+; each step, making partial setup safe. No media-cache invalidation is
+; needed here: only MBR active flags have changed.
+; ----------------------------------------------------------------------
 release_disk:
                         cmp     os_kind,OS_CCPM
                         jne     released
@@ -1098,13 +1300,18 @@ release_process:
                         mov     process_reserved,0
 released:
                         ret
+
+; ----------------------------------------------------------------------
+; Do not retry a failed queue-token return recursively. Clear the local
+; retry flag, release console/process restrictions, report, and terminate.
+; This path never returns to activation_done's optional reboot.
+; ----------------------------------------------------------------------
 release_failed:
 ; Do not claim success or reboot if releasing mutual exclusion failed.
                         mov     disk_reserved,0
                         call    release_disk
                         mov     dx,offset err_release
                         call    puts
-                        mov     al,1
                         jmp     near ptr terminate
 program                 ends
                         end     entry

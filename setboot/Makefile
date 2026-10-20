@@ -24,19 +24,19 @@ clean:
 	rm -rf *.obj *.bin *.com *.exe *.lst *.cmd
 
 # Standalone personality experiment; deliberately not part of SETBOOT's all.
-.PHONY: hello
-hello: hello.com hello.cmd
+.PHONY: multios
+multios: multios.com multios.cmd
 
-hello.cmd: hello.com
+multios.cmd: multios.com
 	$(BIN2CMD) $< $@
 	$(CMDINFO) $@
 
-hello.com: hello.exe
-	$(EXE2BIN) hello.exe hello.com
+multios.com: multios.exe
+	$(EXE2BIN) multios.exe multios.com
 
-hello.exe: hello.obj
+multios.exe: multios.obj
 	$(LINK) $< \;
 
-hello.obj: hello.asm
-	$(MASM) hello,hello\;
+multios.obj: multios.asm
+	$(MASM) multios,multios\;
 	[ -f $@ ]

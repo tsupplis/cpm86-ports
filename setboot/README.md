@@ -1,7 +1,7 @@
-# HELLO: minimal DOS / CP/M-86 launch detector
+# MULTIOS: minimal DOS / CP/M-86 launch detector
 
-Build with `make hello`. This uses MASM 1.10 and the existing crossdev
-commands. Run `hello.com` on DOS or `hello.cmd` on CP/M-86. The two files
+Build with `make multios`. This uses MASM 1.10 and the existing crossdev
+commands. Run `multios.com` on DOS or `multios.cmd` on CP/M-86. The two files
 contain identical program bytes; the CMD has an 8080-model header and an
 entry point of 0100h.
 
@@ -14,7 +14,7 @@ or:
     Hello world - CP/M-86
 
 `detect_os` returns AL=0 for DOS or AL=1 for CP/M-86. An unknown layout
-traps through INT 2h. It checks the original DS before changing it. HELLO
+traps through INT 2h. It checks the original DS before changing it. MULTIOS
 installs a private 512-byte stack before calling the detector.
 
 The assumptions are a DOS COM load or a CP/M-86 8080-model CMD load, on an
