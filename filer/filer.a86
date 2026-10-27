@@ -1,5 +1,5 @@
 
-             TITLE  'FILER CP/M-86 (IBM-PC) VERSION 1.4'
+             TITLE  'FILER CP/M-86 (IBM-PC) VERSION 1.5'
 ;
 ; DATE 18/09/26 Fix Colour, Keyboard on BDOS for CCP/M-86 support
 ; DATE 05/01/98 - Ken Mauro
@@ -62,7 +62,7 @@
 ; Starting Definitions
 
 
-VERS   EQU     14                      ;version number
+VERS   EQU     15                      ;version number
 
 M      EQU     Byte Ptr 0[BX]
 
@@ -3816,7 +3816,7 @@ BANNER:
         CALL   GOTOXY
         CALL   RAWPRT                  ;title (22 + 34 + 22 columns)
         DB     27,'b',7,0B3H,'                      '
-        DB     27,'b',14,'FILER CP/M-86 (IBM-PC) Version '
+        DB     27,'b',14,'FILER CP/M-86 (IBM-PC) version '
         DB     VERS/10+'0','.',(VERS MOD 10)+'0'
         DB     27,'b',7,'                      ',0B3H,0
         MOV    BX,2*256+0
