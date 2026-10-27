@@ -1078,11 +1078,11 @@ HELP:
 HELPMSG:
         CALL   CLS
         CALL   ILPRT
-        DB     27,'b',10
+        DB     27,'b',14
         DB     ' FILER CP/M-86 (IBM-PC)           COMMAND HELP                      Version '
         DB     VERS/10+'0','.',(VERS MOD 10)+'0','  ',27,'b',15,cr,lf
         DB     '                                                                                 ',cr,lf
-        DB     ' [ Tagging Commands ]         [ File Operations ]         [ File Print & View ]  ',cr,lf
+        DB     27,'b',10,' [ Tagging Commands ]         [ File Operations ]         [ File Print & View ]  ',27,'b',15,cr,lf
         DB     '   T - Tag File                 C - Copy File               ^P - Print           ',cr,lf
         DB     '   U - Untag File               D - Delete File              V - View            ',cr,lf
         DB     '   W - Mass Tag/Untag           F - File Size                   <SP> Scroll one  ',cr,lf 
@@ -1090,7 +1090,7 @@ HELPMSG:
         DB     '   Y - Mass Delete                                                               ',cr,lf      
         DB     '   I - Tag Info                                                                  ',cr,lf                                    
         DB     CR,LF
-        DB     ' [ Directory Movement ]       [ CP/M-86 System Related ] ',cr,lf
+        DB     27,'b',10,' [ Directory Movement ]       [ CP/M-86 System Related ] ',27,'b',15,cr,lf
  IF     HLP@FIL
         DB     ' <SP> Scroll Line Forward       H - Detailed HELP',CR,LF
  ENDIF
@@ -1099,15 +1099,15 @@ HELPMSG:
         CMP    Byte Ptr CCKEYS,0
         JE     HELPECHAIN
         CALL   ILPRT
-        DB '   ',16,'  - Entry Right             E - Enter command line                        ',cr,lf,0
+        DB 27,'b',15,'   ',16,'  - Entry Right             E - Enter command line                        ',cr,lf,0
         JMP    HELPEDONE
 HELPECHAIN:
         CALL   ILPRT
-        DB '   ',16,'  - Entry Right             E - Enter command line[*]                     ',cr,lf
+        DB 27,'b',15,'   ',16,'  - Entry Right             E - Enter command line[*]                     ',cr,lf
         DB     0
 HELPEDONE:
         CALL   ILPRT
-        DB '   ',17,'  - Entry Left              L - Login DIR[USR#]          c0 = drv[c][usr0] ',cr,lf
+        DB 27,'b',15,'   ',17,'  - Entry Left               L - Login DIR[USR#]          c0 = drv[c][usr0] ',cr,lf
         DB '   ',30,'  - Entry Up                N - reNew current Screen                       ',cr,lf
         DB '   ',31,'  - Entry Dn                S - Status of disk [drv]                       ',cr,lf
         DB      ' PgUp - Next Page         [Esc],Q - Quit FILER                                ',cr,lf
@@ -1117,16 +1117,16 @@ HELPEDONE:
         JMP    HELPCHAIN
 HELPCLI:
         CALL   ILPRT
-        DB     ' PgUp - Prev Page               X - eXecute CMD file                         ',cr,lf
+        DB     27,'b',15,' PgUp - Prev Page               X - eXecute CMD file                         ',cr,lf
         DB     '                                                                               ',cr,lf
-        DB     '                               E/X return to FILER after the command ends.    ',cr,lf
+        DB     27,'b',10,'                               E/X return to FILER after the command ends.    ',cr,lf
         DB     0
         JMP    HELPEXECEND
 HELPCHAIN:
         CALL   ILPRT
-        DB      ' PgUp - Prev Page               X - eXecute CP/M-86 CMD file[*]                ',cr,lf
+        DB      27,'b',15,' PgUp - Prev Page               X - eXecute CP/M-86 CMD file[*]                ',cr,lf
         DB      '                                                                               ',cr,lf 
-        DB      '                               [*]Does NOT return to FILER                    ',cr,lf
+        DB      27,'b',10,'                               [*]Does NOT return to FILER                    ',cr,lf
         DB     0
 HELPEXECEND:
         CALL   ILPRT
@@ -3800,13 +3800,50 @@ FGETD1:
 ; print VFILER banner
 BANNER:
         CALL   CLS                     ;clear screen
-        MOV    BX,BANADR
+        MOV    BX,0*256+0
         CALL   GOTOXY
-        CALL   ILPRT                   ;print banner
-        DB     27,'b',10
-        DB     'FILER CP/M-86 (IBM-PC) Version '
-        DB     VERS/10+'0','.',(VERS MOD 10)+'0',27,'b',15
-        DB     0
+        CALL   RAWPRT                  ;top border
+        DB     27,'b',7,0C9H
+        DB     0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH
+        DB     0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH
+        DB     0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH
+        DB     0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH
+        DB     0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH
+        DB     0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH
+        DB     0BBH,0
+        MOV    BX,1*256+0
+        CALL   GOTOXY
+        CALL   RAWPRT                  ;title (22 + 34 + 22 columns)
+        DB     27,'b',7,0BAH,'                      '
+        DB     27,'b',14,'FILER CP/M-86 (IBM-PC) Version '
+        DB     VERS/10+'0','.',(VERS MOD 10)+'0'
+        DB     27,'b',7,'                      ',0BAH,0
+        MOV    BX,2*256+0
+        CALL   GOTOXY
+        CALL   RAWPRT                  ;bottom border
+        DB     27,'b',7,0C8H
+        DB     0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH
+        DB     0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH
+        DB     0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH
+        DB     0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH
+        DB     0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH
+        DB     0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH,0CDH
+        DB     0BCH,27,'b',15,0
+        RET
+; inline print of message, no 7-bit strip (box drawing characters)
+RAWPRT:
+        MOV    BP,SP
+        XCHG   BX,[BP]
+RAWLP:
+        MOV    AL,M
+        INC    BX
+        OR     AL,AL
+        JZ     RAWEND
+        CALL   TTYPE
+        JMPS   RAWLP
+RAWEND:
+        MOV    BP,SP
+        XCHG   BX,[BP]
         RET
 ; home the cursor
 CUR@FIRST:
