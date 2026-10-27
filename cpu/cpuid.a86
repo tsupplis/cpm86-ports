@@ -1,191 +1,296 @@
+; Copyright (c) tsupplis. All rights reserved.
+
+; MIT License.
+
+; Permission is hereby granted, free of charge, to any person obtaining a copy of this 
+; software and associated documentation files (the Software), to deal in the Software 
+; without restriction, including without limitation the rights to use, copy, modify, 
+; merge, publish, distribute, sublicense, and/or sell copies of the Software, and 
+; to permit persons to whom the Software is furnished to do so, subject to the 
+; following conditions:
+
+; The above copyright notice and this permission notice shall be included in all 
+; copies or substantial portions of the Software.
+
+; THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, 
+; INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A 
+; PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT 
+; HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION 
+; OF CONTRACT,TORT OR OTHERWISE, ARISING FROM OUT OF OR IN CONNECTION WITH THE 
+; SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 ;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;  Detect the Processor Type -- by Richard C. Leinecker                 ;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;  Detection logic replaced with the newer, more capable version (8086/NEC/
+;  186/286/386/486, FPU, MSW, IDTR, CR0) and ported to ASM-86.
+;  ASM-86 only knows 8086/8087 instructions, so every 186+/286+/386+
+;  instruction is emitted with DB and commented with what it really is.
 ;
-; This routine, as written by the original author, returned the processor
-; type as an integer value for use as a C language Prototype.
-;
-;  Rewritten to generic assembly language, redesigned as a stand-alone pro-
-;  cessor detection program, and translated to CP/M-86 by Kirk Lawrence.
+CPU_86  equ     0
+CPU_NEC equ     1
+CPU_186 equ     2
+CPU_286 equ     3
+CPU_386 equ     4
+CPU_486 equ     5
 ;
         cseg                    ;start of code segment
         org     100h            ;leave room for base page
-        jmp     start           ;go get to the good stuff
 ;
-msg     db      '$'
-etyet   db      '8088$'
-etysx   db      '8086$'
-v20     db      'V20$'
-v30     db      'V30$'
-twoet   db      '286$'
-thret   db      '86$'
-noway   db      'Unknown$'
+start:
+        mov     ax,cs           ;point ds
+        mov     ds,ax           ;at our own segment
+        mov     dx,offset tcpu
+        call    print
+        call    getcpu          ;al = CPU_xxx
+        cbw
+        push    ax              ;remember the cpu type
+        xchg    si,ax
+        shl     si,1
+        mov     dx,ttab[si]     ;name of the cpu
+        call    print
 ;
-thatsall:
-        mov     cl,9            ;function 9 - print string
-        int     224             ;call BDOS
+; FPU check. FNSTSW AX only exists on the 287 and later, so use the memory
+; form, preset to non-zero. FNINIT/FNSTSW don't wait for the coprocessor,
+; so burn a few cycles after each.
+;
+        mov     fpustat,0ffffh
+        db      0DBh,0E3h       ;fninit
+        mov     cx,20
+fdly1:  loop    fdly1
+        db      0DDh,3Eh        ;fnstsw fpustat (DD /7, direct address)
+        dw      offset fpustat
+        mov     cx,20
+fdly2:  loop    fdly2
+        mov     ax,fpustat
+        cmp     al,0            ;status word low byte is 0 after reset
+        jne     nofpu
+        mov     dx,offset mfpu
+        call    print
+        jmp     fpucont
+nofpu:
+        mov     dx,offset mnofpu
+        call    print
+fpucont:
+        pop     ax
+        cmp     al,CPU_286
+        jnb     getmsw          ;286 or better, go on
+        mov     dx,offset crnl
+        call    print
+        jmp     quit
+;
+; 286 and up: MSW and IDTR
+;
+getmsw:
+        push    ax
+        mov     dx,offset tmsw
+        call    print
+        db      0Fh,01h,0E0h    ;smsw ax
+        call    hex2
+        mov     dx,offset tibase
+        call    print
+        sub     sp,6
+        mov     bp,sp
+        db      0Fh,01h,4Eh,00h ;sidt [bp]
+        pop     cx              ;limit
+        pop     dx              ;base, low word
+        pop     ax              ;base, high word
+        call    hex2
+        xchg    ax,dx
+        call    hex2
+        mov     dx,offset tilimit
+        call    print
+        xchg    ax,cx
+        call    hex2
+        pop     ax              ;cpu type
+        cmp     al,CPU_386
+        jnb     getcr           ;386 or better, go on
+        cmp     al,CPU_486
+        jnb     getcr
+        mov     dx,offset crnl
+        call    print
+        jmp     quit
+;
+; 386 and up: CR0, then CR0 after clearing it
+;
+getcr:
+        push    ax
+        mov     dx,offset tcr0
+        call    print
+        db      0Fh,20h,0C0h    ;mov eax,cr0
+        db      66h,50h         ;push eax
+        call    hex3
+        mov     dx,offset tccr0
+        call    print
+        db      66h,31h,0C0h    ;xor eax,eax
+        db      0Fh,22h,0C0h    ;mov cr0,eax
+        db      0EBh,00h        ;jmp short $+2 (flush prefetch)
+        db      0Fh,20h,0C0h    ;mov eax,cr0
+        db      66h,59h         ;pop ecx
+        db      0Fh,22h,0C1h    ;mov cr0,ecx
+        db      0EBh,00h        ;jmp short $+2
+        call    hex3
+        pop     ax
+        mov     dx,offset crnl
+        call    print
+quit:
         xor     cx,cx           ;function 0 - reset system
         int     224             ;call BDOS
-start:
-        push    bp              ; Preserve bp
-        mov     bp,sp           ; bp = sp
-        push    ds              ; Preserve ds
-        push    di              ; and di
-        mov     ax,cs           ; Point ds
-        mov     ds,ax           ; to _PTEXT
-        call    IsItAn8088      ; Returns 0 or 2
-        cmp     al,2            ; 2 = 286 or better
-        je      AtLeast286      ; Go to 286 and above code
-        call    IsItAn8086      ; Returns 0 or 1
-        call    IsItANec        ; Adds 4 for a V20 or V30
-        jmp     ExitProcessor   ; Jump to exit code
 ;
-AtLeast286:
-        call    IsItA286        ; See if it's a 286
+; Print the $-terminated string at ds:dx. Preserves all registers, as the
+; BDOS returns its result in ax/bx and uses cx for the function number.
 ;
-ExitProcessor:
-        pop     di              ; Restore di,
-        pop     ds              ; ds,
-        pop     bp              ; and bp
+print:
         push    ax
-        mov     cl,9
-        mov     dx,offset msg
+        push    bx
+        push    cx
+        push    dx
+        push    si
+        push    di
+        push    bp
+        push    ds
+        push    es
+        mov     cl,9            ;function 9 - print string
         int     224
+        pop     es
+        pop     ds
+        pop     bp
+        pop     di
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
         pop     ax
-        cmp     ax,0            ;is it an 8088?
-        je      eightyeight     ;yes
-        cmp     ax,1            ;is it an 8086?
-        je      eightysix       ;yes
-        cmp     ax,2            ;is it a 286?
-        je      twoetysix       ;yes
-        cmp     ax,3            ;is it a 386 or higher?
-        je      threetysix      ;yes
-        cmp     ax,4            ;is it a V20?
-        je      veetwen         ;yes
-        cmp     ax,5            ;is it a V30?
-        je      veethirty       ;yes
-        mov     dx,offset noway ;odd value returned, unidentified
-        jmp     thatsall
-eightyeight:
-        mov     dx,offset etyet
-        jmp     thatsall
-eightysix:
-        mov     dx,offset etysx
-        jmp     thatsall
-twoetysix:
-        mov     dx,offset twoet
-        jmp     thatsall
-threetysix:
-        mov     dx,offset thret
-        jmp     thatsall
-veetwen:
-        mov     dx,offset v20
-        jmp     thatsall
-veethirty:
-        mov     dx,offset v30
-        jmp     thatsall
+        ret
 ;
-; Is It an 8088?
-; Returns al==0 for 8088/8086, al==2 for 80286 and above
-IsItAn8088:
-        pushf                   ; Preserve the flags
-        pushf                   ; Push the flags so
-        pop     bx              ; we can pop them into bx
-        and     bx,00fffh       ; Mask off bits 12-15
-        push    bx              ; and put it back on the stack
-        popf                    ; Pop value back into the flags
-        pushf                   ; Push it back. 8088/8086 will
-                                ; have bits 12-15 set
-        pop     bx              ; Get value into bx 
-        and     bx,0f000h       ; Mask all but bits 12-15
-        sub     ax,ax           ; Set ax to 8088 value
-        cmp     bx,0f000h       ; See if the bits are still set
-        je      Not286          ; Jump if not
-        mov     al,2            ; Set for 286 and above
-Not286:
-        popf                    ; Restore the flags
-        ret                     ; Return to caller
+; Print the character in dl. Preserves all registers.
 ;
-; Is It an 8086?
-; Returns ax==0 for 8088, ax==1 for 8086
-; Code takes advantage of the 8088's 4-byte prefetch queues and 8086's
-; 6-byte prefetch queues. By self-modifying the code at a location exactly 5 
-; bytes away from IP, and determining if the modification took effect,
-; you can differentiate between 8088s and 8086s.
-; The rep stosb overwrites EndLabel and the two bytes before it, the last
-; of which is the inc dx. The 8086 has already fetched the inc dx and runs
-; it; the 8088 hasn't, and runs the nop that replaced it.
-IsItAn8086:
-        mov     ax,cs           ; es == code segment
-        mov     es,ax
-        std                     ; Cause stosb to count backwards
-        mov     dx,0            ; dx is flag and we'll start at 0
-        mov     di,OFFSET EndLabel ; di==offset of code tail to modify
-        mov     al,090h         ; al==nop instruction opcode
-        mov     cx,3            ; Set for 3 repetitions
-        rep     stosb           ; Store the bytes
-        cld                     ; Clear the direction flag
-        nop                     ; Three nops in a row
-        nop                     ; provide dummy instructions
-        nop                     ;
-        inc     dx              ; 5th byte: increment flag (only with 8086)
-        nop                     ; dummy instruction--6 bytes
-EndLabel:
-        nop
-        mov     ax,dx           ; Store the flag in ax
-        ret                     ; Back to caller
+putc:
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        push    si
+        push    di
+        push    bp
+        push    ds
+        push    es
+        mov     cl,2            ;function 2 - console output
+        int     224
+        pop     es
+        pop     ds
+        pop     bp
+        pop     di
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+        ret
 ;
-; Is It an 80286?
-; Determines whether processor is a 286 or higher. Going into subroutine ax = 2
-; If the processor is a 386 or higher, ax will be 3 before returning. The
-; method is to set ax to 7000h which represent the 386/486 NT and IOPL bits
-; This value is pushed onto the stack and popped into the flags (with popf).
-; The flags are then pushed back onto the stack (with pushf). Only a 386 or 486
-; will keep the 7000h bits set. If it's a 286, those bits aren't defined and 
-; when the flags are pushed onto stack these bits will be 0. Now, when ax is 
-; popped these bits can be checked. If they're set, we have a 386 or 486.
-IsItA286:
-        pushf                   ; Preserve the flags
-        mov     ax,7000h        ; Set the NT and IOPL flag
-                                ; bits only available for
-                                ; 386 processors and above
-        push    ax              ; push ax so we can pop 7000h
-                                ; into the flag register
-        popf                    ; pop 7000h off of the stack
-        pushf                   ; push the flags back on
-        pop     ax              ; get the pushed flags
-                                ; into ax
-        and     ah,70h          ; see if the NT and IOPL
-                                ; flags are still set
-        mov     ax,2            ; set ax to the 286 value
-        jz      yes286          ; If NT and IOPL not set
-                                ; it's a 286
-        inc     ax              ; ax now is 3 to indicate
-                                ; 386 or higher
+; Detect the cpu. Returns al = CPU_xxx
 ;
-yes286:
-        popf                    ; Restore the flags
-        ret                     ; Return to caller
+getcpu:
+        sub     sp,6
+        push    sp
+        pop     bp
+        cmp     sp,bp           ;8086/186 push sp-2, 286+ push sp
+        je      is286
+        mov     ax,0ffffh
+        mov     cl,21h
+        shr     ax,cl           ;186+ mask the count to 5 bits, 86 doesn't
+        or      al,al
+        mov     al,CPU_186
+        jnz     gdone
+        mov     ax,0101h        ;NEC runs AAD with base 10 always
+        db      0D5h,10h        ;aad 16
+        cmp     al,11h          ;Intel gives 11h, NEC gives 0Bh
+        mov     al,CPU_NEC
+        jne     gdone
+        mov     al,CPU_86
+gdone:
+        add     sp,6
+        ret
+is286:
+        db      0Fh,01h,4Eh,00h ;sidt [bp]
+        pop     ax
+        pop     ax
+        pop     ax              ;top byte of base: FFh on a 286, 0 on a 386+
+        or      ah,ah
+        mov     al,CPU_286
+        jnz     gdone2
+        db      66h,9Ch         ;pushfd
+        db      66h,58h         ;pop eax
+        db      66h,89h,0C1h    ;mov ecx,eax
+        db      66h,35h,00h,00h,04h,00h ;xor eax,40000h  (flip EFLAGS.AC)
+        db      66h,50h         ;push eax
+        db      66h,9Dh         ;popfd
+        db      66h,9Ch         ;pushfd
+        db      66h,58h         ;pop eax
+        db      66h,31h,0C8h    ;xor eax,ecx
+        jz      is386           ;AC can't be toggled: 386
+        db      66h,51h         ;push ecx
+        db      66h,9Dh         ;popfd
+        mov     al,CPU_486
+        jmp     gdone2
+is386:
+        mov     al,CPU_386
+gdone2:
+        ret
 ;
-; The NEC V20/V30 run AAD with base 10 whatever its immediate operand is,
-; where every Intel CPU uses the operand. AAD 16 on ax==0101h leaves al==11h
-; on an Intel CPU and al==0Bh on an NEC one. This needs no timer interrupt
-; and, unlike REP LOCK LODSB, doesn't fault on a 386 or later.
-; Only called on the 8088/8086 branch: V20 and V30 have the same flags
-; behaviour and prefetch queues (4 and 6 bytes) as the 8088 and 8086.
-; on exit: ax + 4 if it's an NEC CPU, ax unchanged otherwise
-                                ;
-IsItANec:
-        push    ax              ; Save the 8088/8086 result
-        mov     ax,0101h        ; ah==1, al==1
-        db      0D5h,10h        ; aad 16
-        cmp     al,0Bh          ; 1*10+1 means the operand was ignored
-        pop     ax              ; Restore the 8088/8086 result
-        jne     NotANec         ; Intel CPU
-        add     ax,4            ; 4 == V20, 5 == V30
-NotANec:
-        ret                     ; Return to caller
+; Print ax as 4 hex digits. Preserves all registers.
 ;
-end
-
+hex2:
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        mov     bx,ax
+        mov     ch,4            ;4 digits
+hexloop:
+        mov     cl,4
+        rol     bx,cl
+        mov     ax,bx
+        and     al,0fh
+        cmp     al,0ah
+        sbb     al,69h
+        das
+        mov     dl,al
+        call    putc
+        dec     ch
+        jnz     hexloop
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+        ret
+;
+; Print eax as 8 hex digits.
+;
+hex3:
+        db      66h,50h         ;push eax
+        db      66h,0C1h,0C0h,10h ;rol eax,16
+        call    hex2            ;high word
+        db      66h,58h         ;pop eax
+        jmp     hex2            ;low word
+;
+; Data
+;
+fpustat dw      0
+tcpu    db      'CPU: $'
+ttab    dw      offset t86,offset tnec,offset t186
+        dw      offset t286,offset t386,offset t486
+t86     db      '8088/8086$'
+tnec    db      'V20/V30$'
+t186    db      '188/186$'
+t286    db      '286$'
+t386    db      '386$'
+t486    db      '486+$'
+mfpu    db      13,10,'FPU: 80x87$'
+mnofpu  db      '$'
+tmsw    db      13,10,'MSW: 0x$'
+tibase  db      13,10,'IDTR: base 0x$'
+tilimit db      ' limit 0x$'
+tcr0    db      13,10,'CR0: 0x$'
+tccr0   db      13,10,'Cleared CR0: 0x$'
+crnl    db      13,10,'$'
+;
+        end
