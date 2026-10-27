@@ -223,6 +223,8 @@ disk_parm_block	equ	0fea8h
 
 dma		equ	080h		; default dma offset
 
+; AAD10 encodes D5 10h, i.e. AAD with base 16. The 8088/86 honour that
+; base; the NEC V20 ignores it and always uses base 10 (see test_processor).
 CodeMacro	AAD10			; modified AAD instruction
 	db	0d5h
 	db	010h
@@ -250,7 +252,7 @@ EndM
 	db	'VCPM NEC-V20 CP/M-80 Emulator for CP/M-86  '
 	db	'Version '
 	db	ver/10+'0','.',ver mod 10+'0'
-	db	'(C) 06-NOV-88 Stephen Hunt'
+	db	'(C) 05-JUNE-2000 Stephen Hunt'
 
 	db	01ah
 
@@ -382,9 +384,13 @@ copy_comline:
 copy_comline1:
 ;
 	lodsb				; get byte from 8086 dma buffer
-	stosb				; store in 8080 dma buffer
 	or	al,al
-	jz	prog_ext_com
+	jz	prog_ext_com		; end of command tail (eseg was cleared,
+					; so the 8080 tail is already terminated)
+	cmp	es:byte ptr 0[bx],07fh	; 8080 tail holds at most 127 chars
+	jae	prog_ext_com		; tail full - truncate rather than run
+					; past the dma buffer into the program
+	stosb				; store in 8080 dma buffer
 	inc	es:byte ptr 0[bx]
 	jmps	copy_comline1
 
@@ -437,14 +443,25 @@ read_prog_loop:
 	mov	cl,f_read		; read sequentially
 	call	bdos
 	pop	dx			; restore dma offset
-	or	al,al			; eof or read errors?
-	jnz	close_file		; close file if eof or errors
+	cmp	al,01h			; end of file?
+	je	close_file		; close file at eof
+	or	al,al			; any other nonzero result is a read error
+	jnz	read_error		; abort - a truncated load must not run
 	add	dx,080h			; bump dma offset by 80h
 	cmp	dx,0fb00h		; (read upto fb80h)
+					; NB: this allows 500 records (64000
+					; bytes); a 501st record would still
+					; fit below the 8080 bios at 0fbe6h
+					; but is rejected as too large
 	jbe	read_prog_loop		; loop if prog not too big
 
 	mov	dx,offset err_big	; program too big
 	jmps	com_size_error
+
+read_error:
+;
+	mov	dx,offset err_read	; read error
+	jmp	error_exit
 
 close_file:
 ;
@@ -824,7 +841,7 @@ fscan_drive_cont:
 	jl	fscan_drive_error
 	cmp	al,'P'
 	jg	fscan_drive_error
-	sub	al,040h			; make range 1 - 15
+	sub	al,040h			; make range 1 - 16 (A=1 .. P=16)
 	stosb				; put drive ref in FCB
 	inc	si			; point si past colon
 	jmps	fscan_name
@@ -994,7 +1011,7 @@ fcheck_upper:
 	jl	fcheck_error
 	cmp	al,'Z'			; greater than 'Z'?
 	jg	fcheck_error
-	mov	cx,06h			; number of elements in chr_tbl
+	mov	cx,06h			; number of elements in fcheck_tbl
 	mov	bx,offset fcheck_tbl
 
 fcheck_loop:
@@ -1013,7 +1030,7 @@ fcheck_error:
 fcheck_return:
 ;
 	pop	cx
-	pop	bx			; restore segment registers
+	pop	bx			; restore registers
 	ret
 
 ;---------------------------------------------------------------------
@@ -1041,22 +1058,25 @@ ranovf0	db	0				; random record overflow
 	org	0100h
 
 
+; startmsg is a placeholder for the start-up banner. The banner lines
+; below are disabled, so only the '$' terminator is left and nothing prints.
 startmsg	db	'$'
 		;db	'---------------------------------------------',cr,lf
 		;db	'VCPM NEC-V20 64K CP/M-80 Emulator for CP/M-86',cr,lf
 		;db	'Version '
 		;db	ver/10+'0','.',ver mod 10+'0'
-		;db	'     (C) 06-NOV-88    Stephen Hunt',cr,lf
+		;db	'     (C) 05-JUNE-2000    Stephen Hunt',cr,lf
 		;db	'---------------------------------------------',cr,lf
 
 err_processor	db	'VCPM: Requires NEC-V20 processor!',cr,lf,'$'
-err_command	db	'VCPM: No command tail',cr,lf,'$'
+err_command	db	'VCPM: No command tail provided',cr,lf,'$'
 err_filename	db	cr,lf,'VCPM: Invalid filename',cr,lf,'$'
-err_open	db	'VCPM: Unable to find .COM file',cr,lf,'$'
+err_open	db	'VCPM: .COM file not found',cr,lf,'$'
 err_size	db	cr,lf,'.COM file too $'
 err_big		db	'large !',cr,lf,'$'
 err_small	db	'small !',cr,lf,'$'
 err_bios	db	'VCPM: Unsupported BIOS call',cr,lf,'$'
+err_read	db	'VCPM: Error reading .COM file',cr,lf,'$'
 exit80		db	'$' ;'VCPM: CP/M-80 emulation terminated',cr,lf,'$'
 
 fcb1	db	0,'           '			; blank fcb1
