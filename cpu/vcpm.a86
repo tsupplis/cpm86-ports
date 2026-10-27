@@ -40,7 +40,7 @@
 ;		  and the drive allocation table.
 ;
 ;		- Version 1.5 - 06-NOV-88
-;		  Aborts if the .CPM file is either zero records long
+;		  Aborts if the .COM file is either zero records long
 ;		  or would overlap the 8080 BIOS.
 ;---------------------------------------------------------------------
 ;
@@ -384,45 +384,25 @@ copy_comline1:
 	lodsb				; get byte from 8086 dma buffer
 	stosb				; store in 8080 dma buffer
 	or	al,al
-	jz	prog_ext_cpm
+	jz	prog_ext_com
 	inc	es:byte ptr 0[bx]
 	jmps	copy_comline1
 
 ;---------------------------------------------------------------------
-; open '.CPM' file
-;---------------------------------------------------------------------
-
-prog_ext_cpm:
-;
-	mov	byte ptr fcb0 +09h,'C'
-	mov	byte ptr fcb0 +0ah,'P'
-	mov	byte ptr fcb0 +0bh,'M'
-
-open_prog_cpm:
-;
-	mov	dx,offset fcb0
-	mov	cl,f_open
-	call	bdos			; open program.CPM file
-	inc	al			; file opened ok?
-	jnz	set_dma_segment		; yes -continue
-
-	jmp	prog_ext_com
-
-;---------------------------------------------------------------------
-; open '.CPM' file
+; open '.COM' file
 ;---------------------------------------------------------------------
 
 prog_ext_com:
 ;
 	mov	byte ptr fcb0 +09h,'C'
-	mov	byte ptr fcb0 +0ah,'P'
+	mov	byte ptr fcb0 +0ah,'O'
 	mov	byte ptr fcb0 +0bh,'M'
 
 open_prog_com:
 ;
 	mov	dx,offset fcb0
 	mov	cl,f_open
-	call	bdos			; open program.CPM file
+	call	bdos			; open program.COM file
 	inc	al			; file opened ok?
 	jnz	set_dma_segment		; yes -continue
 
@@ -1072,8 +1052,8 @@ startmsg	db	'$'
 err_processor	db	'VCPM: Requires NEC-V20 processor!',cr,lf,'$'
 err_command	db	'VCPM: No command tail',cr,lf,'$'
 err_filename	db	cr,lf,'VCPM: Invalid filename',cr,lf,'$'
-err_open	db	'VCPM: Unable to find .CPM file',cr,lf,'$'
-err_size	db	cr,lf,'.CPM file too $'
+err_open	db	'VCPM: Unable to find .COM file',cr,lf,'$'
+err_size	db	cr,lf,'.COM file too $'
 err_big		db	'large !',cr,lf,'$'
 err_small	db	'small !',cr,lf,'$'
 err_bios	db	'VCPM: Unsupported BIOS call',cr,lf,'$'

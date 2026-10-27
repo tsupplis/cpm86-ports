@@ -6,12 +6,12 @@ emulating the 8080 — and identifying the CPU the system runs on.
 | File | What it does | Needs |
 | --- | --- | --- |
 | `80x86.cmd` | translates 8080 `.ASM` source to 8086 `.A86` source | — |
-| `vcpm.cmd` | runs CP/M-80 `.CPM` binaries in the V20's 8080 mode | NEC V20 / V30 |
+| `vcpm.cmd` | runs CP/M-80 `.COM` binaries in the V20's 8080 mode | NEC V20 / V30 |
 | `z80.cmd` | interprets 8080 and Z80 binaries in software | — |
 | `cpuid.cmd` | reports the processor type: 8088, 8086, 286 or 386+ | — |
 
-The two emulators expect the 8-bit program renamed from `.COM` to `.CPM`, so it
-doesn't collide with CP/M-86's own `.CMD`.
+VCPM loads the 8-bit program from `NAME.COM`. CP/M-86 would run a `.COM` file
+directly as 8086 code, so start the 8080 program through VCPM: `VCPM NAME`.
 
 ## 80X86 — 8080-to-8086 source translator
 
@@ -56,7 +56,7 @@ source run through itself), and the machine-translated `80X86.A86`.
 
 Stephen Hunt, 1988. Version 1.5.
 
-    VCPM PROGRAM.CPM [command tail]
+    VCPM PROGRAM [command tail]
 
 Uses the `BRKEM`/`RETEM`/`CALLN` instructions of the NEC V20 (µPD70108) and V30
 (µPD70116), which execute 8080 code natively. So it runs at full processor speed
@@ -162,8 +162,8 @@ it writes an empty `.h86` without reporting an error. Wrap the build in
 
 | File | Notes |
 | --- | --- |
-| `ver.com` / `ver.cpm` | reports the CP/M version — quickest check that an emulator works |
-| `turbo.cpm`, `turbo.msg`, `turbo.ovr` | Turbo Pascal 3.01A, Z80 only — runs under Z80, not under VCPM |
+| `ver.com` | reports the CP/M version — quickest check that an emulator works |
+| `turbo.com`, `turbo.msg`, `turbo.ovr` | Turbo Pascal 3.01A, Z80 only — runs under Z80, not under VCPM |
 | `test1b.asm` | small 8080 source for 80X86 |
 | `xlt86.asm`, `xlt86d.asm` | DRI's own XLT86 translator, in 8080 source — the large-input case |
 
