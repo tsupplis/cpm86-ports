@@ -42,6 +42,14 @@
 ;		- Version 1.5 - 06-NOV-88
 ;		  Aborts if the .COM file is either zero records long
 ;		  or would overlap the 8080 BIOS.
+;
+;		- Version 1.6 - 05-JUNE-2000
+;		  A read error while loading the .COM file now aborts
+;		  with a message instead of running a truncated program.
+;		  The command tail is limited to 127 characters (the size
+;		  of the 8080 dma buffer).
+;		  Running without a program name now prints a usage line.
+;		  Comment corrections only otherwise.
 ;---------------------------------------------------------------------
 ;
 ; to create VCPM.CMD :-
@@ -168,7 +176,7 @@
 ;
 ;---------------------------------------------------------------------
 
-ver		equ	15		; current version
+ver		equ	16		; current version
 
 c_rawio		equ	6
 s_iobyte	equ	7

@@ -54,9 +54,11 @@ source run through itself), and the machine-translated `80X86.A86`.
 
 ## VCPM — V20 hardware emulator
 
-Stephen Hunt, 1988. Version 1.5.
+Stephen Hunt, 1988. Version 1.6 (2000).
 
     VCPM PROGRAM [command tail]
+
+Run without arguments it prints a `USAGE: VCPM program [command tail]` line.
 
 Uses the `BRKEM`/`RETEM`/`CALLN` instructions of the NEC V20 (µPD70108) and V30
 (µPD70116), which execute 8080 code natively. So it runs at full processor speed
