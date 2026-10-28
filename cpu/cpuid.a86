@@ -47,6 +47,21 @@ start:
         shl     si,1
         mov     dx,ttab[si]     ;name of the cpu
         call    print
+        mov     dx,offset tcdate
+        call    print
+        push    ds              ;retain our code/data segment
+        mov     ax,0FFFFh       ;legacy date source segment
+        mov     ds,ax
+        mov     si,5            ;legacy date field offset
+        mov     cx,8            ;eight date characters from legacy routine
+date_loop:
+        push    cx
+        lodsb
+        mov     dl,al
+        call    putc            ;shared BDOS output routine; preserves registers
+        pop     cx
+        loop    date_loop
+        pop     ds
 ;
 ; FPU check. FNSTSW AX only exists on the 287 and later, so use the memory
 ; form, preset to non-zero. FNINIT/FNSTSW don't wait for the coprocessor,
@@ -105,8 +120,6 @@ getmsw:
         jnb     getcr           ;386 or better, go on
         cmp     al,CPU_486
         jnb     getcr
-        mov     dx,offset crnl
-        call    print
         jmp     quit
 ;
 ; 386 and up: CR0, then CR0 after clearing it
@@ -129,8 +142,6 @@ getcr:
         db      0EBh,00h        ;jmp short $+2
         call    hex3
         pop     ax
-        mov     dx,offset crnl
-        call    print
 quit:
         xor     cx,cx           ;function 0 - reset system
         int     224             ;call BDOS
@@ -275,7 +286,8 @@ hex3:
 ; Data
 ;
 fpustat dw      0
-tcpu    db      'CPU: $'
+tcpu    db      'Type: $'
+tcdate  db      13,10,'Date: $'
 ttab    dw      offset t86,offset tnec,offset t186
         dw      offset t286,offset t386,offset t486
 t86     db      '8088/8086$'
@@ -287,8 +299,8 @@ t486    db      '486+$'
 mfpu    db      13,10,'FPU: 80x87$'
 mnofpu  db      '$'
 tmsw    db      13,10,'MSW: 0x$'
-tibase  db      13,10,'IDTR: base 0x$'
-tilimit db      ' limit 0x$'
+tibase  db      13,10,'IDTR: Base 0x$'
+tilimit db      ' Limit 0x$'
 tcr0    db      13,10,'CR0: 0x$'
 tccr0   db      13,10,'Cleared CR0: 0x$'
 crnl    db      13,10,'$'
