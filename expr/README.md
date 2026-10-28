@@ -61,6 +61,8 @@ TinyExpr defines only four functions:
 `te_interp()` takes an expression and immediately returns the result of it. If there
 is a parse error, `te_interp()` returns NaN. On Aztec C86 it returns 0 instead. The Aztec `m.lib` does link `_isnan`, but it cannot detect NaN because the software library never produces one: `0/0`, `sqrt(-1)`, `log(-1)` and `acos(2)` all return finite values. The 8087 library (`-lm87`) has a working `_isnan`, but it needs an 8087 at runtime and does not run under `emu2`.
 
+Infinity is not fully supported on Aztec C86 either. `*` and `^` overflow to a real IEEE infinity, but the software library's division returns the numerator for a zero divisor (`1/0` is 1), and `exp`, `log`, `fac`, `ncr` and `npr` return finite values (for example `fac(300)` is 1 and `log(0)` is about -1.79e308) where other platforms return infinity. The INF tests in `smoke.c` are therefore skipped on Aztec.
+
 If the `error` pointer argument is not 0, then `te_interp()` will set `*error` to the position
 of the parse error on failure, and set `*error` to 0 on success.
 

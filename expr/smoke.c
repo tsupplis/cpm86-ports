@@ -67,9 +67,8 @@ static const char *smoke_nan_exprs[] = {
 
 static const char *smoke_inf_exprs[] = {
         "1/0", "log(0)", "pow(2,10000000)", "fac(300)",
-        "ncr(300,100)", "ncr(300000,100)", "ncr(300000,100)*8",
-        "npr(3,2)*ncr(300000,100)", "npr(100,90)",
-        "npr(30,25)", "ncr(68,34)"
+        "ncr(300000,100)", "ncr(300000,100)*8",
+        "npr(3,2)*ncr(300000,100)"
     };
 
 static test_case smoke_dynamic_cases[] = {
@@ -385,7 +384,7 @@ static int is_error_result(double r) {
     return r == 0.0;
 }
 
-/* Aztec C86 has no infinity (1.0/0.0 is 0.0), so the INF checks cannot run there. */
+/* Aztec C86 has no usable infinity (1.0/0.0 is 1.0), so the INF checks are skipped there. */
 static int has_inf(void) {
     double one = 1.0, zero = 0.0;
     return one / zero == one / zero + 1.0;
@@ -458,12 +457,12 @@ void test_infs() {
         expr = smoke_inf_exprs[i];
         r = te_interp(expr, &err);
         lequal(err, 0);
-        lok(r == r + 1);
+        lok(r - r != 0.0);
         n = te_compile(expr, 0, 0, &err);
         lok(n != 0);
         lequal(err, 0);
         c = te_eval(n);
-        lok(c == c + 1);
+        lok(c - c != 0.0);
         te_free(n);
     }
 }
@@ -785,6 +784,40 @@ void test_combinatorics() {
 }
 
 
+/* These quotients are exact, so the modf()-based te_fmod gives them exactly. */
+static test_case smoke_modulus_cases[] = {
+        {"5.5%2", 1.5}, {"-5.5%2", -1.5}, {"7%-3", 1}, {"-7%3", -1},
+        {"6%3", 0}, {"5%0.5", 0}, {"0%3", 0}
+};
+
+void test_modulus() {
+    int i;
+    for (i = 0; i < sizeof(smoke_modulus_cases) / sizeof(test_case); ++i) {
+        const char *expr = smoke_modulus_cases[i].expr;
+        const double answer = smoke_modulus_cases[i].answer;
+
+        int err;
+        const double ev = te_interp(expr, &err);
+        lok(!err);
+        lok(fabs(ev - answer) <= LTEST_FLOAT_TOLERANCE);
+
+        if (err || fabs(ev - answer) > LTEST_FLOAT_TOLERANCE)
+            printf("FAILED: %s => %f, expected %f (err=%d)\n", expr, ev, answer, err);
+    }
+
+    /* 1%0.1 is 0.09999999999999995 with fmod(), but the modf() quotient can
+       round up to 10 and give 0 on Aztec. Both must lie in the remainder range. */
+    {
+        int err;
+        const double pos = te_interp("1%0.1", &err);
+        const double neg = te_interp("-1%0.1", &err);
+        lok(pos >= 0.0 && pos <= 0.1);
+        lok(neg <= 0.0 && neg >= -0.1);
+        if (pos < 0.0 || pos > 0.1 || neg > 0.0 || neg < -0.1)
+            printf("FAILED: 1%%0.1 => %f, -1%%0.1 => %f\n", pos, neg);
+    }
+}
+
 void test_logic() {
     int i;
     for (i = 0; i < sizeof(smoke_logic_cases) / sizeof(test_case); ++i) {
@@ -944,6 +977,7 @@ int main(int argc, char *argv[])
     lrun("Optimize", test_optimize);
     lrun("Pow", test_pow);
     lrun("Combinatorics", test_combinatorics);
+    lrun("Modulus", test_modulus);
     lrun("Logic", test_logic);
     lrun("Depth", test_depth);
     lrun("Number", test_number);
