@@ -99,6 +99,7 @@ Ancillary goals:
 | Project | What | From | License |
 | --- | --- | --- | --- |
 | [ndbm](ndbm/) | Hashed key/value database library (ndbm) with `keydb` CLI tool (add, get, del, list) | 2.11BSD ndbm by UC Berkeley | BSD |
+| [expr](expr/) | Simple Expression Library and CLI | Lewis Van Winkle | zlib |
 
 ### Archeology
 

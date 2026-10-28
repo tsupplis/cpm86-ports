@@ -3,7 +3,7 @@ SUBDIRS1=filer lbr fv seemem disk7 wash15 xsq uucp dc grep sed diff ndbm life ke
 
 SUBDIRS2=ansi2kr tinybas xlisp yacc vtl2 ratfor cpu diskstat sokoban edlin
     
-SUBDIRS3=trek setboot
+SUBDIRS3=trek setboot expr
 
 SUBDIRS=$(SUBDIRS1) $(SUBDIRS2) $(SUBDIRS3)
 all:
@@ -24,7 +24,7 @@ test:
 
 dist: ports.zip
 
-ports.zip: all
+ports.zip: clean all
 	set -e; \
 	mkdir -p tmp-dist; \
 	trap 'rm -rf tmp-dist' EXIT INT TERM; \
@@ -40,6 +40,8 @@ ports.zip: all
 	cp ndbm/*.h tmp-dist; \
 	cp ndbm/*.lib tmp-dist; \
 	cp ratfor/*.r tmp-dist; \
+	cp expr/tinyexpr.h tmp-dist; \
+	cp expr/tinyexpr.lib tmp-dist; \
 	(cd tmp-dist; zip -j ../ports.zip *)
 
 
