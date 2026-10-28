@@ -59,7 +59,7 @@ TinyExpr defines only four functions:
 ```
 
 `te_interp()` takes an expression and immediately returns the result of it. If there
-is a parse error, `te_interp()` returns NaN. On Aztec C86, which has no NaN, it returns 0 instead.
+is a parse error, `te_interp()` returns NaN. On Aztec C86 it returns 0 instead. The Aztec `m.lib` does link `_isnan`, but it cannot detect NaN because the software library never produces one: `0/0`, `sqrt(-1)`, `log(-1)` and `acos(2)` all return finite values. The 8087 library (`-lm87`) has a working `_isnan`, but it needs an 8087 at runtime and does not run under `emu2`.
 
 If the `error` pointer argument is not 0, then `te_interp()` will set `*error` to the position
 of the parse error on failure, and set `*error` to 0 on success.
@@ -73,6 +73,19 @@ of the parse error on failure, and set `*error` to 0 on success.
     double b = te_interp("(5+5)", &error); /* Returns 10, error is set to 0. */
     double c = te_interp("(5+5", &error); /* Returns NaN, error is set to 4. */
 ```
+
+## te_strtod
+
+    double te_strtod(const char *text, char **endptr);
+
+Converts the number at the start of `text` using the same rules as the parser:
+decimal with an optional exponent, or hexadecimal (`0x...`). Leading whitespace and
+a sign are skipped. `*endptr` is set to the first character not consumed, or to
+`text` if no number was found. It does not depend on the locale.
+
+Only the first 15 significant digits are used. Values with up to 15 significant
+digits and an exponent between -22 and 22 are correctly rounded; others may differ
+from the nearest double by an ulp.
 
 ## te_compile, te_eval, te_free
 ```C
@@ -274,7 +287,12 @@ The decimal separator is always *.*, regardless of the process locale.
 TinyExpr supports addition (+), subtraction/negation (-), multiplication (\*),
 division (/), exponentiation (^) and modulus (%) with the normal operator
 precedence (the one exception being that exponentiation is evaluated
-left-to-right, but this can be changed - see below).
+left-to-right, but this can be changed - see below). Modulus is computed as
+`x - trunc(x/y)*y` using `modf()`, because the Aztec C86 math library has no
+`fmod()`. Results can differ from C `fmod()` in the last bits, and by more for
+small divisors or very large quotients, because the product `trunc(x/y)*y` is
+rounded. For example, `1%0.1` is 0 on Aztec and 0.09999999999999995 with a
+host `fmod()`.
 
 The comparison operators (==, !=, <, <=, >, >=) and logical operators
 (&&, ||, !) are also supported, with the same precedence as C: relational

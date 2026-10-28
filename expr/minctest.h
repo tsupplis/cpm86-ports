@@ -88,8 +88,8 @@ static int lfails = 0;
 #define lrun(name, test) do {\
     const int ts = ltests;\
     const int fs = lfails;\
-    printf("\t%-14s", name);\
     test();\
+    printf("\t%-14s", name);\
     printf("pass:%2d   fail:%2d\n",\
             (ltests-ts)-(lfails-fs), lfails-fs);\
 } while (0)

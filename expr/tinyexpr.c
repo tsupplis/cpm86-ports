@@ -184,33 +184,23 @@ static double ncr(double n, double r) {
     }
     return result;
 }
-/* C89 remainder fallback: avoids a link-time dependency on fmod(). */
+/* fmod() is not in the Aztec m.lib, so the remainder is built from modf(). */
 static double te_fmod(double x, double y) {
-    double ax, ay, multiple, remainder;
-    int negative;
+    double ax, ay, quotient, remainder;
 
     /* x-x is NaN for infinities on IEEE targets; NaNs are caught directly. */
     if (x != x || y != y || x - x != 0.0 || y == 0.0) return NAN;
     /* C remainder of a finite value by infinity is the original value. */
     if (y - y != 0.0) return x;
-    if (x == 0.0) return x;
 
-    negative = x < 0.0;
-    ax = negative ? -x : x;
+    ax = x < 0.0 ? -x : x;
     ay = y < 0.0 ? -y : y;
-    if (ax < ay) return x;
-
-    /* Scale |y| by powers of two without exceeding |x|. Then subtract
-       selected multiples while scaling back down. This implements the
-       truncation-toward-zero remainder and avoids quotient overflow. */
-    multiple = ay;
-    while (multiple <= ax - multiple) multiple *= 2.0;
-    remainder = ax;
-    while (multiple >= ay) {
-        if (multiple <= remainder) remainder -= multiple;
-        multiple *= 0.5;
-    }
-    return negative ? -remainder : remainder;
+    modf(ax / ay, &quotient);
+    remainder = ax - quotient * ay;
+    /* Rounding of ax/ay can leave the remainder just outside [0, ay). */
+    if (remainder < 0.0) remainder += ay;
+    else if (remainder >= ay) remainder -= ay;
+    return x < 0.0 ? -remainder : remainder;
 }
 
 static double npr(double n, double r) {return ncr(n, r) * fac(r);}
@@ -308,78 +298,19 @@ static const double exact_pow10[] = {
 };
 
 static double parse_number(state *s) {
-    /* Parses a decimal or hex constant manually, so that the result does
-       not depend on LC_NUMERIC. Sets s->type. */
-    const char *p = s->next;
-    double value = 0.0;
+    /* Uses te_strtod so the result does not depend on LC_NUMERIC and
+       matches the reference used by the tests. Sets s->type. */
+    char *end;
+    double value = te_strtod(s->next, &end);
 
-    if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X') &&
-        isxdigit((unsigned char)p[2])) {
-        p += 2;
-        while (isxdigit((unsigned char)p[0])) {
-            char c = p[0];
-            int d = isdigit((unsigned char)c) ? c - '0' :
-                          (c >= 'a' ? c - 'a' + 10 : c - 'A' + 10);
-            value = value * 16.0 + d;
-            p++;
-        }
-    } else {
-        int exponent = 0, digits = 0;
-
-        while (isdigit((unsigned char)p[0])) {
-            value = value * 10.0 + (p[0] - '0');
-            p++; digits++;
-        }
-
-        if (p[0] == '.') {
-            p++;
-            while (isdigit((unsigned char)p[0])) {
-                value = value * 10.0 + (p[0] - '0');
-                p++; digits++; exponent--;
-            }
-        }
-
-        if (digits == 0) {
-            /* A lone '.' is not a number. */
-            s->type = TOK_ERROR;
-            return 0.0;
-        }
-
-        if (p[0] == 'e' || p[0] == 'E') {
-            /* Only consume the exponent if digits follow it, so that
-               "1e" still parses as the number 1 then the variable e. */
-            const char *ep = p + 1;
-            int esign = 1, e = 0;
-
-            if (ep[0] == '+') {
-                ep++;
-            } else if (ep[0] == '-') {
-                esign = -1;
-                ep++;
-            }
-
-            if (isdigit((unsigned char)ep[0])) {
-                while (isdigit((unsigned char)ep[0])) {
-                    if (e < 100000000) e = e * 10 + (ep[0] - '0');
-                    ep++;
-                }
-                exponent += esign * e;
-                p = ep;
-            }
-        }
-
-        /* The zero check keeps a huge exponent from producing 0 * inf. */
-        if (exponent && value != 0.0) {
-            if (exponent < 0 && exponent >= -22) {
-                value /= exact_pow10[-exponent];
-            } else {
-                value *= pow(10.0, exponent);
-            }
-        }
+    if (end == s->next) {
+        /* A lone '.' is not a number. */
+        s->type = TOK_ERROR;
+        return 0.0;
     }
 
     s->type = TOK_NUMBER;
-    s->next = p;
+    s->next = end;
     return value;
 }
 
@@ -814,25 +745,20 @@ static int te_clamp_exp(int value)
 
 static double te_scale10(double value, int exponent)
 {
-    /* Chunked linear scaling avoids overflowing an intermediate 10^n
-       before it is applied to a small value. The bounded exponent makes
-       this at most 1250 iterations with the chosen chunk size. */
-    while (exponent >= 8) {
-        value *= 1.0e8;
-        exponent -= 8;
+    /* Scaling by the exact powers of ten (1e0..1e22) keeps the common
+       cases correctly rounded: one multiply or divide by an exact power
+       is a single IEEE operation. Larger exponents are applied in chunks,
+       which avoids overflowing an intermediate 10^n. */
+    while (exponent > 22) {
+        value *= exact_pow10[22];
+        exponent -= 22;
     }
-    while (exponent <= -8) {
-        value *= 1.0e-8;
-        exponent += 8;
+    while (exponent < -22) {
+        value /= exact_pow10[22];
+        exponent += 22;
     }
-    while (exponent > 0) {
-        value *= 10.0;
-        --exponent;
-    }
-    while (exponent < 0) {
-        value *= 0.1;
-        ++exponent;
-    }
+    if (exponent > 0) return value * exact_pow10[exponent];
+    if (exponent < 0) return value / exact_pow10[-exponent];
     return value;
 }
 
@@ -858,6 +784,20 @@ double te_strtod(const char *text, char **endptr)
     significant = 0;
     nonzero = 0;
     decimal_exp = 0;
+
+    if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X') && isxdigit((unsigned char)p[2])) {
+        /* Hex integers; "0x" without a digit is parsed as the 0 alone. */
+        p += 2;
+        while (isxdigit((unsigned char)*p)) {
+            char c = *p;
+            int d = isdigit((unsigned char)c) ? c - '0' :
+                          (c >= 'a' ? c - 'a' + 10 : c - 'A' + 10);
+            value = value * 16.0 + d;
+            ++p;
+        }
+        if (endptr != (char **)0) *endptr = (char *)p;
+        return negative ? -value : value;
+    }
 
     while (*p >= '0' && *p <= '9') {
         int digit;
