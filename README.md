@@ -50,6 +50,7 @@ Ancillary goals:
 | [dc](dc/README.md) | Arbitrary precision reverse Polish calculator | Plan 9 / Unix Research Edition | MIT |
 | [diff](diff/README.md) | Compare two files line by line | RetroBSD / BSD Unix | BSD 3-Clause |
 | [grep](grep/README.md) | Search text files for regular-expression matches | RetroBSD / DiscoBSD / Berkeley grep | BSD 3-Clause |
+| [kilo](kilo/README.md) | Small VT52 text editor (Ctrl-S save, Ctrl-Q quit, Ctrl-F find); saves with a Ctrl-Z end-of-file marker | Salvatore Sanfilippo (antirez) kilo | BSD 2-Clause |
 | [sed](sed/README.md) | Edit text using scripts | RetroBSD / BSD Unix | BSD 3-Clause |
 | [sort](sort/README.md) | Sort lines, merge sorted files, or check order | BSD Unix / DiscoBSD | BSD 3-Clause |
 | [tr](tr/README.md) | Translate, delete, or squeeze characters | BSD Unix / DiscoBSD | BSD 3-Clause |
