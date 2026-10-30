@@ -98,6 +98,7 @@ struct editorConfig {
     int screenrows; /* Number of rows that we can show */
     int screencols; /* Number of cols that we can show */
     int numrows;    /* Number of rows */
+    int rowcap;     /* Allocated capacity of the row array */
     int rawmode;    /* Is terminal raw mode enabled? */
     erow *row;      /* Rows */
     int dirty;      /* File modified but not saved. */
@@ -288,18 +289,6 @@ int snprintf(char *buf, unsigned int size, const char *fmt, ...) {
 void disableRawMode(int fd) {
 }
 
-/* Called on quit: show the cursor again (ESC e), home (ESC H) and clear to
- * end of screen (ESC J), leaving a clean console for the CCP prompt. */
-void editorAtExit(void) {
-    write(STDOUT_FILENO,"\x1b" "e\x1bH\x1bJ",6);
-}
-
-/* Raw mode: 1960 magic shit. */
-int enableRawMode(int fd) {
-
-    return 0;
-}
-
 /* Keyboard input through BDOS function 6 (direct console I/O, DL=0xFF):
  * returns 0 when no key is pending and does not interpret ^C/^S/^Q. After a
  * key arrives, anything else already pending is drained into a small
@@ -311,6 +300,24 @@ int bdos();
 
 static unsigned char getch_buffer[GETCH_BUFLEN];
 static int getch_off = 0, getch_size = 0;
+
+/* Called on quit: discard the lookahead buffer and every key still waiting
+ * in the console, so nothing leaks to the CCP command line; then ESC m
+ * enables the cursor and ESC E clears the screen and homes the cursor.
+ * Octal escapes: "\x1bE" would parse as one hex escape. */
+void editorAtExit(void) {
+    getch_off = 0;
+    getch_size = 0;
+    while (bdos(6,0xFF) & 255)
+        ;
+    write(STDOUT_FILENO,"\033m\033E",4);
+}
+
+/* Raw mode: 1960 magic shit. */
+int enableRawMode(int fd) {
+
+    return 0;
+}
 
 /* Return 1 if a key is already waiting in the lookahead buffer. */
 static int getchPending(void) {
@@ -336,8 +343,9 @@ static int getch(void) {
     return c;
 }
 
-/* Read a key from the terminal, decoding the VT52 cursor key sequences
- * (ESC A/B/C/D = up/down/right/left, ESC H = home). */
+/* Read a key from the terminal. The CP/M-86 console sends:
+ *   ESC A/B/C/D = up/down/right/left, ESC H = Home, ESC I = PgUp,
+ *   a bare LF (Ctrl-J) = PgDn, a bare Ctrl-Z = End. */
 int editorReadKey(int fd) {
     int c, seq;
 
@@ -351,9 +359,12 @@ int editorReadKey(int fd) {
         case 'C': return ARROW_RIGHT;
         case 'D': return ARROW_LEFT;
         case 'H': return HOME_KEY;
+        case 'I': return PAGE_UP;
         }
         return ESC;
     }
+    if (c == 10) return PAGE_DOWN;
+    if (c == 26) return END_KEY;
     return c;
 }
 
@@ -597,7 +608,11 @@ void editorUpdateRow(erow *row) {
 void editorInsertRow(int at, char *s, size_t len) {
     int j;
     if (at > E.numrows) return;
-    E.row = realloc(E.row,sizeof(erow)*(E.numrows+1));
+    /* Grow the row array 64 rows at a time, not one row per insert. */
+    if (E.numrows >= E.rowcap) {
+        E.row = realloc(E.row,sizeof(erow)*(E.rowcap+64));
+        E.rowcap += 64;
+    }
     if (at != E.numrows) {
         memmove(E.row+at+1,E.row+at,sizeof(E.row[0])*(E.numrows-at));
         for (j = at+1; j <= E.numrows; j++) E.row[j].idx++;
@@ -646,9 +661,10 @@ char *editorRowsToString(int *buflen) {
     int totlen = 0;
     int j;
 
-    /* Compute count of bytes */
+    /* Compute count of bytes. CP/M text files use CR LF line ends, so
+     * rows are always saved that way. */
     for (j = 0; j < E.numrows; j++)
-        totlen += E.row[j].size+1; /* +1 is for "\n" at end of every row */
+        totlen += E.row[j].size+2; /* +2 is for "\r\n" at end of every row */
     *buflen = totlen;
     totlen++; /* Also make space for nulterm */
 
@@ -656,8 +672,8 @@ char *editorRowsToString(int *buflen) {
     for (j = 0; j < E.numrows; j++) {
         memcpy(p,E.row[j].chars,E.row[j].size);
         p += E.row[j].size;
-        *p = '\n';
-        p++;
+        *p++ = '\r';
+        *p++ = '\n';
     }
     *p = '\0';
     return buf;
@@ -853,7 +869,10 @@ int editorOpen(char *filename) {
     }
 
     while((linelen = getline(&line,&linecap,fp)) != -1) {
-        if (linelen && (line[linelen-1] == '\n' || line[linelen-1] == '\r'))
+        /* Read opportunistically: accept both LF and CR LF line ends. */
+        if (linelen && line[linelen-1] == '\n')
+            line[--linelen] = '\0';
+        if (linelen && line[linelen-1] == '\r')
             line[--linelen] = '\0';
         editorInsertRow(E.numrows,line,linelen);
     }
@@ -890,23 +909,24 @@ writeerr:
 
 /* ============================= Terminal update ============================ */
 
-/* We define a very simple "append buffer" structure, that is an heap
- * allocated string where we can append to. This is useful in order to
- * write all the escape sequences in a buffer and flush them to the standard
- * output in a single call, to avoid flickering effects. */
+/* A small fixed size output buffer: escape sequences and text are collected
+ * here and written to the console in as few calls as possible. It is flushed
+ * when full, so it never touches the (small) heap. */
+#define ABUF_SIZE 1024
+
 struct abuf {
-    char *b;
+    char b[ABUF_SIZE];
     int len;
 };
 
-#define ABUF_INIT {NULL,0}
+void abFlush(struct abuf *ab) {
+    if (ab->len) write(STDOUT_FILENO,ab->b,ab->len);
+    ab->len = 0;
+}
 
 void abAppend(struct abuf *ab, const char *s, int len) {
-    char *new = realloc(ab->b,ab->len+len);
-
-    if (new == NULL) return;
-    memcpy(new+ab->len,s,len);
-    ab->b = new;
+    if (ab->len+len > ABUF_SIZE) abFlush(ab);
+    memcpy(ab->b+ab->len,s,len);
     ab->len += len;
 }
 
@@ -921,10 +941,6 @@ void abGoto(struct abuf *ab, int row, int col) {
     abAppend(ab,seq,4);
 }
 
-void abFree(struct abuf *ab) {
-    free(ab->b);
-}
-
 /* This function writes the whole screen using VT52 escape sequences
  * starting from the logical state of the editor in the global state 'E'.
  * VT52 has no colors: syntax highlight is not shown, only non printable
@@ -936,12 +952,11 @@ void editorRefreshScreen(void) {
     char status[80], rstatus[80];
     char *c;
     unsigned char *hl;
-    struct abuf ab;
+    static struct abuf ab; /* static: keep the 1K buffer off the stack */
 
-    ab.b = NULL;
     ab.len = 0;
 
-    abAppend(&ab,"\x1b" "f",2); /* Hide cursor while drawing. */
+    abAppend(&ab,"\033n",2); /* ESC n: disable cursor while drawing. */
     for (y = 0; y < E.screenrows; y++) {
         filerow = E.rowoff+y;
         abGoto(&ab,y,0);
@@ -1035,9 +1050,8 @@ void editorRefreshScreen(void) {
         }
     }
     abGoto(&ab,E.cy,cx-1);
-    abAppend(&ab,"\x1b" "e",2); /* Show cursor at its final position. */
-    write(STDOUT_FILENO,ab.b,ab.len);
-    abFree(&ab);
+    abAppend(&ab,"\033m",2); /* ESC m: enable cursor at its final position. */
+    abFlush(&ab);
 }
 
 /* Set an editor status message for the second line of the status, at the
@@ -1267,6 +1281,23 @@ void editorProcessKeypress(int fd) {
     case DEL_KEY:
         editorDelChar();
         break;
+    case HOME_KEY:
+        E.cx = 0;
+        E.coloff = 0;
+        break;
+    case END_KEY:
+        {
+        int frow = E.rowoff+E.cy;
+        int rlen = (frow >= E.numrows) ? 0 : E.row[frow].size;
+        if (rlen >= E.screencols) {
+            E.coloff = rlen-E.screencols+1;
+            E.cx = E.screencols-1;
+        } else {
+            E.coloff = 0;
+            E.cx = rlen;
+        }
+        }
+        break;
     case PAGE_UP:
     case PAGE_DOWN:
         if (c == PAGE_UP && E.cy != 0)
@@ -1321,6 +1352,7 @@ void initEditor(void) {
     E.coloff = 0;
     E.numrows = 0;
     E.row = NULL;
+    E.rowcap = 0;
     E.dirty = 0;
     E.filename = NULL;
     E.syntax = NULL;
