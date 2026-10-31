@@ -377,9 +377,11 @@ void test_results() {
 }
 
 
-/* Aztec C86 has no NaN (0.0/0.0 is 0.0), so there tinyexpr reports errors as 0. */
+/* The patched runtime returns real NaNs; legacy Aztec arithmetic still
+   reports some domain errors as zero (including 0.0/0.0). */
 static int is_error_result(double r) {
     double zero = 0.0;
+    if (isnan(r)) return 1;
     if (zero / zero != zero / zero) return r != r;
     return r == 0.0;
 }
@@ -784,7 +786,7 @@ void test_combinatorics() {
 }
 
 
-/* These quotients are exact, so the modf()-based te_fmod gives them exactly. */
+/* Exact binary remainders. */
 static test_case smoke_modulus_cases[] = {
         {"5.5%2", 1.5}, {"-5.5%2", -1.5}, {"7%-3", 1}, {"-7%3", -1},
         {"6%3", 0}, {"5%0.5", 0}, {"0%3", 0}
@@ -805,14 +807,13 @@ void test_modulus() {
             printf("FAILED: %s => %f, expected %f (err=%d)\n", expr, ev, answer, err);
     }
 
-    /* 1%0.1 is 0.09999999999999995 with fmod(), but the modf() quotient can
-       round up to 10 and give 0 on Aztec. Both must lie in the remainder range. */
+    /* Rounded division must not erase the nonzero remainder. */
     {
         int err;
         const double pos = te_interp("1%0.1", &err);
         const double neg = te_interp("-1%0.1", &err);
-        lok(pos >= 0.0 && pos <= 0.1);
-        lok(neg <= 0.0 && neg >= -0.1);
+        lok(pos > 0.09 && pos <= 0.1);
+        lok(neg < -0.09 && neg >= -0.1);
         if (pos < 0.0 || pos > 0.1 || neg > 0.0 || neg < -0.1)
             printf("FAILED: 1%%0.1 => %f, -1%%0.1 => %f\n", pos, neg);
     }

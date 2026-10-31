@@ -184,7 +184,7 @@ bool	verbose = false;
 int	newslots = 0;		/* slots requested via -n option */
 char	*cmdname;
 
-char   *getname(), *sprintf(), *nopath(), *index(), *strcat(), *fgets();
+char   *getname(), *nopath(), *index(), *strcat(), *fgets();
 int	update(), reorg(), table(), extract(), print(), delete();
 
 

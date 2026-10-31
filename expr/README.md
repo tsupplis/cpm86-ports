@@ -289,12 +289,10 @@ The decimal separator is always *.*, regardless of the process locale.
 TinyExpr supports addition (+), subtraction/negation (-), multiplication (\*),
 division (/), exponentiation (^) and modulus (%) with the normal operator
 precedence (the one exception being that exponentiation is evaluated
-left-to-right, but this can be changed - see below). Modulus is computed as
-`x - trunc(x/y)*y` using `modf()`, because the Aztec C86 math library has no
-`fmod()`. Results can differ from C `fmod()` in the last bits, and by more for
-small divisors or very large quotients, because the product `trunc(x/y)*y` is
-rounded. For example, `1%0.1` is 0 on Aztec and 0.09999999999999995 with a
-host `fmod()`.
+left-to-right, but this can be changed - see below). Modulus uses the runtime `fmod()`. Aztec builds require the patched 4.2
+runtime v8 or later, which provides binary64 remainder without an overflowing
+intermediate quotient. The expression-specific `te_strtod()` remains because
+it also accepts hexadecimal integers and defines locale-independent parsing.
 
 The comparison operators (==, !=, <, <=, >, >=) and logical operators
 (&&, ||, !) are also supported, with the same precedence as C: relational

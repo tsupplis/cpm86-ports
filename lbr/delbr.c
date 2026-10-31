@@ -31,7 +31,9 @@
 /* "#define" your compiler here to pick from following #define blocks */
 /* DRC, C86, and AZTEC have all been tested */
 
+#ifndef AZTEC
 #define AZTEC
+#endif
 
 #ifdef	DRC		/* digital research */
 #define	VERSION		"1.1 6-Jun-84 DRC"

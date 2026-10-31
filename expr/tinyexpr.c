@@ -184,24 +184,7 @@ static double ncr(double n, double r) {
     }
     return result;
 }
-/* fmod() is not in the Aztec m.lib, so the remainder is built from modf(). */
-static double te_fmod(double x, double y) {
-    double ax, ay, quotient, remainder;
-
-    /* x-x is NaN for infinities on IEEE targets; NaNs are caught directly. */
-    if (x != x || y != y || x - x != 0.0 || y == 0.0) return NAN;
-    /* C remainder of a finite value by infinity is the original value. */
-    if (y - y != 0.0) return x;
-
-    ax = x < 0.0 ? -x : x;
-    ay = y < 0.0 ? -y : y;
-    modf(ax / ay, &quotient);
-    remainder = ax - quotient * ay;
-    /* Rounding of ax/ay can leave the remainder just outside [0, ay). */
-    if (remainder < 0.0) remainder += ay;
-    else if (remainder >= ay) remainder -= ay;
-    return x < 0.0 ? -remainder : remainder;
-}
+/* Remainder is supplied by the patched Aztec math library. */
 
 static double npr(double n, double r) {return ncr(n, r) * fac(r);}
 /* C99 requires pow(x, 0) == 1; the Aztec C86 libm returns 0 for pow(0, 0). */
@@ -367,7 +350,7 @@ static void next_token(state *s) {
                 case '*': infix(s, mul, PREC_TERM); break;
                 case '/': infix(s, divide, PREC_TERM); break;
                 case '^': infix(s, te_pow, PREC_POW); break;
-                case '%': infix(s, te_fmod, PREC_TERM); break;
+                case '%': infix(s, fmod, PREC_TERM); break;
                 case '!': if (match(s, '=')) infix(s, not_equal, PREC_EQ); else infix(s, logical_not, PREC_NONE); break;
                 case '=': if (match(s, '=')) infix(s, equal, PREC_EQ); else s->type = TOK_ERROR; break;
                 case '<': if (match(s, '=')) infix(s, lower_eq, PREC_REL); else infix(s, lower, PREC_REL); break;
