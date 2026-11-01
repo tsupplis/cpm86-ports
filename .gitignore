@@ -60,4 +60,4 @@ tinybas/hammurab.cmd
 tinybas/wumpus.c
 tinybas/wumpus.com
 tinybas/wumpus.cmd
-
+!sokoban/util.lib
