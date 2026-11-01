@@ -386,10 +386,10 @@ static int is_error_result(double r) {
     return r == 0.0;
 }
 
-/* Aztec C86 has no usable infinity (1.0/0.0 is 1.0), so the INF checks are skipped there. */
+/* Require arithmetic infinity, not merely an available INFINITY constant. */
 static int has_inf(void) {
     double one = 1.0, zero = 0.0;
-    return one / zero == one / zero + 1.0;
+    return isinf(one / zero);
 }
 
 void test_syntax() {
@@ -450,6 +450,9 @@ void test_infs() {
     te_expr *n;
     const char *expr;
 
+#ifdef REQUIRE_INFINITY
+    lok(has_inf());
+#endif
     if (!has_inf()) {
         printf("INFs skipped: no infinity on this platform\n");
         return;
@@ -459,12 +462,12 @@ void test_infs() {
         expr = smoke_inf_exprs[i];
         r = te_interp(expr, &err);
         lequal(err, 0);
-        lok(r - r != 0.0);
+        lok(isinf(r));
         n = te_compile(expr, 0, 0, &err);
         lok(n != 0);
         lequal(err, 0);
         c = te_eval(n);
-        lok(c - c != 0.0);
+        lok(isinf(c));
         te_free(n);
     }
 }
@@ -517,9 +520,14 @@ void test_variables() {
 
 
 #define cross_check(a, b) do {\
-    if ((b)!=(b)) break;\
+    double expected = (b);\
+    double actual;\
     expr = te_compile((a), lookup, 2, &err);\
-    lfequal(te_eval(expr), (b));\
+    actual = te_eval(expr);\
+    if (isnan(expected)) { lok(isnan(actual)); }\
+    else if (isinf(expected)) {\
+        lok(isinf(actual) && ((actual < 0) == (expected < 0)));\
+    } else { lfequal(actual, expected); }\
     lok(!err);\
     te_free(expr);\
 }while(0)
@@ -892,27 +900,27 @@ void test_number() {
         char *p = expr;
         int j;
 
-        if (number_rand(8) == 0) {
+        if (number_rand(8UL) == 0) {
             /* Hex constant. */
-            const int digits = 1 + number_rand(8);
+            const int digits = 1 + number_rand(8UL);
             p += sprintf(p, "0x");
             for (j = 0; j < digits; ++j)
-                p += sprintf(p, "%c", "0123456789abcdefABCDEF"[number_rand(22)]);
+                p += sprintf(p, "%c", "0123456789abcdefABCDEF"[number_rand(22UL)]);
         } else {
-            const int int_digits = number_rand(11);
-            const int frac_digits = int_digits ? number_rand(11) : 1 + number_rand(10);
+            const int int_digits = number_rand(11UL);
+            const int frac_digits = int_digits ? number_rand(11UL) : 1 + number_rand(10UL);
 
             for (j = 0; j < int_digits; ++j)
-                p += sprintf(p, "%c", "0123456789"[number_rand(10)]);
-            if (frac_digits || number_rand(2)) {
+                p += sprintf(p, "%c", "0123456789"[number_rand(10UL)]);
+            if (frac_digits || number_rand(2UL)) {
                 p += sprintf(p, ".");
                 for (j = 0; j < frac_digits; ++j)
-                    p += sprintf(p, "%c", "0123456789"[number_rand(10)]);
+                    p += sprintf(p, "%c", "0123456789"[number_rand(10UL)]);
             }
-            if (number_rand(2)) {
-                p += sprintf(p, "%c", "eE"[number_rand(2)]);
-                if (number_rand(2)) p += sprintf(p, "%c", "+-"[number_rand(2)]);
-                p += sprintf(p, "%lu", number_rand(320));
+            if (number_rand(2UL)) {
+                p += sprintf(p, "%c", "eE"[number_rand(2UL)]);
+                if (number_rand(2UL)) p += sprintf(p, "%c", "+-"[number_rand(2UL)]);
+                p += sprintf(p, "%lu", number_rand(320UL));
             }
         }
 

@@ -304,7 +304,7 @@ static void infix(state *s, const void *function, int prec) {
     s->prec = prec;
 }
 
-static int match(state *s, char c) {
+static int match(state *s, int c) {
     if (s->next[0] != c) return 0;
     s->next++;
     return 1;
