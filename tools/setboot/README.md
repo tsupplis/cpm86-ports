@@ -2,7 +2,7 @@
 
 Run from any directory:
 
-    python3 /Users/thierry/Projects/CPM86/cpm86-ports/tools/setboot/test_setboot.py
+    python3 tools/setboot/test_setboot.py
 
 Build the program first with `make` in `../../setboot`.
 
