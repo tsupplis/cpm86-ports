@@ -99,3 +99,5 @@ python3 tools/hidden_browser_check.py filer --boot BOOT.img --config PCE.cfg
 Add --classic --blank BLANK320.img for an original CP/M/CCP/M boot disk:
 it tests a SYSTEM+READ-ONLY CP/M file, with no FAT metadata dependency.
 Boot disks and data templates are copied; supplied originals are untouched.
+
+Verification passed on CDOS FAT, original CP/M-86 1.1 and CCP/M-86 3.1.
