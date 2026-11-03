@@ -69,3 +69,29 @@ environment.
 
 Released to the public domain by Michael J. Karas. No commercial use: the
 program may not be sold, in whole or in part, modified or not.
+
+## SYSTEM and FAT HIDDEN browsing
+
+The default list contains normal files. `O` toggles normal/all, including
+SYSTEM and FAT HIDDEN files. S/H indicators distinguish those attributes;
+an empty filtered list offers the same toggle instead of sorting an empty
+ring. This normal-only default also applies on CP/M and CCP/M.
+
+Attributes occupy a separate byte in each in-memory record, travelling with
+the filename through sorting and deletion. They are never encoded in CP/M
+filename bits. A version gate followed by the raw FAT header signature is
+required before interpreting FAT metadata; CP/M allocation bytes remain
+allocation data. No BDOS 230 or DOS interrupt is used.
+
+Rename and deletion still use BDOS 23 and 19. READ-ONLY/locks remain enforced
+by the OS; browsing a HIDDEN file does not clear its attributes. The updated
+CDOS HIDDEN-deletion backend is required to delete HIDDEN files on FAT.
+
+Build with `make`. The opt-in integration test (from the ports root) is:
+
+```
+python3 tools/hidden_browser_check.py wash15 --boot BOOT.img --config PCE.cfg
+```
+
+It uses disposable images and one emulator, checking normal/all/empty lists,
+rename/delete, attribute retention and untouched labels/directories.

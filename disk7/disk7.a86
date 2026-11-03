@@ -1,5 +1,6 @@
 
 M	EQU	Byte Ptr 0[BX]
+HB_STRIDE EQU 14 ; drive/name/type/tag (13), separate attribute byte
 ; title 'disk7 -- cp/m-80 file manipulation program'
 VERS	EQU	77			;version number.. 
 MONTH	EQU	01			;..month..
@@ -207,7 +208,9 @@ EMBARK:	CALL	FRESTOR			;get bytes remaining on drive (decode default)
 	MOV	CH,11			; # of characters to move
 	CALL	MOVE			;set field to *.*
 ; build 'ring' with filename positioned in default 'fcb' area
-PLUNGE:	MOV	CL,SETDMA		;initialize dma address..
+PLUNGE:
+	CALL HB_PROBE
+	MOV	CL,SETDMA		;initialize dma address..
 	MOV	DX,TBUF			;..to default buffer.
 	INT	224
 	XOR	AL,AL			;clear search 'fcb'..
@@ -352,13 +355,14 @@ HELP:	CALL	CLS			;show menu but 'clear-screen' first
 	DB	'   V - View text     | X - Exit '
 	DB	'to CP/M  | <SP> advances cur'
 	DB	'sor -- B backs up'
+	DB CR,LF,'   O - Toggle normal/all; S/H after names identify attributes'
 	DB	CR,LF,LF,0
 	RET
 ; establish ring (circular list) of filenames -- set-up sort pointers
 SETRING:MOV	BX,(Offset RING)	;initialize ring pointer
 	MOV	Word Ptr RINGPOS,BX	;start --> current position of ring
 	MOV	Word Ptr RINGI,BX	;initialize sort 'i' and..
-	MOV	DX,13			;..'j' variables.
+	MOV	DX,HB_STRIDE			;..'j' variables.
 	ADD	BX,DX
 	MOV	Word Ptr RINGJ,BX
 ; put each found name in ring.	(a-reg --> offset into 'tbuf' name storage)
@@ -371,6 +375,10 @@ TO@RING:DEC	AL			;un-do 'inr' from above and below
 	ADD	AL,TBUF			;add page offset and..
 	MOV	BL,AL			;..put address into..
 	MOV	BH,0			;..hl-pair.
+	CALL HB_FLAGS
+	JNC HB_KEEP
+	JMP HB_SEARCH_NEXT
+HB_KEEP:
 	MOV	AL,Byte Ptr .FCB	;get drive/user designator and..
 	MOV	M,AL			;..put into 'fcb' buffer.
 	XCHG	BX,DX
@@ -381,7 +389,11 @@ TO@RING:DEC	AL			;un-do 'inr' from above and below
 	XCHG	BX,DX			;de-pair contains next load point address
 	MOV	M,' '			;space for potential..
 	INC	BX			;..tagging of files for mass copy.
+	MOV AL,Byte Ptr HB_LAST
+	MOV M,AL
+	INC BX
 	MOV	Word Ptr RINGPOS,BX	;store and search..
+HB_SEARCH_NEXT:
 	MOV	CL,SRCHN		;..for next occurrence.
 	MOV	DX,FCB			;filename address field
 	INT	224
@@ -391,7 +403,11 @@ TO@RING:DEC	AL			;un-do 'inr' from above and below
 	MOV	BX,Word Ptr RINGPOS	;next load point of ring is start of buffer
 	MOV	Word Ptr RINGEND,BX	;set ring end..
 	MOV	Word Ptr BUFSTART,BX	;..and copy-buffer start.
-	MOV	DX,(Offset RING)+13	;compare 'ringend' (tab base+13)
+	CMP BX,Offset RING
+	JNE HB_HAVE_FILES
+	JMP HB_EMPTY
+HB_HAVE_FILES:
+	MOV	DX,(Offset RING)+HB_STRIDE	;compare 'ringend' (tab base+13)
 	CALL	CMPDEHL
 	JNZ	L_7	
 	JMP	CMDLOOP			;go to command loop, if no sort req'd.
@@ -402,7 +418,7 @@ SORT@LP:MOV	BX,Word Ptr RINGJ	;compare names 'i & j'
 	MOV	BX,Word Ptr RINGI
 	PUSH	BX			;save position pointers..
 	PUSH	DX			;..for potential swap.
-	MOV	CH,13			; # of characters to compare
+	MOV	CH,HB_STRIDE			; # of characters to compare
 ; left to right compare of two strings (de-pair points to 'a' string;
 ; hl-pair, to 'b'; b-reg contains string length.)
 CMPSTR:	MOV	SI,DX			;get an 'a' string character and..
@@ -415,7 +431,7 @@ CMPSTR:	MOV	SI,DX			;get an 'a' string character and..
 	JNZ	CMPSTR			;..do next character.
 NOCMP:	POP	DX
 	POP	BX
-	MOV	CH,13
+	MOV	CH,HB_STRIDE
 	JNB	NOSWAP
 ; swap if 'j' string larger than 'i'
 SWAP:	MOV	CL,M			;get character from one string..
@@ -430,7 +446,7 @@ SWAP:	MOV	CL,M			;get character from one string..
 	DEC	CH
 	JNZ	SWAP			;all bytes swapped yet?
 NOSWAP:	MOV	BX,Word Ptr RINGJ	;increment 'j' pointer
-	MOV	DX,13
+	MOV	DX,HB_STRIDE
 	LAHF
 	ADD	BX,DX
 	SAHF
@@ -440,7 +456,7 @@ NOSWAP:	MOV	BX,Word Ptr RINGJ	;increment 'j' pointer
 	CALL	CMPDEHL
 	JNZ	SORT@LP			;no, so more 'j' looping.
 	MOV	BX,Word Ptr RINGI	;bump 'i' pointer
-	MOV	DX,13
+	MOV	DX,HB_STRIDE
 	LAHF
 	ADD	BX,DX
 	SAHF
@@ -532,8 +548,28 @@ PRT@FT:	MOV	AL,M
 	JNZ	PRT@FT
 	MOV	AL,M			;get tag (*) and..
 	MOV	Byte Ptr TAG+2,AL	;..put after colon.
-	INC	BX
-	MOV	Word Ptr RINGPOS,BX	;save ring position
+	INC BX
+	MOV AL,M
+	PUSH AX
+	INC BX
+	MOV	Word Ptr RINGPOS,BX	;end of complete record
+	MOV AL,' '
+	CALL TYPECHR
+	POP AX
+	PUSH AX
+	TEST AL,4
+	MOV AL,' '
+	JZ HB_PRINT_SYS
+	MOV AL,'S'
+HB_PRINT_SYS:
+	CALL TYPECHR
+	POP AX
+	TEST AL,2
+	MOV AL,' '
+	JZ HB_PRINT_HIDDEN
+	MOV AL,'H'
+HB_PRINT_HIDDEN:
+	CALL TYPECHR
 	CALL	ILPRT
 TAG	DB	' : ',0			;space, colon, space or * before cursor.
 	MOV	AL,Byte Ptr J@FLG	;jump..
@@ -546,7 +582,7 @@ K@WAIT:	CALL	KEYIN			;wait for character from keyboard
 	CALL	HELP			;..match, get help message (menu) and..
 	CALL	FRESTOR			;..show free storage remaining.
 NEUTRAL:MOV	BX,Word Ptr RINGPOS	;stay..
-	MOV	DX,-13			;..in..
+	MOV	DX,-HB_STRIDE			;..in..
 	ADD	BX,DX			;..the..
 	MOV	Word Ptr RINGPOS,BX	;..same..
 	JMP	DLOOP			;..position.
@@ -580,7 +616,7 @@ CTPR2:	LAHF				;point to command routine address and..
 UNTAG:	XOR	AL,AL			;set tag/untag..
 	MOV	Byte Ptr T@UN@FG,AL	;..flag to untag.
 	MOV	BX,Word Ptr RINGPOS	;move back one..
-	MOV	DX,-1			;..character position..
+	MOV	DX,-2			;tag precedes the attribute byte
 	ADD	BX,DX			;..and check tagging status.
 	MOV	AL,M			;if file previously tagged, remove..
 	CMP	AL,'*'			;..size from..
@@ -589,7 +625,7 @@ UNTAG:	XOR	AL,AL			;set tag/untag..
 	JMP	FORWARD
 ; t a g
 TAG@EM:	MOV	BX,Word Ptr RINGPOS
-	MOV	DX,-1			;move back one..
+	MOV	DX,-2			;tag precedes the attribute byte
 	ADD	BX,DX			;..position..
 	MOV	AL,M			; (if file
 	CMP	AL,'*'			; already tagged, skip
@@ -723,18 +759,18 @@ L_12:
 	JMP	DLOOP			;..redisplay start entry.
 ; r e v e r s e
 REVERSE:MOV	BX,Word Ptr RINGPOS	;see if at beginning of ring
-	MOV	DX,(Offset RING)+13
+	MOV	DX,(Offset RING)+HB_STRIDE
 	CALL	CMPDEHL
 	JNZ	REV1			;skip position pointer reset if not..
 	CALL	CRLF			;..at beginning.  skip line at junction.
 	MOV	BX,Word Ptr RINGEND	;set to end +1 to backup to end
-	MOV	DX,13
+	MOV	DX,HB_STRIDE
 	ADD	BX,DX
 	MOV	Word Ptr RINGPOS,BX
 REV1:	CALL	ILPRT			;indicate reverse
 	DB	CR,LF,'<- ',0
 	MOV	BX,Word Ptr RINGPOS
-	MOV	DX,-(13*2)		;one ring position..
+	MOV	DX,-(HB_STRIDE*2)		;one ring position..
 	ADD	BX,DX			;..backwards.
 	MOV	Word Ptr RINGPOS,BX
 	JMP	LOOP2			;display without 'crlf'
@@ -772,7 +808,7 @@ FNF@MSG:CALL	ILPRT			;show error message
 ; reverse ring to close up erased position
 DEL2:	MOV	BX,Word Ptr RINGPOS	;prepare move up pointers
 	PUSH	BX
-	MOV	DX,-13
+	MOV	DX,-HB_STRIDE
 	LAHF
 	ADD	BX,DX
 	RCR	SI,1
@@ -788,7 +824,7 @@ MOVUP:	XCHG	BX,DX
 	POP	BX
 	XCHG	BX,DX
 	JZ	MOVDONE			;must be at end of ring
-	MOV	CH,13			;one name size
+	MOV	CH,HB_STRIDE			;one name size
 	CALL	MOVE			;move one name up
 	JMPS	MOVUP			;go check end parameters
 MOVDONE:XCHG	BX,DX
@@ -811,7 +847,7 @@ L_15:
 ; set-up to rename file at cursor position -- scan keyboard buffer and
 ; move filename to 'rename' destination 'fcb' (dfcb)
 RENAME:	MOV	BX,Word Ptr RINGPOS	;move name from ring to rename 'fcb'
-	MOV	DX,-13
+	MOV	DX,-HB_STRIDE
 	LAHF
 	ADD	BX,DX
 	RCR	SI,1
@@ -876,7 +912,7 @@ WILDFND:CALL	ILPRT
 	JMP	NEUTRAL
 ; copy new name into ring position
 RENFILE:MOV	BX,Word Ptr RINGPOS	;get ring position pointer
-	MOV	DX,-12			;back 12 positions leaves drive intact
+	MOV	DX,-(HB_STRIDE-1)	;leave drive intact; do not overwrite flags
 	ADD	BX,DX
 	XCHG	BX,DX
 	MOV	BX,(Offset D@FCB)+17	;point at new name and..
@@ -1011,7 +1047,7 @@ GOTO@LP:CALL	GOTOCMP			;compare?
 	JMP	DLOOP			;found it, we are there.
 L_22:
 	MOV	BX,Word Ptr RINGPOS	;advance..
-	MOV	DX,13			;..to..
+	MOV	DX,HB_STRIDE			;..to..
 	LAHF				;..next entry.
 	ADD	BX,DX
 	SAHF
@@ -1020,7 +1056,7 @@ L_22:
 	MOV	BX,Word Ptr RINGEND	;check for list ending
 	CALL	CMPDEHL			;compare current position with end of ring
 	JNZ	GOTO@LP			;branch if more to process, else..
-	MOV	BX,(Offset RING)+13	;..point to beginning and..
+	MOV	BX,(Offset RING)+HB_STRIDE	;..point to beginning and..
 	MOV	Word Ptr RINGPOS,BX	;..show 1st filename after..
 	JMP	FNF@MSG			;..showing file-not-found message.
 GOTOCMP:MOV	BX,Word Ptr RINGPOS	;pt to current entry
@@ -1261,7 +1297,8 @@ MASS:	MOV	BX,(Offset RING)+12	;get 1st possible tag location
 MASS@LP:MOV	AL,'*'
 	CMP	AL,M
 	LAHF				;get in filename synchronization
-	INC	BX
+	INC BX
+	INC BX
 	SAHF
 	MOV	Word Ptr RINGPOS,BX
 	JZ	MCOPY			;copy filename with tag character (*)
@@ -1270,7 +1307,10 @@ M@LP:	MOV	BX,Word Ptr RINGPOS	;re-entry point for next file mass-copy
 	MOV	BX,Word Ptr RINGEND	;..end yet?
 	CALL	CMPDEHL			; (compare present position with end)
 	MOV	BX,Word Ptr RINGPOS
-	JNZ	MASS@LP			;no, loop 'till thru ring list.
+	JZ HB_MASS_DONE
+	ADD BX,12 ; next record tag; flags are not a tag
+	JMP MASS@LP
+HB_MASS_DONE:
 	XOR	AL,AL			;reset flags..
 	MOV	Byte Ptr FIRST@M,AL	;..for..
 	NOT	AL			;..next..
@@ -1760,7 +1800,7 @@ LFLP:	CALL	TYPECHR
 	RET
 ; copy filename from 'ring' to 's$fcb'
 RINGFCB:MOV	BX,Word Ptr RINGPOS	;copy name from ring to source 'fcb'
-	MOV	DX,-13			;subtract 13 to..
+	MOV	DX,-HB_STRIDE			;subtract 13 to..
 	ADD	BX,DX			;..point to name position.
 	MOV	DX,(Offset S@FCB)	;place to copy filename and..
 	MOV	CH,12			;..amount to move.
@@ -1963,13 +2003,117 @@ PRT@FRE:CALL	DECOUT			; # of free k-bytes in hl-pair
 	DB	'k bytes free on DIRectory '
 DRNAME	DB	' :',CR,LF,'   ',0
 	RET
+; HIDDEN is an in-memory flag, never a CP/M filename attribute.
+; Raw search with user '?' yields CDOS FAT's synthetic header. Version is
+; only an initial gate: allocation bytes are decoded ONLY after that marker.
+; No BDOS 230, DOS interrupt, sibling library or on-disk change is needed.
+HB_PROBE:
+ PUSH AX
+ PUSH BX
+ PUSH CX
+ PUSH DX
+ MOV Byte Ptr HB_FAT,0
+ MOV CL,12
+ INT 224
+ CMP AL,41H
+ JB HB_PROBE_DONE
+ MOV CL,25
+ INT 224
+ MOV Byte Ptr HB_DRIVE,AL
+ MOV DL,Byte Ptr .FCB
+ OR DL,DL
+ JZ HB_PROBE_SEARCH
+ DEC DL
+ MOV CL,14
+ INT 224
+HB_PROBE_SEARCH:
+ MOV DX,Offset HB_RAW
+ MOV CL,17
+ INT 224
+ CMP AL,0FFH
+ JE HB_PROBE_RESTORE
+ AND AX,3
+ MOV CL,5
+ SHL AX,CL
+ MOV BX,AX
+ ADD BX,TBUF
+ CMP Byte Ptr [BX],20H
+ JNE HB_PROBE_RESTORE
+ CMP Byte Ptr 15[BX],80H
+ JNE HB_PROBE_RESTORE
+ CMP Word Ptr 16[BX],8080H
+ JNE HB_PROBE_RESTORE
+ MOV Byte Ptr HB_FAT,1
+HB_PROBE_RESTORE:
+ MOV DL,Byte Ptr HB_DRIVE
+ MOV CL,14
+ INT 224
+HB_PROBE_DONE:
+ POP DX
+ POP CX
+ POP BX
+ POP AX
+ RET
+; BX is the found directory entry. Return carry if excluded. Preserve BX.
+; Bit 0=RO, bit 1=FAT HIDDEN, bit 2=SYSTEM; low bits survive MOVBYT.
+HB_FLAGS:
+ XOR AL,AL
+ TEST Byte Ptr 9[BX],80H
+ JZ HB_FLAGS_SYS
+ OR AL,1
+HB_FLAGS_SYS:
+ TEST Byte Ptr 10[BX],80H
+ JZ HB_FLAGS_HIDDEN
+ OR AL,4
+HB_FLAGS_HIDDEN:
+ CMP Byte Ptr HB_FAT,0
+ JE HB_FLAGS_SELECT
+ MOV AH,Byte Ptr 16[BX]
+ CMP AH,Byte Ptr 17[BX]
+ JNE HB_FLAGS_SELECT
+ AND AH,0A0H
+ CMP AH,0A0H
+ JNE HB_FLAGS_SELECT
+ OR AL,2
+HB_FLAGS_SELECT:
+ MOV Byte Ptr HB_LAST,AL
+ CMP Byte Ptr HB_ALL,0
+ JNE HB_FLAGS_KEEP
+ TEST AL,6
+ JZ HB_FLAGS_KEEP
+ STC
+ RET
+HB_FLAGS_KEEP:
+ CLC
+ RET
+HB_TOGGLE:
+ XOR Byte Ptr HB_ALL,1
+ JMP PLUNGE
+HB_EMPTY:
+ CALL ILPRT
+ DB CR,LF,'No matching normal files. O toggles all; X exits: ',0
+ CALL KEYIN
+ CMP AL,'O'
+ JNE HB_EMPTY_EXIT
+ JMP HB_TOGGLE
+HB_EMPTY_EXIT:
+ JMP CPM@CCP
 L_56	EQU	$
 	DSEG
 	ORG	Offset L_56
 ; s t o r a g e
 ; initialized
 ; command table
-CMD@TBL	DB	' '			;if 'space' or..
+; Persistent browse options and metadata, outside the movable list.
+HB_ALL DB 0
+HB_FAT DB 0
+HB_LAST DB 0
+HB_DRIVE DB 0
+HB_RAW DB '????????????'
+       DB 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+CMD@TBL DB 'O'
+	DW Offset HB_TOGGLE
+	DB ' '			;if 'space' or..
 	DW	(Offset FORWARD)
 	DB	CR			;..'cursor return', move to next file.
 	DW	(Offset FORWARD)
