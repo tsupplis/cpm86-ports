@@ -11,6 +11,10 @@ In particular, those tools give a much more friendly user interaction with the o
 - unix like tools
 - development tools
 
+DISK7, WASH15 and FILER group SYSTEM/FAT HIDDEN files behind an `O`
+normal/all toggle, with distinct S/H indicators. They retain CP/M-86 and
+CCP/M-86 support; details and tests are in each tool's README.
+
 Further tools are available from companion projects:
 | Category | Tools | Project |
 |---|---|---|

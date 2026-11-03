@@ -24,3 +24,7 @@ test-keys:
 .PHONY: test-exec
 test-exec:
 	python3 testexec.py
+
+.PHONY: test-attrs
+test-attrs:
+	python3 testattrs.py

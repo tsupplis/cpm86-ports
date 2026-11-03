@@ -24,7 +24,7 @@ To move the screen up or down a page:  use the PGUP and PGDN keys.
     V - View
 
 -- Movement Commands --                  -- Miscellaneous --
-     <-  - File Left                        O - shOw System Files
+     <-  - File Left                        O - Toggle normal/all (SYS/HIDDEN)
      ->  - File Right                       E - Enter Command
         - File Up                          L - Login DIR
         - File DOwn                        N - reNew Screen
@@ -62,3 +62,40 @@ help shows "eXecute CMD file" and states that E/X return after the action.
 emu2, checking P_CLI success/failure, nested priorities, console handoff,
 context recovery, repeated returns without stack growth and the legacy chain.
 Verify E/X and external HELP on the booted concurrent system.
+
+SYSTEM and FAT HIDDEN files
+---------------------------
+
+Normal-only is now the default on CP/M, CCP/M and CDOS. O toggles all files,
+including SYSTEM and FAT HIDDEN. The selected-file status line distinguishes
+S and H; the four-column grid and tagging keys retain their existing layout.
+An empty filtered list offers the O toggle rather than sorting an empty ring.
+
+A separate byte accompanies each name through sorting, paging, tagging and
+deletion. HIDDEN never becomes a CP/M filename attribute. FAT allocation-byte
+interpretation requires both a version gate and a successful raw FAT header
+probe. No BDOS 230 or DOS interrupt is called; CP/M allocation bytes retain
+their original meaning.
+
+FILER retains its historical READ-ONLY override for confirmed deletion and
+replacement, but now clears only READ-ONLY. BDOS 17 retrieves existing name
+attribute bits into private DMA; BDOS 30 preserves SYSTEM/archive/F1-F3.
+Missing search results restore DMA without changing attributes. HIDDEN is
+retained by the OS attribute backend. Locks and disk write protection still
+apply. Deleting FAT HIDDEN files requires the updated CDOS BDOS 19 backend.
+
+make test-keys test-exec test-attrs checks the real assembler routines with
+mocked OS input. The attribute check exercises all four search-buffer slots,
+RO/SYSTEM/archive combinations, F1-F3 preservation and missing-file cleanup.
+Live tests must pace command keys after a screen redraw: FILER's existing
+output flow-control poll consumes keys received during drawing.
+
+The independent live test (from the ports root) is:
+
+```
+python3 tools/hidden_browser_check.py filer --boot BOOT.img --config PCE.cfg
+```
+
+Add --classic --blank BLANK320.img for an original CP/M/CCP/M boot disk:
+it tests a SYSTEM+READ-ONLY CP/M file, with no FAT metadata dependency.
+Boot disks and data templates are copied; supplied originals are untouched.

@@ -1,3 +1,4 @@
+HB_STRIDE EQU 14 ; filename/tag (13), separate RO/HIDDEN/SYSTEM byte
 
              TITLE  'FILER CP/M-86 (IBM-PC) VERSION 1.5'
 ;
@@ -520,6 +521,7 @@ EMBARK:
         CALL   MOVE                    ;set field to *.*
 ; build 'ring' with filename positioned in default 'fcb' area
 PLUNGE:
+        CALL HB_PROBE
         MOV    CL,SETDMA               ;initialize dma address..
         MOV    DX,TBUF                 ;..to default buffer.
         INT    224
@@ -742,6 +744,10 @@ TO@RING:
         ADD    AL,TBUF                 ;add page offset and..
         MOV    BL,AL                   ;..put address into..
         MOV    BH,0                    ;..hl-pair.
+        CALL HB_FLAGS
+        JNC HB_KEEP
+        JMP HB_SEARCH_NEXT
+HB_KEEP:
         MOV    AL,Byte Ptr .FCB        ;get drive/user designator and..
         MOV    M,AL                    ;..put into 'fcb' buffer.
         XCHG   BX,DX
@@ -754,7 +760,11 @@ TO@RING:
         LAHF                           ;..tagging of files for mass copy.
         INC    BX
         SAHF
+        MOV AL,Byte Ptr HB_LAST
+        MOV M,AL
+        INC BX
         MOV    Word Ptr RINGPOS,BX     ;store and search..
+HB_SEARCH_NEXT:
         MOV    CL,SRCHN                ;..for next occurrence.
         MOV    DX,FCB                  ;filename address field
         INT    224
@@ -764,9 +774,13 @@ TO@RING:
         MOV    BX,Word Ptr RINGPOS     ;next load point of ring is start of buffer
         MOV    Word Ptr RINGEND,BX     ;set ring end..
         MOV    Word Ptr BUFSTART,BX    ;..and copy-buffer start.
+        CMP BX,Word Ptr RING
+        JNE HB_HAVE_FILES
+        JMP HB_EMPTY
+HB_HAVE_FILES:
         PUSH   BX
         MOV    BX,Word Ptr RING
-        MOV    DX,13                   ;compare 'ringend' (tab base+13)
+        MOV    DX,HB_STRIDE                   ;compare 'ringend' (tab base+13)
         LAHF
         ADD    BX,DX
         RCR    SI,1
@@ -782,7 +796,7 @@ L_A6:
 SORT:
         MOV    BX,Word Ptr RING        ;initialize 'i' sort variable and..
         MOV    Word Ptr RINGI,BX
-        MOV    DX,13                   ;..also 'j' variable.
+        MOV    DX,HB_STRIDE                   ;..also 'j' variable.
         ADD    BX,DX
         MOV    Word Ptr RINGJ,BX
 SORTLP:
@@ -791,7 +805,7 @@ SORTLP:
         MOV    BX,Word Ptr RINGI
         PUSH   BX                      ;save position pointers..
         PUSH   DX                      ;..for potential swap.
-        MOV    CH,13                   ; # of characters to compare
+        MOV    CH,HB_STRIDE                   ; # of characters to compare
 ; left to right compare of two strings (de-pair points to 'a' string;
 ; hl-pair, to 'b'; b-reg contains string length.)
 CMPSTR:
@@ -806,7 +820,7 @@ CMPSTR:
 NOCMP:
         POP    DX
         POP    BX
-        MOV    CH,13
+        MOV    CH,HB_STRIDE
         JNB    NOSWAP
 ; swap if 'j' string larger than 'i'
 SWAP:
@@ -823,7 +837,7 @@ SWAP:
         JNZ    SWAP
 NOSWAP:
         MOV    BX,Word Ptr RINGJ       ;increment 'j' pointer
-        MOV    DX,13
+        MOV    DX,HB_STRIDE
         LAHF
         ADD    BX,DX
         SAHF
@@ -833,7 +847,7 @@ NOSWAP:
         CALL   CMPDEHL
         JNZ    SORTLP                  ;no, so more 'j' looping.
         MOV    BX,Word Ptr RINGI       ;bump 'i' pointer
-        MOV    DX,13
+        MOV    DX,HB_STRIDE
         LAHF
         ADD    BX,DX
         SAHF
@@ -893,6 +907,7 @@ LOOPFN:
         SAHF
         CALL   STAT@VID
         CALL   PRFN                    ;print file name
+        CALL HB_SELECTED_FLAGS
         CALL   STD@VID
 LOOP:
         CALL   ATCMD                   ;position at command prompt
@@ -988,7 +1003,9 @@ F_A10   EQU    $
 
 ; Command Table Lookup, menu choice
 ; --------------------------------------------------------------------
-CTABLE  DB     CTRLE                   ;system cursor positioning
+CTABLE DB 'O'
+        DW Offset HB_TOGGLE
+        DB     CTRLE                   ;system cursor positioning
         DW     (Offset UP)
         ;DB     CTRLM                  ;CR *added -km
         ;DW     (Offset VIEW)
@@ -1089,7 +1106,8 @@ HELPMSG:
         DB     '   W - Mass Tag/Untag           F - File Size                   <SP> Scroll one',cr,lf
         DB     '   M - Mass Copy                R - Rename File                 line forward',cr,lf
         DB     '   Y - Mass Delete',cr,lf
-        DB     '   I - Tag Info',cr,lf
+        DB     '   I - Tag Info                O - Toggle normal/all (SYSTEM/HIDDEN)',cr,lf
+        DB '   Selected-file status: S=SYSTEM, H=FAT HIDDEN',cr,lf
         DB     27,'b',10,cr,lf
         DB     ' [ Directory Movement ]       [ CP/M-86 System Related ]',cr,lf
  IF     HLP@FIL
@@ -1386,7 +1404,7 @@ MUTLOOP:
         CALL   FSIZ                    ;adjust sizes
 L_A12:
         MOV    BX,Word Ptr RINGPOS     ;advance to next
-        MOV    DX,13
+        MOV    DX,HB_STRIDE
         LAHF
         ADD    BX,DX
         SAHF
@@ -1417,7 +1435,7 @@ MTLOOP:
         CALL   FSIZ                    ;adjust sizes
 L_A13:
         MOV    BX,Word Ptr RINGPOS     ;advance to next
-        MOV    DX,13
+        MOV    DX,HB_STRIDE
         LAHF
         ADD    BX,DX
         SAHF
@@ -1603,7 +1621,7 @@ JUMPB:
         CALL   CMPDEHL
         JZ     JUMPBW                  ;back up and wrap around
         MOV    Word Ptr LOCEND,BX      ;set new end
-        MOV    DX,-EPS*13              ;back up
+        MOV    DX,-EPS*HB_STRIDE              ;back up
         LAHF
         ADD    BX,DX
         RCR    SI,1
@@ -1620,13 +1638,13 @@ JUMPBW:
         MOV    BX,Word Ptr RING        ;pt to first element of ring
         CALL   CMPDEHL
         JZ     JBW0                    ;advance to end
-        MOV    BX,-EPS*13              ;back up
+        MOV    BX,-EPS*HB_STRIDE              ;back up
         LAHF
         ADD    BX,DX
         SAHF
         JMPS   JFW0
 JBW0:
-        MOV    DX,EPS*13               ;pt to next screen
+        MOV    DX,EPS*HB_STRIDE               ;pt to next screen
         LAHF
         ADD    BX,DX
         RCR    SI,1
@@ -1639,7 +1657,7 @@ JBW0:
         JZ     JBW1
         JB     JBW0
 JBW1:
-        MOV    DX,-EPS*13
+        MOV    DX,-EPS*HB_STRIDE
         LAHF                           ;pt to first element of local ring
         ADD    BX,DX
         SAHF
@@ -1664,7 +1682,7 @@ JFW0:
         MOV    Word Ptr RINGPOS,BX
 JFW0A:
         MOV    Word Ptr LOCBEG,BX      ;front of ring
-        MOV    DX,EPS*13               ;new end?
+        MOV    DX,EPS*HB_STRIDE               ;new end?
         LAHF
         ADD    BX,DX
         RCR    SI,1
@@ -1694,7 +1712,7 @@ FORWARD:
 ;  advance routine
 FOR0:
         MOV    BX,Word Ptr RINGPOS     ;at end of loop yet?
-        MOV    DX,13                   ;i.e., will we be at end of loop?
+        MOV    DX,HB_STRIDE                   ;i.e., will we be at end of loop?
         LAHF
         ADD    BX,DX
         RCR    SI,1
@@ -1710,7 +1728,7 @@ FOR0:
         RET
 FORW:
         MOV    BX,Word Ptr RINGPOS     ;advance in ring
-        MOV    DX,13
+        MOV    DX,HB_STRIDE
         LAHF
         ADD    BX,DX
         RCR    SI,1
@@ -1736,7 +1754,7 @@ REV0:
         JNZ    REV1                    ;skip position pointer reset if not..
         CALL   CUR@LAST                ;end of local ring
         MOV    BX,Word Ptr LOCEND      ;set to end +1 to backup to end
-        MOV    DX,-13
+        MOV    DX,-HB_STRIDE
         LAHF
         ADD    BX,DX
         RCR    SI,1
@@ -1748,7 +1766,7 @@ REV1:
         CALL   CUR@BACK                ;back up 1
 REV2:
         MOV    BX,Word Ptr RINGPOS
-        MOV    DX,-13                  ;one ring position..
+        MOV    DX,-HB_STRIDE                  ;one ring position..
         LAHF                           ;..backwards.
         ADD    BX,DX
         RCR    SI,1
@@ -1761,7 +1779,7 @@ UP:
         CALL   CUR@OFF                 ;turn off term. cursor
         CALL   CLRCUR                  ;clear cursor
         MOV    BX,Word Ptr RINGPOS     ;see if wrap around
-        MOV    DX,-13*4                ;4 entries
+        MOV    DX,-HB_STRIDE*4                ;4 entries
         LAHF
         ADD    BX,DX
         RCR    SI,1
@@ -1781,7 +1799,7 @@ UP1:
         JMPS   DOWN1A
 UP2:
         MOV    BX,Word Ptr RINGPOS     ;advance to beyond end
-        MOV    DX,13*4
+        MOV    DX,HB_STRIDE*4
         LAHF
         ADD    BX,DX
         RCR    SI,1
@@ -1803,7 +1821,7 @@ DOWN:
         CALL   CUR@OFF                 ;turn off term. cursor
         CALL   CLRCUR                  ;clear cursor
         MOV    BX,Word Ptr RINGPOS     ;see if wrap around
-        MOV    DX,13*4                 ;4 entries
+        MOV    DX,HB_STRIDE*4                 ;4 entries
         LAHF
         ADD    BX,DX
         RCR    SI,1
@@ -1839,7 +1857,7 @@ DOWN3:
         CMP    AL,CH                   ;there?
         JZ     DOWN1A
         MOV    BX,Word Ptr RINGPOS     ;advance in ring
-        MOV    DX,13                   ;13 bytes/entry
+        MOV    DX,HB_STRIDE                   ;13 bytes/entry
         ADD    BX,DX
         MOV    Word Ptr RINGPOS,BX
         MOV    BX,Word Ptr CURAT       ;get cursor position
@@ -1919,7 +1937,7 @@ MD@LP:
         JMP    DEL1                    ;delete without verify
 MD@LOOP:
         MOV    BX,Word Ptr RINGPOS     ;re-entry point for next file mass-copy
-        MOV    DX,13                   ;advance to next
+        MOV    DX,HB_STRIDE                   ;advance to next
         LAHF
         ADD    BX,DX
         RCR    SI,1
@@ -1956,7 +1974,7 @@ MDEL1:
         JZ     MD@LOOP
 MDEL2:
         MOV    BX,Word Ptr LOCEND      ;move in end
-        MOV    DX,-13
+        MOV    DX,-HB_STRIDE
         LAHF
         ADD    BX,DX
         RCR    SI,1
@@ -1969,7 +1987,7 @@ MDEL2:
         JNZ    MDEL3
         CALL   CUR@BACK                ;back up cursor
         MOV    BX,Word Ptr LOCEND      ;reset position
-        MOV    DX,-13
+        MOV    DX,-HB_STRIDE
         LAHF
         ADD    BX,DX
         RCR    SI,1
@@ -2017,7 +2035,7 @@ FNF@MSG:
 DEL2:
         MOV    BX,Word Ptr RINGPOS     ;prepare move up pointers
         PUSH   BX
-        MOV    DX,13                   ;13 bytes/entry
+        MOV    DX,HB_STRIDE                   ;13 bytes/entry
         LAHF                           ;de-pair = 'to' location
         ADD    BX,DX
         RCR    SI,1
@@ -2032,7 +2050,7 @@ MOVUP:
         POP    BX
         XCHG   BX,DX
         JZ     MOVDONE                 ;must be at end of ring
-        MOV    CH,13                   ;one name size
+        MOV    CH,HB_STRIDE                   ;one name size
         CALL   MOVE                    ;move one name up
         JMPS   MOVUP                   ;go check end parameters
 MOVDONE:
@@ -2299,14 +2317,14 @@ GOTOL:
         XOR    AL,AL                   ;reset count
         MOV    Byte Ptr CRCTBL,AL
         MOV    BX,Word Ptr LOCBEG      ;reset local beginning
-        MOV    DX,EPS*13
+        MOV    DX,EPS*HB_STRIDE
         LAHF
         ADD    BX,DX
         SAHF
         MOV    Word Ptr LOCBEG,BX
 GOTOL1:
         MOV    BX,Word Ptr RINGPOS     ;advance to next entry
-        MOV    DX,13
+        MOV    DX,HB_STRIDE
         LAHF
         ADD    BX,DX
         RCR    SI,1
@@ -2334,7 +2352,7 @@ GOTOF0A:
         MOV    BX,Word Ptr RINGPOS     ;at position?
         CALL   CMPDEHL
         JZ     GOTOF1
-        MOV    BX,13                   ;advance location
+        MOV    BX,HB_STRIDE                   ;advance location
         LAHF
         ADD    BX,DX
         RCR    SI,1
@@ -2710,7 +2728,7 @@ MASS@LP:
         JZ     MCOPY                   ;copy filename with tag character (*)
 M@LP:
         MOV    BX,Word Ptr RINGPOS     ;re-entry point for next file mass-copy
-        MOV    DX,13                   ;advance to next
+        MOV    DX,HB_STRIDE                   ;advance to next
         LAHF
         ADD    BX,DX
         SAHF
@@ -2816,7 +2834,7 @@ NOT_MASS:
         JMP    FORWARD                 ;if re-copy not wanted, to next position.
 COPY4M:
         MOV    BX,(Offset D@FCB)       ;pt to FCB
-        CALL   ATTRIB                  ;clear bytes in FCB and set attr of file
+        CALL   ATTRIB                  ;override RO, preserving other attributes
         MOV    DX,(Offset D@FCB)       ;delete file already existing
         MOV    CL,ERASE                ;erase function
         INT    224
@@ -2985,21 +3003,53 @@ CRCWF2:
         DEC    CH
         JNZ    CRCWF2
         JMPS   CRCWF1
-; clear attributes of file (HL) and set attributes on disk
+ ; Clear READ-ONLY only. Search metadata supplies the original filename
+; attribute bits, so a failed delete cannot clear SYSTEM/archive/F1-F3.
+; HIDDEN is not a filename bit and is never translated into one here.
 ATTRIB:
-        PUSH   BX                      ;save ptr
-        INC    BX                      ;pt to first char
-        MOV    CH,11                   ;11 Bytes
-ATTRIB1:
-        MOV    AL,M                    ;get byte
-        AND    AL,7FH                  ;mask it
-        MOV    M,AL                    ;put byte
-        INC    BX                      ;pt to next
-        DEC    CH                      ;count down
-        JNZ    ATTRIB1
-        POP    DX                      ;pt to FCB
-        MOV    CL,ATTR
-        INT    224
+        PUSH BX
+        MOV DX,Offset HB_DMA
+        MOV CL,SETDMA
+        INT 224
+        POP DX
+        PUSH DX
+        MOV CL,SRCHF
+        INT 224
+        CMP AL,0FFH
+        JE HB_ATTR_MISSING
+        AND AX,3
+        MOV CL,5
+        SHL AX,CL
+        MOV BX,Offset HB_DMA
+        ADD BX,AX
+        INC BX
+        POP DX
+        PUSH DX
+        INC DX
+        MOV CH,11
+HB_ATTR_COPY:
+        MOV AL,M
+        MOV SI,DX
+        MOV [SI],AL
+        INC BX
+        INC DX
+        DEC CH
+        JNZ HB_ATTR_COPY
+        POP BX
+        AND Byte Ptr 9[BX],7FH
+        PUSH BX
+        MOV CL,SETDMA
+        MOV DX,TBUF
+        INT 224
+        POP DX
+        MOV CL,ATTR
+        INT 224
+        RET
+HB_ATTR_MISSING:
+        POP BX
+        MOV CL,SETDMA
+        MOV DX,TBUF
+        INT 224
         RET
 ; crc subroutines
 ; initialize tables for fast crc calculations
@@ -3856,7 +3906,7 @@ CUR@LAST:
         MOV    BX,Word Ptr RINGPOS     ; ADVANCE
         MOV    Word Ptr LOCPOS,BX      ; SET LOCAL POSITION
 CL0:
-        MOV    DX,13
+        MOV    DX,HB_STRIDE
         LAHF
         ADD    BX,DX
         RCR    SI,1
@@ -3987,7 +4037,7 @@ T4:
         SAHF
         CALL   NC@PRFN                 ; PRINT FILE NAME
         POP    BX                      ; GET CURRENT LOCAL POSITION
-        MOV    DX,13
+        MOV    DX,HB_STRIDE
         LAHF
         ADD    BX,DX
         RCR    SI,1
@@ -4095,11 +4145,145 @@ ENDHELP:
         DB     cr,lf,' Press any key to return. ',0
         JMP    KEYIN
 
+; HIDDEN is an in-memory flag, never a CP/M filename attribute.
+; Raw search with user '?' yields CDOS FAT's synthetic header. Version is
+; only an initial gate: allocation bytes are decoded ONLY after that marker.
+; No BDOS 230, DOS interrupt, sibling library or on-disk change is needed.
+HB_PROBE:
+        PUSH AX
+        PUSH BX
+        PUSH CX
+        PUSH DX
+        MOV CL,SETDMA
+        MOV DX,TBUF
+        INT 224
+        MOV Byte Ptr HB_FAT,0
+        MOV CL,12
+        INT 224
+        CMP AL,41H
+        JB HB_PROBE_DONE
+        MOV CL,25
+        INT 224
+        MOV Byte Ptr HB_DRIVE,AL
+        MOV DL,Byte Ptr .FCB
+        OR DL,DL
+        JZ HB_PROBE_SEARCH
+        DEC DL
+        MOV CL,14
+        INT 224
+HB_PROBE_SEARCH:
+        MOV DX,Offset HB_RAW
+        MOV CL,17
+        INT 224
+        CMP AL,0FFH
+        JE HB_PROBE_RESTORE
+        AND AX,3
+        MOV CL,5
+        SHL AX,CL
+        MOV BX,AX
+        ADD BX,TBUF
+        CMP Byte Ptr [BX],20H
+        JNE HB_PROBE_RESTORE
+        CMP Byte Ptr 15[BX],80H
+        JNE HB_PROBE_RESTORE
+        CMP Word Ptr 16[BX],8080H
+        JNE HB_PROBE_RESTORE
+        MOV Byte Ptr HB_FAT,1
+HB_PROBE_RESTORE:
+        MOV DL,Byte Ptr HB_DRIVE
+        MOV CL,14
+        INT 224
+HB_PROBE_DONE:
+        POP DX
+        POP CX
+        POP BX
+        POP AX
+        RET
+; BX is the found directory entry. Return carry if excluded. Preserve BX.
+; Bit 0=RO, bit 1=FAT HIDDEN, bit 2=SYSTEM; low bits survive MOVBYT.
+HB_FLAGS:
+        XOR AL,AL
+        TEST Byte Ptr 9[BX],80H
+        JZ HB_FLAGS_SYS
+        OR AL,1
+HB_FLAGS_SYS:
+        TEST Byte Ptr 10[BX],80H
+        JZ HB_FLAGS_HIDDEN
+        OR AL,4
+HB_FLAGS_HIDDEN:
+        CMP Byte Ptr HB_FAT,0
+        JE HB_FLAGS_SELECT
+        MOV AH,Byte Ptr 16[BX]
+        CMP AH,Byte Ptr 17[BX]
+        JNE HB_FLAGS_SELECT
+        AND AH,0A0H
+        CMP AH,0A0H
+        JNE HB_FLAGS_SELECT
+        OR AL,2
+HB_FLAGS_SELECT:
+        MOV Byte Ptr HB_LAST,AL
+        CMP Byte Ptr HB_ALL,0
+        JNE HB_FLAGS_KEEP
+        TEST AL,6
+        JZ HB_FLAGS_KEEP
+        STC
+        RET
+HB_FLAGS_KEEP:
+        CLC
+        RET
+HB_TOGGLE:
+        XOR Byte Ptr HB_ALL,1
+        JMP PLUNGE
+HB_EMPTY:
+        CALL ILPRT
+        DB CR,LF,'No matching normal files. O toggles all; X exits: ',0
+        CALL KEYIN
+        CMP AL,'O'
+        JNE HB_EMPTY_EXIT
+        JMP HB_TOGGLE
+HB_EMPTY_EXIT:
+        JMP CPM@CCP
+; Current-file status line has room for distinct S/H flags. Grid width,
+; tag offset and filename rendering remain unchanged.
+HB_SELECTED_FLAGS:
+        PUSH AX
+        PUSH BX
+        MOV BX,Word Ptr RINGPOS
+        MOV AL,Byte Ptr 13[BX]
+        PUSH AX
+        MOV AL,' '
+        CALL TTYPE
+        POP AX
+        PUSH AX
+        TEST AL,4
+        MOV AL,' '
+        JZ HB_SELECTED_SYS
+        MOV AL,'S'
+HB_SELECTED_SYS:
+        CALL TTYPE
+        POP AX
+        TEST AL,2
+        MOV AL,' '
+        JZ HB_SELECTED_HIDDEN
+        MOV AL,'H'
+HB_SELECTED_HIDDEN:
+        CALL TTYPE
+        POP BX
+        POP AX
+        RET
 L_C36  EQU     $
         DSEG
         ORG    Offset L_C36
 
 ;Intialized Storage
+; Persistent browse options and metadata, outside the movable list.
+HB_ALL DB 0
+HB_FAT DB 0
+HB_LAST DB 0
+HB_DRIVE DB 0
+HB_RAW DB '????????????'
+       DB 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+HB_DMA RS 128 ; private BDOS17 DMA for non-destructive RO override
 
 CHR_LO      DB  0                       ; CHR_LO    *added -km
 CHR_HI      DB  0                       ; CHR_HI    *added -km
