@@ -8,7 +8,7 @@ emulating the 8080 — and identifying the CPU the system runs on.
 | `80x86.cmd` | translates 8080 `.ASM` source to 8086 `.A86` source | — |
 | `vcpm.cmd` | runs CP/M-80 `.COM` binaries in the V20's 8080 mode | NEC V20 / V30 |
 | `z80.cmd` | interprets 8080 and Z80 binaries in software | — |
-| `cpuid.cmd` | reports the processor type: 8088, 8086, 286 or 386+ | — |
+| `cpuid.cmd` | identifies Intel x86, NEC V20/V30 and uPD9002 | — |
 
 VCPM loads the 8-bit program from `NAME.COM`. CP/M-86 would run a `.COM` file
 directly as 8086 code, so start the 8080 program through VCPM: `VCPM NAME`.
@@ -121,19 +121,14 @@ CP/M-86 by Kirk Lawrence.
 
     CPUID
 
-Prints which processor the machine contains: 8088, 8086, NEC V20, NEC V30, 286
-or 386+. It uses the classic flag and prefetch-queue tests:
+Reports 8088/8086, V20/V30, uPD9002, 188/186, 286, 386 or 486+.
+The native probes use PUSH SP, shift-count handling and AAD, then SIDT and
+the EFLAGS AC bit on later processors.
 
-- **8088 / 8086 vs 286+** — FLAGS bits 12–15 always read back as 1 on the
-  8088/8086, and can be cleared on a 286 or later
-- **8088 vs 8086** — code 5 bytes ahead of IP is overwritten; the 8086 has
-  already fetched it into its 6-byte prefetch queue and runs the original, the
-  8088 (4-byte queue) runs the replacement
-- **286 vs 386+** — only a 386 or later keeps the NT/IOPL bits (`7000h`) set in
-  FLAGS
-- **Intel vs NEC** — on the 8088/8086 branch only: NEC V20/V30 ignore the
-  operand of `AAD` and always use base 10, so `AAD 16` on `0101h` gives `0Bh`
-  instead of `11h`
+On the NEC branch, CPUID temporarily installs interrupt vector 80h and
+enters 8-bit mode. Incrementing 7Fh to 80h gives odd parity on the 8080
+path and signed overflow on the Z80 path. CPUID restores the vector and
+interrupt flags before printing the result.
 
 A small 8080-model program (CS = DS = ES), built with a plain `GENCMD`.
 

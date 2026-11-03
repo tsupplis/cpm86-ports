@@ -27,10 +27,11 @@
 ;
 CPU_86  equ     0
 CPU_NEC equ     1
-CPU_186 equ     2
-CPU_286 equ     3
-CPU_386 equ     4
-CPU_486 equ     5
+CPU_9002 equ    2
+CPU_186 equ     3
+CPU_286 equ     4
+CPU_386 equ     5
+CPU_486 equ     6
 ;
         cseg                    ;start of code segment
         org     100h            ;leave room for base page
@@ -214,8 +215,10 @@ getcpu:
         mov     ax,0101h        ;NEC runs AAD with base 10 always
         db      0D5h,10h        ;aad 16
         cmp     al,11h          ;Intel gives 11h, NEC gives 0Bh
-        mov     al,CPU_NEC
-        jne     gdone
+        je      intel86
+        call    nec_type
+        jmp     gdone
+intel86:
         mov     al,CPU_86
 gdone:
         add     sp,6
@@ -246,6 +249,35 @@ is386:
         mov     al,CPU_386
 gdone2:
         ret
+;
+; Test the meaning of P/V in the NEC 8-bit mode. Both instruction
+; streams are valid on 8080 and Z80. The guest needs no stack or data.
+nec_type:
+        pushf
+        cli
+        push    es
+        xor     ax,ax
+        mov     es,ax
+        mov     bx,0200h        ; vector 80h, as used by VCPM
+        push    es:word ptr 0[bx]
+        push    es:word ptr 2[bx]
+        mov     es:word ptr 0[bx],offset nec_guest
+        mov     es:2[bx],cs
+        db      0fh,0ffh,080h   ; BRKEM 80h
+        pop     es:word ptr 2[bx]
+        pop     es:word ptr 0[bx]
+        pop     es
+        popf
+        ret
+
+nec_guest:
+        db      03eh,07fh,03ch  ; MVI A,7Fh / INR A gives 80h
+        db      03eh,CPU_NEC    ; MVI preserves P/V
+        db      0e2h            ; JPO: odd parity on 8080, overflow on Z80
+        dw      offset nec_done
+        db      03eh,CPU_9002
+nec_done:
+        db      0edh,0fdh       ; RETEM
 ;
 ; Print ax as 4 hex digits. Preserves all registers.
 ;
@@ -288,10 +320,11 @@ hex3:
 fpustat dw      0
 tcpu    db      'Type: $'
 tcdate  db      13,10,'Date: $'
-ttab    dw      offset t86,offset tnec,offset t186
+ttab    dw      offset t86,offset tnec,offset t9002,offset t186
         dw      offset t286,offset t386,offset t486
 t86     db      '8088/8086$'
 tnec    db      'V20/V30$'
+t9002   db      'uPD9002$'
 t186    db      '188/186$'
 t286    db      '286$'
 t386    db      '386$'
