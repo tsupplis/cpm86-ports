@@ -305,6 +305,10 @@
         A keymap is data structure that  translates  a  sequence  of
         keystrokes into a message.
 
+        Garbage collection releases each discarded keymap vector once,
+        including nested keymaps. The key and process methods reject a
+        missing or wrong-type keymap with "bad keymap object".
+
         In order to create a keymap:
 
                 (setq km (Keymap 'new))

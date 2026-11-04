@@ -119,6 +119,7 @@ squeeze(fname)
 char *fname;
 {
 	register INT i, c;
+	INT status;
 	register char *p;
 	register INT numnodes;			/* size of decoding tree */
 	register UNSIGNED crc;
@@ -181,15 +182,32 @@ char *fname;
 		fclose(in);
 		return ERROR;
 	}
+	status = OK;
 	while ((c = getcr()) != EOF) {
 		crc += (UNSIGNED) c;
 		if ( c == '\r' && Nlmode)
 			continue;
-		putc(c, out);
+		if(putc(c, out) == EOF) {
+			fprintf(stderr, "usq: write error in %s\n", origname);
+			status = ERROR;
+			break;
+		}
+	}
+	if(ferror(in)) {
+		fprintf(stderr, "usq: read error in %s\n", fname);
+		status = ERROR;
 	}
 	fclose(in);
-	fflush(out);
-	fclose(out);
+	if(fflush(out) != 0) {
+		fprintf(stderr, "usq: flush error in %s\n", origname);
+		status = ERROR;
+	}
+	if(fclose(out) != 0) {
+		fprintf(stderr, "usq: close error in %s\n", origname);
+		status = ERROR;
+	}
+	if(status != OK)
+		return ERROR;
 	if(TreeError) {
 		fprintf(stderr, "usq: %s has invalid decode tree\n", fname);
 		return ERROR;

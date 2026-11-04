@@ -42,6 +42,7 @@ e.g. `B3:`.
 
 ```sh
 make          # disk77b.cmd (CP/M-86, 8080 model)
+make test     # allocation bounds and copy regressions under emu2
 make clean
 ```
 
@@ -67,6 +68,17 @@ turns it into CP/M-86 code in four steps:
 
 See https://github.com/tsupplis/cpm86-crossdev for the cross-development
 environment.
+
+The filename ring and copy buffer use the actual CP/M-86 allocation in the
+base page rather than the CP/M-80 BDOS/CCP addresses. Each ring append leaves
+at least one 128-byte copy record available. An oversized directory is
+reported as `Directory too large for memory`, followed by a clean exit
+without file operations or a partial browse list. Single-file directories
+also initialize the CRC table and copy-buffer size.
+
+The tests use disposable CMD copies with smaller base-page allocations,
+check canaries beyond the memory limit, and copy across multiple buffers.
+The shipped CMD is also checked with its normal startup and menu.
 
 ## License
 

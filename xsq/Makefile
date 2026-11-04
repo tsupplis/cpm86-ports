@@ -29,5 +29,6 @@ clean:
 
 test: all
 	python3 test.py
+	python3 test-io.py
 
 .PHONY: all test clean

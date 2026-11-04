@@ -69,7 +69,7 @@ static struct node *key(args)
 
     /* get the keymap */
     kmap = xlivar(self->n_symvalue,KEYMAP)->n_listvalue;
-    if (kmap == 0 && kmap->n_type != KMAP)
+    if (kmap == 0 || kmap->n_type != KMAP)
 	xlfail("bad keymap object");
 
     /* get the key string */
@@ -127,7 +127,7 @@ static struct node *process(args)
 
     /* get the keymap */
     kmap = xlivar(self->n_symvalue,KEYMAP)->n_listvalue;
-    if (kmap == 0 && kmap->n_type != KMAP)
+    if (kmap == 0 || kmap->n_type != KMAP)
 	xlfail("bad keymap object");
 
     /* get the environment */
@@ -237,20 +237,11 @@ xlkmmark(km)
 xlkmfree(km)
   struct node *km;
 {
-    struct node *(*map)[];
-    int i;
-
-    /* check for a null keymap */
-    if ((map = km->n_kmap) == 0)
-	return;
-
-    /* loop through each keymap entry */
-    for (i = 0; i < KMSIZE; i++)
-	if (((*map)[i] != 0) && (*map)[i]->n_type == KMAP)
-	    xlkmfree((*map)[i]);
-
-    /* free this keymap */
-    free(km->n_kmap);
+    /* Sweep visits child nodes separately; each node owns only its vector. */
+    if (km->n_kmap != 0) {
+	free(km->n_kmap);
+	km->n_kmap = 0;
+    }
 }
 
 /* xlkinit - key map function initialization routine */

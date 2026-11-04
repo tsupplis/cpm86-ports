@@ -70,6 +70,10 @@ UC (1)
 
 Malformed archive filenames and decoding trees are rejected with an error.
 Unsqueezing stops cleanly if the destination cannot be created.
+SQ and USQ report output write, flush and close failures and return a failure
+status instead of reporting success. An incomplete output may remain after
+an I/O failure; do not use it as a valid archive or restored file.
 
 Run `make test` to check binary round trips, malformed archives, filename
-boundaries, decoding-tree depth and recovery to the next input file.
+boundaries, decoding-tree depth and recovery to the next input file. Target
+stdio fault-injection tests also cover write, flush and close errors.

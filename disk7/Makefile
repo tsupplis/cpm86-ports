@@ -6,6 +6,11 @@ CMDINFO=cmdinfo
 
 all: disk7.cmd
 
+test: all
+	$(PYTHON) ../tools/test-directory-bounds.py disk7
+
+.PHONY: all clean test
+
 # 8080 model; the copy buffer runs from the end of the program to the top
 # of the segment: at least 16K, up to 64K
 disk7.cmd: disk7.h86

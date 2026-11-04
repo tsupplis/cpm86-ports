@@ -155,6 +155,7 @@ INT argc;
 char *argv[];
 {
 	register INT i,c;
+	INT errorstat;
 
 
 	if (signal(SIGINT, SIG_IGN)==SIG_IGN)
@@ -166,13 +167,14 @@ char *argv[];
 #endif
 
 	/* Process the parameters in order */
+	errorstat = 0;
 	for(i = 1; i < argc; ++i) {
 		if(strcmp(argv[i], "-")==0)
 			Usestd = TRUE;
 	}
 	for(i = 1; i < argc; ++i) {
 		if(strcmp(argv[i], "-")!=0)
-			obey(argv[i]);
+			errorstat |= obey(argv[i]);
 	}
 
 	if(argc < 2) {
@@ -181,7 +183,7 @@ char *argv[];
 		fprintf(stderr, "\t- squeezed output to stdout\n");
 		exit(1);
 	}
-	exit(0);
+	exit(errorstat != 0);
 }
 
 obey(p)
@@ -206,7 +208,7 @@ char *p;
 				case 'q':
 				case 'Q':
 					fprintf(stderr, "sq: %s ignored ( already squeezed?)", p);
-					return;
+					return 0;
 				case '\0':
 					*(q+3) = '\0';
 					/* fall thru */
@@ -219,13 +221,14 @@ char *p;
 named:
 	if(strlen(w)>14)
 		strcpy(outfile, ALTNAME);	/* check for too long name */
-	squeeze(p, outfile);
+	return squeeze(p, outfile);
 }
 
 squeeze(infile, outfile)
 char *infile, *outfile;
 {
 	register INT i, c;
+	INT status;
 	FILE *inbuff, *outbuff;	/* file buffers */
 
 	if (!inbackground)
@@ -233,14 +236,14 @@ char *infile, *outfile;
 
 	if((inbuff=fopen(infile, "r")) == NULL) {
 		fprintf(stderr, "sq: can't open %s\n", infile);
-		return;
+		return ERROR;
 	}
 	if(Usestd)
 		outbuff=stdout;
 	else if((outbuff=fopen(outfile, "w")) == NULL) {
 		fprintf(stderr, "sq: can't create %s\n", outfile);
 		fclose(inbuff);
-		return;
+		return ERROR;
 	}
 
 	/* First pass - get properties of file */
@@ -248,8 +251,16 @@ char *infile, *outfile;
 	if (!inbackground)
 		fprintf(stderr, "analyzing, ");
 	init_ncr();
-	init_huff(inbuff);   
-	fseek(inbuff, 0L, 0);	/* rewind() is not in the Aztec CP/M-86 library */
+	init_huff(inbuff);
+	status = ERROR;
+	if(ferror(inbuff)) {
+		fprintf(stderr, "sq: read error\n");
+		goto closeall;
+	}
+	if(fseek(inbuff, 0L, 0) != 0) {
+		fprintf(stderr, "sq: rewind error\n");
+		goto closeall;
+	}
 
 	/* Write output file header with decoding info */
 	wrt_head(outbuff, infile);
@@ -262,17 +273,28 @@ char *infile, *outfile;
 
 	/* Translate the input file into the output file */
 	while((c = gethuff(inbuff)) != EOF)
-		if(putc(c, outbuff) == ERROR && ferror(outbuff)) {
+		if(putc(c, outbuff) == EOF) {
 			fprintf(stderr, "sq: write error\n");
 			goto closeall;
 		}
-	if (!inbackground)
-		fprintf(stderr, " done.\n");
+	if(ferror(inbuff)) {
+		fprintf(stderr, "sq: read error\n");
+		goto closeall;
+	}
+	status = 0;
 closeall:
 	fclose(inbuff);
-closeout:
-	fflush(outbuff);
-	fclose(outbuff);
+	if(fflush(outbuff) != 0) {
+		fprintf(stderr, "sq: flush error\n");
+		status = ERROR;
+	}
+	if(fclose(outbuff) != 0) {
+		fprintf(stderr, "sq: close error\n");
+		status = ERROR;
+	}
+	if(status == 0 && !inbackground)
+		fprintf(stderr, " done.\n");
+	return status;
 }
 
 
@@ -807,7 +829,7 @@ putce(c, iob)
 INT c;
 FILE *iob;
 {
-	if(putc(c, iob) == ERROR && ferror(iob)) {
+	if(putc(c, iob) == EOF) {
 		fprintf(stderr, "sq: write error\n");
 		exit(1);
 	}
@@ -821,10 +843,6 @@ putwe(w, iob)
 INT w;
 FILE *iob;
 {
-	putc(w, iob);
-	putc(w>>8, iob);
-	if (ferror(iob)) {
-		fprintf(stderr, "sq: write error\n");
-		exit(1);
-	}
+	putce(w, iob);
+	putce(w>>8, iob);
 }

@@ -98,3 +98,128 @@ for length,dot,reject in ((95,False,False),(96,False,True),
         else:
             assert 'for input' in text,(length,dot,text)
 print('XLISP: 5 filename and default-extension boundary checks passed')
+
+# Run the real sweep/free functions with counted vector releases. The parent
+# can occupy either side of its child after free-list reuse.
+memory=(root/'xldmem.c').read_text()
+keymaps=(root/'xlkmap.c').read_text()
+sweep=memory[memory.index('static sweep()'):memory.index('/* addseg -')]
+release=keymaps[keymaps.index('xlkmfree(km)'):keymaps.index('/* xlkinit -')]
+mark=keymaps[keymaps.index('xlkmmark(km)'):keymaps.index('/* xlkmfree -')]
+harness=r'''
+#include <stdio.h>
+#include "xlisp.h"
+#define KMSIZE 256
+struct segment {
+    int sg_size;
+    struct segment *sg_next;
+    struct node sg_nodes[2];
+};
+static struct segment storage,*segs = &storage;
+static struct node *fnodes;
+static int nfree,root_frees,child_frees,bad_frees;
+static struct node *rootmap[256],*childmap[256];
+int counted_free(p)
+  char *p;
+{
+    if (p == (char *)rootmap) ++root_frees;
+    else if (p == (char *)childmap) ++child_frees;
+    else ++bad_frees;
+}
+strfree(p)
+  char *p;
+{
+    ++bad_frees;
+}
+#define free counted_free
+'''+mark+release+sweep+r'''
+main()
+{
+    struct node *parent,*child;
+    int order;
+    storage.sg_size = 2;
+    for (order = 0; order < 2; ++order) {
+        parent = &storage.sg_nodes[order];
+        child = &storage.sg_nodes[1-order];
+        parent->n_type = child->n_type = KMAP;
+        parent->n_flags = child->n_flags = 0;
+        parent->n_kmap = (struct node *(*)[])rootmap;
+        child->n_kmap = (struct node *(*)[])childmap;
+        rootmap[65] = child;
+        root_frees = child_frees = bad_frees = 0;
+        xlkmmark(parent);
+        sweep();
+        if (root_frees || child_frees || bad_frees ||
+            parent->n_type != KMAP || child->n_type != KMAP || nfree != 0) {
+            printf("FAIL: live nested keymap collected\n");
+            exit(1);
+        }
+        sweep();
+        if (root_frees != 1 || child_frees != 1 || bad_frees ||
+            parent->n_type != FREE || child->n_type != FREE || nfree != 2) {
+            printf("FAIL: keymap sweep order %d (%d/%d/%d)\n",
+                   order,root_frees,child_frees,bad_frees);
+            exit(1);
+        }
+    }
+    printf("PASS: keymap vectors freed once in both sweep orders\n");
+    exit(0);
+}
+'''
+with tempfile.TemporaryDirectory() as folder:
+    wd=Path(folder)
+    (wd/'SWEEP.C').write_text(harness)
+    (wd/'xlisp.h').write_bytes((root/'xlisp.h').read_bytes())
+    for command in (
+        ['aztec42_cc','-I.','+F','-B','+0','-DAZTEC','SWEEP.C'],
+        ['aztec42_link','-o','SWEEP.CMD','SWEEP.o','-lc86'],
+    ):
+        p=subprocess.run(command,cwd=wd,capture_output=True,timeout=30)
+        assert p.returncode==0,(command,p.stdout,p.stderr)
+    p=subprocess.run(['emu2',str(wd/'SWEEP.CMD')],cwd=wd,
+                     stdin=subprocess.DEVNULL,capture_output=True,timeout=5)
+    text=(p.stdout+p.stderr).decode('latin1')
+    assert 'PASS: keymap vectors' in text,text
+    print(text.strip())
+
+for value in ('nil','17'):
+    for method in ('key "a" \'go','process nil'):
+        with tempfile.TemporaryDirectory() as folder:
+            wd=Path(folder)
+            script=(
+                "(Keymap 'answer 'invalidate '(value) '((setq keymap value)))\n"
+                "(setq km (Keymap 'new))\n"
+                "(km 'invalidate %s)\n(km '%s)\n"%(value,method))
+            (wd/'CHECK.LSP').write_text(script)
+            p=subprocess.run(['emu2',str(root/'xlisp.cmd'),'CHECK.LSP'],cwd=wd,
+                             input=b'(princ "GUARD-RECOVERED\\n")\n(exit 0)\n',
+                             capture_output=True,timeout=5)
+            text=(p.stdout+p.stderr).decode('latin1')
+            assert 'error: bad keymap object' in text,(value,method,text)
+            assert 'GUARD-RECOVERED' in text,(value,method,text)
+print('XLISP: NULL/wrong-type keymaps rejected by key and process')
+
+with tempfile.TemporaryDirectory() as folder:
+    wd=Path(folder)
+    script=r'''
+(setq live (Keymap 'new))
+(live 'key "ab" 'go)
+(repeat 100
+    (setq garbage (Keymap 'new))
+    (garbage 'key "xyz" 'go)
+    (gc)
+    (setq garbage nil)
+    (gc))
+(live 'key "ab" 'go)
+(live 'key "ac" 'go)
+(gc)
+(princ "KEYMAP-GC-OK\n")
+(exit 0)
+'''
+    (wd/'CHECK.LSP').write_text(script)
+    p=subprocess.run(['emu2',str(root/'xlisp.cmd'),'CHECK.LSP'],cwd=wd,
+                     stdin=subprocess.DEVNULL,capture_output=True,timeout=10)
+    text=(p.stdout+p.stderr).decode('latin1')
+    assert 'error:' not in text.lower(),text
+    assert 'KEYMAP-GC-OK' in text,text
+    print('XLISP: keymap GC stress and live nested-key updates passed')

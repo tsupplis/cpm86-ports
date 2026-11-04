@@ -184,6 +184,13 @@ DISK7:
 	MOV	SS,AX
 	MOV	SP,(Offset STACK)	;start local stack
 	STI
+; CP/M-86 base-page 00h-02h holds the allocated group byte count.
+	MOV	AX,0FFFFH
+	CMP	Byte Ptr .2,0
+	JNE	HB_MEMORY_READY
+	MOV	AX,Word Ptr .0
+HB_MEMORY_READY:
+	MOV	Word Ptr MEMTOP,AX
 	CALL	HELP			;show 'menu'
 	MOV	DL,GET			;determine..
 	CALL	GET@USR			;..user area then..
@@ -379,6 +386,16 @@ TO@RING:DEC	AL			;un-do 'inr' from above and below
 	JNC HB_KEEP
 	JMP HB_SEARCH_NEXT
 HB_KEEP:
+	MOV	DX,Word Ptr RINGPOS
+	ADD	DX,HB_STRIDE+128		;leave one record for copying
+	JC	HB_LIST_FULL
+	CMP	DX,Word Ptr MEMTOP
+	JBE	HB_LIST_FITS
+HB_LIST_FULL:
+	CALL	ILPRT
+	DB	CR,LF,' ++ Directory too large for memory ++',CR,LF,0
+	JMP	CPM@CCP
+HB_LIST_FITS:
 	MOV	AL,Byte Ptr .FCB	;get drive/user designator and..
 	MOV	M,AL			;..put into 'fcb' buffer.
 	XCHG	BX,DX
@@ -398,7 +415,9 @@ HB_SEARCH_NEXT:
 	MOV	DX,FCB			;filename address field
 	INT	224
 	INC	AL			;if all done, 0ffh --> 00h.
-	JNZ	TO@RING			;if not, put next name into ring.
+	JZ	HB_LIST_DONE
+	JMP	TO@RING			;if not, put next name into ring.
+HB_LIST_DONE:
 ; all filenames in ring -- setup ring size and copy-buffer start point
 	MOV	BX,Word Ptr RINGPOS	;next load point of ring is start of buffer
 	MOV	Word Ptr RINGEND,BX	;set ring end..
@@ -410,7 +429,7 @@ HB_HAVE_FILES:
 	MOV	DX,(Offset RING)+HB_STRIDE	;compare 'ringend' (tab base+13)
 	CALL	CMPDEHL
 	JNZ	L_7	
-	JMP	CMDLOOP			;go to command loop, if no sort req'd.
+	JMP	L_8			;one file still needs CRC and buffer setup
 L_7:
 ; sort ring of filenames
 SORT@LP:MOV	BX,Word Ptr RINGJ	;compare names 'i & j'
@@ -474,22 +493,14 @@ L_8:
 ; sort done -- initialize tables for fast crc calculations
 	CALL	INITCRC
 ; calculate copy-buffer maximum available record capacity
-B@SIZE:	MOV	CX,0			;count records
-	MOV	BX,Word Ptr .BDOS+1	;get 'bdos' entry (fbase)
-	MOV	DX,-(CCP)
-	ADD	BX,DX
-;not warmboot
-	DEC	BX
-	XCHG	BX,DX			;de-pair --> highest address of buffer
-	MOV	BX,Word Ptr BUFSTART	;start address of buffer (end of ring list)
-B@SIZE2:INC	CX			;increase record count by one
-	PUSH	DX
-	MOV	DX,128			; 128-byte record
-	ADD	BX,DX			;buffer address + record size
-	POP	DX
-	CALL	CMPDEHL			;compare for all done
-	JNB	B@SIZE2			;more will fit?
-	DEC	CX			;set maximum record count less one
+B@SIZE:	MOV	AX,Word Ptr MEMTOP
+	SUB	AX,Word Ptr BUFSTART
+	JNC	B@SIZE2
+	XOR	AX,AX
+B@SIZE2:
+	MOV	CL,7
+	SHR	AX,CL			;whole 128-byte records within allocation
+	MOV	CX,AX
 	MOV	AL,CH			;memory available for copy?
 	OR	AL,CL
 	JNZ	B@SIZE3			;yes, buffer memory space available.
@@ -2111,6 +2122,7 @@ HB_LAST DB 0
 HB_DRIVE DB 0
 HB_RAW DB '????????????'
        DB 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+MEMTOP	DW	0			;exclusive memory limit, capped at FFFFh
 CMD@TBL DB 'O'
 	DW Offset HB_TOGGLE
 	DB ' '			;if 'space' or..

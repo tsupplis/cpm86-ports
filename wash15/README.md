@@ -39,6 +39,7 @@ round at both ends.
 
 ```sh
 make          # wash15.cmd (CP/M-86, 8080 model) from wash15.a86
+make test     # allocation bounds and copy regressions under emu2
 make clean
 ```
 
@@ -61,6 +62,21 @@ built from the original 8080 source, kept unchanged in `orig.src`, with
 
 `wash15.cmd` is built with 16K to 64K of memory for the file list and the
 copy buffer. `wash15.com` is the original CP/M-80 program.
+
+The file list and copy buffer use the actual CP/M-86 allocation recorded in
+the base page, not the CP/M-80 BDOS entry address. Each list append leaves
+room for at least one 128-byte copy record. A directory that cannot fit is
+reported as `Directory too large for memory`, and the program exits without
+performing file operations or presenting a partial list.
+
+The tests use disposable CMD copies with smaller base-page allocations,
+check canaries beyond the memory limit, and copy across multiple buffers.
+The shipped CMD is also checked with its normal startup and menu.
+
+When copying, only BDOS read status 1 is treated as EOF. Other read errors
+abort the copy, close the files, and delete the incomplete destination.
+Cleanup failures are reported explicitly. Tests inject read errors before
+the first record and after records have already been written.
 
 See https://github.com/tsupplis/cpm86-crossdev for the cross-development
 environment.

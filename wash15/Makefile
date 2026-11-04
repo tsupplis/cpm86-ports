@@ -5,6 +5,11 @@ CMDINFO=cmdinfo
 
 all: wash15.cmd
 
+test: all
+	python3 ../tools/test-directory-bounds.py wash15
+
+.PHONY: all clean test
+
 # 8080 model; the copy buffer runs from the end of the file list to the top
 # of the segment: at least 16K, up to 64K
 wash15.cmd: wash15.h86
