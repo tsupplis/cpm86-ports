@@ -1,12 +1,16 @@
 ASM86=cpm86_asm86
 GENCMD=cpm86_gencmd
 CMDINFO=cmdinfo
+MODULES=fstart.inc fexec.inc fnav.inc ffile.inc fcopy.inc fio.inc \
+	fscreen.inc fdata.inc
 
 all: filer.cmd
 
 filer.cmd: filer.h86
 	$(GENCMD) $< 8080 'CODE[M3FF,XF00]'
 	$(CMDINFO) $@
+
+filer.h86: filer.a86 $(MODULES)
 
 %.h86: %.a86
 	unix2dos $<
@@ -17,7 +21,9 @@ clean:
 	rm -rf *.xxd *.map
 
 
-.PHONY: test-keys
+.PHONY: all clean test test-keys test-exec test-attrs
+test: filer.cmd test-keys test-exec test-attrs
+
 test-keys:
 	python3 testkeys.py
 

@@ -3,7 +3,7 @@
 from pathlib import Path
 import re,subprocess,tempfile
 root=Path(__file__).resolve().parent
-text=(root/'filer.a86').read_text()
+text=(root/'fcopy.inc').read_text()
 routine=text[text.index('ATTRIB:'):text.index('; crc subroutines')]
 routine=re.sub(r'INT +224','CALL mockbdos',routine)
 source=""" cseg

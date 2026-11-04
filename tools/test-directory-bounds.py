@@ -12,7 +12,8 @@ program=sys.argv[1]
 assert program in ('wash15','disk7'),program
 folder=root/program
 image=(folder/(program+'.cmd')).read_bytes()
-listing=(folder/(program+'.lst')).read_text()
+# ASM86 prefixes included source lines with '='.
+listing=re.sub(r'(?m)^=', ' ', (folder/(program+'.lst')).read_text())
 
 
 def address(text,label):

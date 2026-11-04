@@ -2,6 +2,7 @@ XLT86=cpm_xlt86
 ASM86=cpm86_asm86
 GENCMD=cpm86_gencmd
 CMDINFO=cmdinfo
+MODULES=w15start.inc w15file.inc w15copy.inc w15util.inc
 
 all: wash15.cmd
 
@@ -16,7 +17,7 @@ wash15.cmd: wash15.h86
 	$(GENCMD) $< 8080 'CODE[M400,XFFF]'
 	$(CMDINFO) $@
 
-wash15.h86: wash15.a86
+wash15.h86: wash15.a86 $(MODULES)
 	$(ASM86) $(basename $<)
 
 # 8080 model; the copy buffer runs from the end of the program to the top
@@ -28,8 +29,8 @@ orig.cmd: orig.h86
 orig.h86: orig.a86
 	$(ASM86) $(basename $<)
 
-# wash15.a86 is orig.a86, regenerated from the original 8080 source with:
-#	make orig.a86 && cp orig.a86 wash15.a86
+# orig.a86 is the monolithic translation reference, not the modular source.
+# Do not copy it over wash15.a86; maintain the entry and include files.
 
 # XLT86 stops with "Fatal Error: Not BDOS" on any CALL to a routine named
 # CDEHL (or CDE): the name, not the code, trips it. LIST, LOOP and ESC are

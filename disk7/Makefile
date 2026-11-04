@@ -3,6 +3,7 @@ XLT86=cpm_xlt86
 ASM86=cpm86_asm86
 GENCMD=cpm86_gencmd
 CMDINFO=cmdinfo
+MODULES=d7dir.inc d7browse.inc d7file.inc d7copy.inc d7util.inc
 
 all: disk7.cmd
 
@@ -17,7 +18,7 @@ disk7.cmd: disk7.h86
 	$(GENCMD) $< 8080 'CODE[M400,XFFF]'
 	$(CMDINFO) $@
 
-disk7.h86: disk7.a86
+disk7.h86: disk7.a86 $(MODULES)
 	$(ASM86) $(basename $<)
 
 # 8080 model; the copy buffer runs from the end of the program to the top

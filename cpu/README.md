@@ -75,6 +75,19 @@ Makefile does this. Without it the system will crash on the first 8080 program.
 Disk BIOS calls need CP/M-86 BDOS 2.x. Under MP/M-86 or Concurrent CP/M-86 it
 detects the version and terminates 8080 mode cleanly instead of guessing.
 
+The assembly is split into textual INCLUDE modules:
+
+- `vcpm.a86`: history, memory map, constants, instruction macros and include order.
+- `vcpinit.inc`: processor checks, program loading and emulation setup.
+- `vcptrap.inc`: native BDOS/BIOS traps and OS/leading-blank helpers.
+- `vcpname.inc`: command-line filename parsing and validation.
+- `vcpdata.inc`: native data and the embedded 8080 BDOS/BIOS image.
+
+Keep their order, segment directives and trailing CP/M EOF (`^Z`). This
+preserves the CMD byte for byte, including the embedded 8080 image. Every
+include is a build dependency. Binary parity and assembly can be checked
+without a V20; executing `BRKEM` still requires V20/V30 hardware.
+
 ## Z80 — software emulator
 
 Pat Hester, 1983; adapted for CP/M-86 by Bill Earnest, 1984. Version 1.2. See

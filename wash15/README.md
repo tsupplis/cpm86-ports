@@ -43,9 +43,20 @@ make test     # allocation bounds and copy regressions under emu2
 make clean
 ```
 
-`wash15.a86` is the translated, fixed source and the one to edit. It is
-built from the original 8080 source, kept unchanged in `orig.src`, with
-`make orig.a86 && cp orig.a86 wash15.a86`:
+The maintained, fixed source is split into assembly INCLUDE modules:
+
+- `wash15.a86`: definitions and include order.
+- `w15start.inc`: entry/stack setup, directory loading and sorting.
+- `w15file.inc`: browsing, commands, deletion, renaming and text output.
+- `w15copy.inc`: copying, error cleanup and drive selection.
+- `w15util.inc`: string/console helpers, attribute filtering and storage.
+
+Keep the include order, segment directives and trailing CP/M EOF (`^Z`).
+The split preserves the CMD byte for byte; editing any include rebuilds it.
+
+`make orig.a86` produces a monolithic translation reference from the original
+8080 source, kept unchanged in `orig.src`. Do not copy that reference over the
+modular entry file. The reference translation:
 
 1. Renames a few symbols into `orig.asm`. XLT86 stops with
    `Fatal Error: Not BDOS` on calls to a routine named `CDEHL`: the name,

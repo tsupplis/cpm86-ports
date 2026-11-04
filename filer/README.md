@@ -13,6 +13,29 @@ To move the on-screen pointer (--): use the ARROW keys (up, down, left, right)
 
 To move the screen up or down a page:  use the PGUP and PGDN keys.
 
+Source layout and building
+--------------------------
+
+`make` builds FILER; `make test` also runs the keyboard, command-execution
+and attribute regression harnesses.
+
+The assembly is split into textual INCLUDE modules:
+
+- `filer.a86`: definitions, terminal routines and include order.
+- `fstart.inc`: startup, directory loading/sorting and command dispatch.
+- `fexec.inc`: help and resident/legacy command execution.
+- `fnav.inc`: tagging, size accounting and navigation.
+- `ffile.inc`: deletion, renaming, filename parsing, viewing and printing.
+- `fcopy.inc`: single/mass copying, attribute override and CRC verification.
+- `fio.inc`: console/keyboard, BDOS, numeric and free-space helpers.
+- `fscreen.inc`: path lookup, file reads, screen refresh and attribute filtering.
+- `fdata.inc`: initialized data, buffers, stack and dynamic-list base.
+
+Keep the include order, segment directives and trailing CP/M EOF (`^Z`).
+These are not separately linked objects: the split preserves the CMD byte
+for byte. Every include is a build dependency. The harnesses extract the
+actual routines from their respective modules.
+
 
 -- Tagging Commands --                  -- File Operations --
     T - Tag File                            C - Copy File

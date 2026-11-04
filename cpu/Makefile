@@ -6,6 +6,7 @@ BIN2CMD=bin2cmd
 CMDINFO=cmdinfo
 
 BINARIES=vcpm.cmd 80x86.cmd z80.cmd cpuid.cmd
+VCPM_MODULES=vcpinit.inc vcptrap.inc vcpname.inc vcpdata.inc
 
 all: $(BINARIES)
 
@@ -24,6 +25,8 @@ vcpm.cmd: vcpm.h86
 z80.cmd: z80.h86
 	$(GENCMD) $< 'extra[MC00]'
 	$(CMDINFO) $@ 
+
+vcpm.h86: vcpm.a86 $(VCPM_MODULES)
 
 z80.h86: z80.a86 jumpaddr.z80 edaddr.z80 cbaddr.z80 code8086.z80 codecb.z80 codeed.z80 codexy.z80
 

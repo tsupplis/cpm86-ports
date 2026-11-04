@@ -5,7 +5,7 @@ import re
 import subprocess
 import tempfile
 root=Path(__file__).resolve().parent
-text=(root/'filer.a86').read_text()
+text=(root/'fexec.inc').read_text()
 routine=text[text.index('\nCHAIN:\n')+1:text.index('\nUC_CMD:')]
 routine=routine.replace('INT    224','CALL   mockbdos')
 source='''        cseg

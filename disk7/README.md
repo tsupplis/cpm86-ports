@@ -46,6 +46,19 @@ make test     # allocation bounds and copy regressions under emu2
 make clean
 ```
 
+The maintained source is split into assembly INCLUDE modules:
+
+- `disk7.a86`: definitions, entry/stack setup and include order.
+- `d7dir.inc`: drive selection, directory loading, sorting and buffer sizing.
+- `d7browse.inc`: command dispatch, tagging and navigation.
+- `d7file.inc`: deletion, renaming, filename parsing, viewing and printing.
+- `d7copy.inc`: single/mass copying and CRC verification.
+- `d7util.inc`: console/BDOS helpers, attribute filtering and storage.
+
+These are textual includes, not separately linked objects. Keep their order,
+segment directives and trailing CP/M EOF (`^Z`); the split preserves the CMD
+byte for byte. Editing any include rebuilds `disk7.cmd`.
+
 The original DR MAC source is kept unchanged in `disk77b.mac`. The build
 turns it into CP/M-86 code in four steps:
 
