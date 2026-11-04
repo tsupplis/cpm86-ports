@@ -6,24 +6,25 @@ HELPMSG:
         CALL   CLS
         CALL   ILPRT
         DB     27,'b',14
-        DB     ' FILER CP/M-86 (IBM-PC)           COMMAND HELP                 Version '
-        DB     VERS/10+'0','.',(VERS MOD 10)+'0',27,'b',15,cr,lf
         DB     cr,lf
-        DB     27,'b',10,cr,lf
+        DB     ' FILER CP/M-86 (IBM-PC)           COMMAND HELP                      Version '
+        DB     VERS/10+'0','.',(VERS MOD 10)+'0',27,'b',15,cr,lf,cr,lf
+        DB     27,'b',10
         DB     ' [ Tagging Commands ]         [ File Operations ]         [ File Print & View ]',cr,lf
-        DB     27,'b',15,'   T - Tag File                 C - Copy File               ^P - Print',cr,lf
+        DB     27,'b',15
+        DB     '   T - Tag File                 C - Copy File               ^P - Print',cr,lf
         DB     '   U - Untag File               D - Delete File              V - View',cr,lf
-        DB     '   W - Mass Tag/Untag           F - File Size                   <SP> Scroll one',cr,lf
-        DB     '   M - Mass Copy                R - Rename File                 line forward',cr,lf
-        DB     '   Y - Mass Delete',cr,lf
-        DB     '   I - Tag Info                O - Toggle normal/all (SYSTEM/HIDDEN)',cr,lf
-        DB '   Selected-file status: S=SYSTEM, H=FAT HIDDEN',cr,lf
+        DB     '   W - Mass Tag/Untag           F - File Size             <SP> - Scroll one',cr,lf
+        DB     '   M - Mass Copy                R - Rename File                  line forward',cr,lf
+        DB     '   Y - Mass Delete              O - Toggle Visibility                  ',cr,lf
+        DB     '   I - Tag Info                     All vs Sys/Hidden               ',cr,lf
         DB     27,'b',10,cr,lf
         DB     ' [ Directory Movement ]       [ CP/M-86 System Related ]',cr,lf
+        DB     27,'b',15
  IF     HLP@FIL
-        DB     ' <SP> Scroll Line Forward       H - Detailed HELP',CR,LF
+        DB     '  <SP> - Scroll Line Forward    H - Detailed HELP',CR,LF
  ENDIF
-        DB     27,'b',15,'  < > - Entry Back,Forth      ?,/ - This Help Screen',cr,lf
+        DB     ' <,> - Entry Back,Forth       ?,/ - This Help Screen',cr,lf
         DB     0
         CMP    Byte Ptr CCKEYS,0
         JE     HELPECHAIN
@@ -39,14 +40,14 @@ HELPEDONE:
         DB 27,'b',15,'   ',17,'  - Entry Left              L - Login DIR[USR#]   c0 = drv[c][usr0]',cr,lf
         DB '   ',30,'  - Entry Up                N - reNew current Screen',cr,lf
         DB '   ',31,'  - Entry Dn                S - Status of disk [drv]',cr,lf
-        DB      ' PgUp - Next Page         [Esc],Q - Quit FILER',cr,lf
+        DB      ' PgDn - Next Page         [Esc],Q - Quit FILER',cr,lf
         DB      0
         CMP    Byte Ptr CCKEYS,0
         JNE    HELPCLI
         JMP    HELPCHAIN
 HELPCLI:
         CALL   ILPRT
-        DB     27,'b',15,' PgUp - Prev Page               X - eXecute CMD file',cr,lf
+        DB     27,'b',15,' PgUp  - Prev Page               X - eXecute CMD file',cr,lf
         DB     27,'b',10,cr,lf
         DB     '                               E/X return to FILER after the command ends.',cr,lf
         DB     0
@@ -285,4 +286,3 @@ UC_RET:
         RET
 
 ; mass tag or untag
-

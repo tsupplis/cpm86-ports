@@ -117,7 +117,7 @@ BOTADR      EQU     23*256+1            ;bottom of screen
 BOTADR1     EQU     22*256+1            ;bottom of screen -1
 CPMADR      EQU     EPSLINE*256+1       ;command prompt message
 CPADR       EQU     EPSLINE*256+30      ;command prompt
-ERADR       EQU     (EPSLINE+1)*256+30  ;error message
+ERADR       EQU     (EPSLINE+1)*256+33  ;error message after filename/status
 FSADR       EQU     ERADR               ;file size message
 FNADR       EQU     (EPSLINE+1)*256+16  ;address of file name
 
