@@ -77,6 +77,10 @@
 #include <string.h>
 #endif
 #include <ctype.h>
+#ifndef __CPM86__
+#include <sys/stat.h>
+#include <errno.h>
+#endif
 
 #ifdef MSXC
 #define OS "MSX-DOS2"
@@ -109,6 +113,40 @@ int Outf;
 
 */
 void setumei();
+
+static int samefile(infile,outfile)char *infile;char *outfile;
+{
+#ifdef __CPM86__
+  int indrive,outdrive;
+
+  indrive = outdrive = 'A' + bdos(25,0);
+  if(infile[0] && infile[1] == ':'){
+    indrive = toupper(infile[0]);
+    infile += 2;
+  }
+  if(outfile[0] && outfile[1] == ':'){
+    outdrive = toupper(outfile[0]);
+    outfile += 2;
+  }
+  if(indrive != outdrive) return 0;
+  while(*infile && *outfile &&
+        toupper(*infile) == toupper(*outfile)){
+    ++infile;
+    ++outfile;
+  }
+  return (!*infile || (*infile == '.' && !infile[1])) &&
+         (!*outfile || (*outfile == '.' && !outfile[1]));
+#else
+  struct stat instat,outstat;
+
+  if(stat(infile,&instat) != 0) return -1;
+  if(stat(outfile,&outstat) != 0){
+    if(errno == ENOENT) return 0;
+    return -1;
+  }
+  return instat.st_dev == outstat.st_dev && instat.st_ino == outstat.st_ino;
+#endif
+}
 
 /* BDS C does'n t have strncmp */
 /* strncmp compatible? function */
@@ -1206,8 +1244,20 @@ int main(argc,argv)int argc;char **argv;
     return -1;
   }
   if(Outf){
+    i = samefile(infile,outfile);
+    if(i != 0){
+      if(i > 0){
+        fprintf(stderr,"Error: input and output are the same file[%s]\n",outfile);
+      }
+      else{
+        fprintf(stderr,"Error: can't compare input and output files[%s]\n",outfile);
+      }
+      fclose(fp);
+      return -1;
+    }
     if(0 == (Outp = fopen(outfile,"w"))){
       fprintf(stderr,"Error: output file can't open[%s]%c\n",outfile,7);
+      fclose(fp);
       return -1;
     }
   }

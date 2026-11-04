@@ -104,6 +104,10 @@ undocumented flag bits 3 and 5 are not emulated.
 Programs must go through addresses 0 and 5 only; the BIOS jump table is off
 limits except for CONIN, CONOUT, CONST and LIST.
 
+The loader accepts up to 48,640 bytes (0100h through BEFFh), stopping before
+the emulated BIOS at BF00h. Oversized files and read errors are reported
+without running the partially loaded program.
+
 The opcode handlers and dispatch tables live in seven include files:
 `jumpaddr.z80`, `edaddr.z80`, `cbaddr.z80`, `code8086.z80`, `codecb.z80`,
 `codeed.z80` and `codexy.z80`. Each must end with a `^Z`, or ASM86 reads the padding of the last
@@ -143,7 +147,10 @@ on real V20/V30 hardware.
 
     make            # 80x86.cmd, vcpm.cmd, z80.cmd, cpuid.cmd
 
-There is no test target here: `make test` in the repository root puts every
+`make test` here runs Z80 loader boundary tests under `emu2`, including normal,
+exact-limit and oversized programs.
+
+`make test` in the repository root puts every
 port's `.cmd` files, plus `samples/ver.cpm`, on a disk image and boots it under
 PCE (see the root `cpm86.cfg`). It needs `cpmtools` and `pce-ibmpc`. PCE
 emulates Intel CPUs only, so **VCPM cannot be tested there** — it needs real

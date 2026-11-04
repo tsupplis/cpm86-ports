@@ -377,6 +377,8 @@
         (load <fname>)  LOAD AN XLISP SOURCE FILE
             <fname>     the filename string
             returns     the filename
+            CP/M-86: names must fit in 99 bytes including any added
+            '.lsp' extension. Longer names are reported and not opened.
 
         (mem)   SHOW MEMORY ALLOCATION STATISTICS
             returns     nil
@@ -505,6 +507,9 @@
         (fgets [<fp>])  GET A STRING FROM A FILE
             <fp>        the file pointer (default is stdin)
             returns     the input string
+            Lines longer than the input buffer are joined into one
+            string; the newline is retained. Returns nil at EOF.
+            CP/M-86 strings are limited to 32766 bytes by this reader.
 
         (fputs <str> [<fp>]) PUT A STRING TO A FILE
             <str>       the string to output

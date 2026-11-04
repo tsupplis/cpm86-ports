@@ -55,6 +55,7 @@ INT Bpos;		/* last bit position read */
 INT Curin;		/* last byte value read */
 INT Repct;		/* Number of times to retirn value */
 INT Value;		/* current byte value or EOF */
+INT TreeError;
 
 INT getcr(), getuhuff();
 
@@ -165,16 +166,22 @@ char *fname;
 	}
 	portgetw(infile);			/* discard checksum */
 	p = origname;				/* Get original file name */
-	do {					/* send it to array */
-		*p = getc(infile);
-	} while(*p++ != '\0');
+	for (;;) {
+		c = getc(infile);
+		if(c == EOF ||
+		   (c != '\0' && p >= origname + sizeof(origname) - 1)) {
+			fprintf(stderr, "type: %s has invalid original filename\n", fname);
+			fclose(infile);
+			return ERROR;
+		}
+		*p++ = c;
+		if(c == '\0')
+			break;
+	}
 
 	numnodes = portgetw(infile);
-	if(numnodes < 0 || numnodes >= NUMVALS) {
-		fprintf(stderr, "%s has invalid decode tree size\n", fname);
-		fclose(infile);
-		return ERROR;
-	}
+	if(numnodes < 0 || numnodes >= NUMVALS || feof(infile) || ferror(infile))
+		goto badtree;
 	/* Initialize for possible empty tree (SPEOF only) */
 	Dnode[0]._children[0] = -(SPEOF + 1);
 	Dnode[0]._children[1] = -(SPEOF + 1);
@@ -182,15 +189,30 @@ char *fname;
 	for(i = 0; i < numnodes; ++i) {	/* Get decoding tree from file */
 		Dnode[i]._children[0] = portgetw(infile);
 		Dnode[i]._children[1] = portgetw(infile);
+		if(feof(infile) || ferror(infile) ||
+		   Dnode[i]._children[0] < -(SPEOF + 1) ||
+		   Dnode[i]._children[0] >= numnodes ||
+		   Dnode[i]._children[1] < -(SPEOF + 1) ||
+		   Dnode[i]._children[1] >= numnodes)
+			goto badtree;
 	}
 	/* Get translated output bytes and write file */
 	printf("\n%s -> %s\n\n",fname,origname);
+	lc = lastchar;
 	while( ((c = getcr(infile)) != EOF) && c != CPMEOF && (!early_exit) )
 		putchar(lc=c);
 	lastchar=lc;
 	fclose(infile);
 	fflush(stdout);
+	if(TreeError) {
+		fprintf(stderr, "type: %s has invalid decode tree\n", fname);
+		return ERROR;
+	}
 	return OK;
+badtree:
+	fprintf(stderr, "%s has invalid decode tree\n", fname);
+	fclose(infile);
+	return ERROR;
 }
 /*** from utr.c - */
 /* initialize decoding functions */
@@ -203,6 +225,7 @@ init_cr()
 init_huff()
 {
 	Bpos = 99;	/* force initial read */
+	TreeError = 0;
 }
 
 /* Get bytes with decoding - this decodes repetition,
@@ -251,12 +274,17 @@ getcr()
 INT
 getuhuff()
 {
-	register INT i;
+	register INT i, depth;
 	register INT bitval;
 
 	/* Follow bit stream in tree to a leaf*/
 	i = 0;	/* Start at root of tree */
+	depth = 0;
 	do {
+		if(++depth > NUMVALS - 1) {
+			TreeError = 1;
+			return EOF;
+		}
 		if(++Bpos > 7) {
 			if((Curin = getc(infile)) == ERROR)
 				return ERROR;

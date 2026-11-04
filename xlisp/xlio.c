@@ -80,6 +80,12 @@ xlfin(str)
 #ifdef DEFEXT
     char fname[100];
 
+    if (strlen(str) >= sizeof(fname) ||
+	(strchr(str,'.') == 0 && strlen(str) > sizeof(fname)-5)) {
+	printf("can't open input: file name too long\n");
+	return;
+    }
+
     /* create the file name */
     strcpy(fname,str);
 

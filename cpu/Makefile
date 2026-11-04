@@ -33,5 +33,10 @@ z80.h86: z80.a86 jumpaddr.z80 edaddr.z80 cbaddr.z80 code8086.z80 codecb.z80 code
 %.h86: %.a86
 	$(ASM86) $<
 
+test: z80.cmd
+	python3 test.py
+
+.PHONY: all clean test
+
 clean:
 	rm -rf *.h86 *.lst *.sys *.cmd *.hex *.sym *.log

@@ -49,6 +49,7 @@ INT Value;		/* current byte value or EOF */
 INT MakeLCPathname=TRUE;	/* translate pathname to lc if all caps */
 INT Nlmode=FALSE;		/* zap cr's if true */
 INT Inbackground = FALSE;
+INT TreeError;
 
 INT getcr(), getuhuff(), portgetw();
 
@@ -132,20 +133,27 @@ char *fname;
 	}
 	if(portgetw(in) != (INT) RECOGNIZE) {/* Process header */
 		fprintf(stderr, "usq: %s is not a SQueezed file\n", fname);
+		fclose(in);
 		return(ERROR);
 	}
 	filecrc = (UNSIGNED) portgetw(in);	/* checksum */
 	p = origname;				/* Get original file name */
-	do {					/* send it to array */
-		*p = getc(in);
-	} while(*p++ != '\0');
+	for (;;) {
+		c = getc(in);
+		if(c == EOF ||
+		   (c != '\0' && p >= origname + sizeof(origname) - 1)) {
+			fprintf(stderr, "usq: %s has invalid original filename\n", fname);
+			fclose(in);
+			return ERROR;
+		}
+		*p++ = c;
+		if(c == '\0')
+			break;
+	}
 
 	numnodes = portgetw(in);
-	if(numnodes < 0 || numnodes >= NUMVALS) {
-		fprintf(stderr, "usq: %s has invalid decode tree\n", fname);
-		fclose(in);
-		return(ERROR);
-	}
+	if(numnodes < 0 || numnodes >= NUMVALS || feof(in) || ferror(in))
+		goto badtree;
 	/* Initialize for possible empty tree (SPEOF only) */
 	Dnode[0]._children[0] = -(SPEOF + 1);
 	Dnode[0]._children[1] = -(SPEOF + 1);
@@ -153,6 +161,12 @@ char *fname;
 	for(i = 0; i < numnodes; ++i) {	/* Get decoding tree from file */
 		Dnode[i]._children[0] = portgetw(in);
 		Dnode[i]._children[1] = portgetw(in);
+		if(feof(in) || ferror(in) ||
+		   Dnode[i]._children[0] < -(SPEOF + 1) ||
+		   Dnode[i]._children[0] >= numnodes ||
+		   Dnode[i]._children[1] < -(SPEOF + 1) ||
+		   Dnode[i]._children[1] >= numnodes)
+			goto badtree;
 	}
 	/* Get translated output bytes and write file */
 	if(MakeLCPathname && !IsAnyLower(origname))
@@ -164,6 +178,8 @@ char *fname;
 		fprintf(stderr, "usq: %s -> %s\n",fname,origname);
 	if((out=fopen(origname, "w"))==NULL) {
 		fprintf(stderr, "usq: can't create %s\n", origname);
+		fclose(in);
+		return ERROR;
 	}
 	while ((c = getcr()) != EOF) {
 		crc += (UNSIGNED) c;
@@ -174,12 +190,20 @@ char *fname;
 	fclose(in);
 	fflush(out);
 	fclose(out);
+	if(TreeError) {
+		fprintf(stderr, "usq: %s has invalid decode tree\n", fname);
+		return ERROR;
+	}
 	if( crc != filecrc ) {
 		fprintf(stderr, "usq: bad checksum in %s\n", fname);
 		fflush(stdout);
 		return(ERROR);
 	}
 	return(OK);
+badtree:
+	fprintf(stderr, "usq: %s has invalid decode tree\n", fname);
+	fclose(in);
+	return ERROR;
 }
 /*** from utr.c - */
 /* initialize decoding functions */
@@ -192,6 +216,7 @@ init_cr()
 init_huff()
 {
 	Bpos = 99;	/* force initial read */
+	TreeError = FALSE;
 }
 
 /* Get bytes with decoding - this decodes repetition,
@@ -240,11 +265,16 @@ getcr()
 INT
 getuhuff()
 {
-	register INT i;
+	register INT i, depth;
 
 	/* Follow bit stream in tree to a leaf*/
 	i = 0;	/* Start at root of tree */
+	depth = 0;
 	do {
+		if(++depth > NUMVALS - 1) {
+			TreeError = TRUE;
+			return EOF;
+		}
 		if(++Bpos > 7) {
 			if((Curin = getc(in)) == ERROR)
 				return(ERROR);

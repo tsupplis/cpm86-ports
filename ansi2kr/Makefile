@@ -42,4 +42,7 @@ cpmtest.img: binaries Makefile orig.c
 final-test: cpmtest.img
 	@./cpm86
 
-.PHONY: all binaries clean final-test
+test: all
+	python3 test.py
+
+.PHONY: all binaries clean final-test test

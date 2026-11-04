@@ -150,9 +150,12 @@ static struct node *xlputc(args)
 static struct node *xlfgets(args)
   struct node *args;
 {
-    struct node *str;
+    struct node *oldstk,str,*val;
     char *sptr;
     FILE *fp;
+    int len;
+
+    oldstk = xlsave(&str,0);
 
     /* get file pointer */
     if (args != 0)
@@ -171,25 +174,30 @@ static struct node *xlfgets(args)
     if (fgets(buf,STRMAX,fp)) {
 
 	/* create return node */
-	str = newnode(STR);
-	str->n_str = strsave(buf);
+	str.n_ptr = newnode(STR);
+	str.n_ptr->n_str = strsave(buf);
 
 	/* make sure we got the whole string */
-	while (buf[strlen(buf)-1] != '\n') {
+	while ((len = strlen(buf)) == 0 || buf[len-1] != '\n') {
 	    if (!fgets(buf,STRMAX,fp))
 		break;
-	    sptr = str->n_str;
-	    str->n_str = stralloc(strlen(sptr) + strlen(buf));
-	    strcpy(str->n_str,sptr);
-	    strcat(buf);
+	    sptr = str.n_ptr->n_str;
+	    len = strlen(sptr);
+	    if (len > 32766 - strlen(buf))
+		xlfail("string too long");
+	    str.n_ptr->n_str = stralloc(len + strlen(buf));
+	    strcpy(str.n_ptr->n_str,sptr);
+	    strcat(str.n_ptr->n_str,buf);
 	    strfree(sptr);
 	}
     }
     else
-	str = 0;
+	str.n_ptr = 0;
 
     /* return the string */
-    return (str);
+    val = str.n_ptr;
+    xlstack = oldstk;
+    return (val);
 }
 
 /* xlfputs - put a string to a file */

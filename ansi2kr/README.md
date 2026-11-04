@@ -6,6 +6,11 @@ Ver 1.3
 Support OS: Windows,CP/M,MSX-DOS,MSX-DOS2
 ANSI C source. (Support C Compiler: C++ Builder, BDS C/MSX-C with asu ansi2kr)
 
+Input and output must be different files. The CP/M-86 build checks names
+case-insensitively, including explicit/default drives and an empty extension.
+The host build also detects symbolic and hard links to the input.
+Run `make test` to validate source preservation and normal conversion on both.
+
 BDS C and MSX-C are subset K&amp;R C compilers.
 asu ansi2kr add some ANSI C function to BDS C and MSX-C.
 
