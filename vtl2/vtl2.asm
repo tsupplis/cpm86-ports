@@ -679,7 +679,15 @@ getval: CALL	cvbin		; Convert to binary number
 
 	RNC			; It was a number: Return
 
-	CPI	quest		; Is it a PRINT statement?
+; An empty expression is zero. Keep HL on the terminator so nxtrm
+; cannot interpret stale bytes from the previous line (notably for >=).
+	ORA	A
+	JNZ	getv1
+	LXI	B,0000H
+	RET
+
+getv1:	
+    CPI	quest		; Is it a PRINT statement?
 	INX	H		; Increment mem ptr
 	JNZ	var		; No: Check if it is a variable name
 

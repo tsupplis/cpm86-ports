@@ -26,6 +26,10 @@ The startup `OK` is suppressed when a script is loaded, so a script's own output
 comes first. It still appears in interactive mode, and when the named file
 cannot be opened.
 
+**Empty expressions.** Bare `>=` exits reliably, as does `>=0`. An empty
+expression evaluates to zero without advancing past the line terminator;
+previous line contents cannot trigger unintended keyboard input.
+
 **Rubout.** Both `^H` and DEL erase the previous character. On an empty line
 they are ignored.
 

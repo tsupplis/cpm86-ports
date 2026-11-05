@@ -84,11 +84,28 @@ reject ex4.vtl 'The average is'
 
 # 99, two rubouts, 5 leaves B=5; the leading rubouts must be ignored.
 echo "== rubout =="
-trap 'rm -f rubout.tmp answers.tmp' EXIT INT TERM
+trap 'rm -f rubout.tmp answers.tmp empty.tmp' EXIT INT TERM
 printf '\177\17710 B=99\177\1775\r\n20 ?=B\r\n30 ?=""\r\n#=1\r\n>=\r\n' > rubout.tmp
 want rubout.tmp '5'
 printf '\010\01010 B=99\010\0105\r\n20 ?=B\r\n30 ?=""\r\n#=1\r\n>=\r\n' > rubout.tmp
 want rubout.tmp '5'
+
+# Bare >= must not read stale dollars beyond its NUL terminator.
+# A leaked $ triggers console input and emits FF under emu2 at console EOF.
+echo "== empty exit expression =="
+for ending in '>=' '>=0'; do
+    printf '?="$$"\r\n%s\r\n' "$ending" > empty.tmp
+    expected=$(printf 'VTL2 Interpreter 1.0\n$$\n\nOK')
+    for target in com cmd; do
+        timeout -k 1 $TIMEOUT $(emulator_for $target) empty.tmp \
+            < /dev/null > answers.tmp 2>&1
+        rc=$?
+        out=$(tr -d '\r' < answers.tmp)
+        ok=no
+        if [ "$rc" -eq 0 ] && [ "$out" = "$expected" ]; then ok=yes; fi
+        report "$out" "$ok" "empty expression $ending" "$target"
+    done
+done
 
 # No argument means interactive, so the OK prompt must still appear.
 echo "== prompt =="
