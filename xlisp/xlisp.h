@@ -44,7 +44,7 @@
 #endif				/* compiler used strchr not index */
 
 /* for the AZTEC C compiler */
-#ifdef AZTEC
+#ifdef __AZTEC__
 #define DEFEXT
 #define KEYMAPCLASS
 #define NNODES	200

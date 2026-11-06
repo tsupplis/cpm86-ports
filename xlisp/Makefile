@@ -1,29 +1,22 @@
-AS=aztec42_as
-CC=aztec42_cc
+CC=aztec42_acc
+LD=aztec42_acc
 AR=aztec42_lib
-CFLAGS=-I. +F -B +0 -DAZTEC
-STRIP=aztec42_sqz
-LDFLAGS=-lm -lc86
-LD=aztec42_link
-LINK86=pcdev_linkcmd
-RASM86=pcdev_rasm86
-
+CFLAGS=-target=cpm86 -I. -squeeze
+LDFLAGS=-target=cpm86 -lm
 
 all: xlisp.cmd
 
-xlisp.cmd: xlisp.o xllist.o xlmath.o xlstr.o xlread.o xlsubr.o xlprin.o \
+OBJS=xlisp.o xllist.o xlmath.o xlstr.o xlread.o xlsubr.o xlprin.o \
     xlbind.o xldmem.o xleval.o xlfio.o xlio.o xlkmap.o xlobj.o
-	$(LD) -o $@ xlisp.o -F xlisp.lnk $(LDFLAGS)
-    
+
+xlisp.cmd: $(OBJS)
+	$(LD) $(LDFLAGS) -o $@ $(OBJS)
 
 %.o: %.c
-	$(CC) $(CFLAGS) $<
-	$(STRIP) $@
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
 	$(RM) *.o *.h86 *.log *.sym *.prn *.lst *.obj *.cmd
-
-
 
 test: all
 	python3 test.py

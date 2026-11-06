@@ -171,7 +171,7 @@ with tempfile.TemporaryDirectory() as folder:
     (wd/'SWEEP.C').write_text(harness)
     (wd/'xlisp.h').write_bytes((root/'xlisp.h').read_bytes())
     for command in (
-        ['aztec42_cc','-I.','+F','-B','+0','-DAZTEC','SWEEP.C'],
+        ['aztec42_cc','-I.''SWEEP.C'],
         ['aztec42_link','-o','SWEEP.CMD','SWEEP.o','-lc86'],
     ):
         p=subprocess.run(command,cwd=wd,capture_output=True,timeout=30)
