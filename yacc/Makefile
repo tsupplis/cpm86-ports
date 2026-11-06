@@ -1,12 +1,8 @@
-AS=aztec42_as
-CC=aztec42_cc
+CC=aztec42_acc
+LD=aztec42_acc
 AR=aztec42_lib
-CFLAGS=-I. -B +0 -D__CPM86__ 
-STRIP=aztec42_sqz
-LDFLAGS=-lc86
-LD=aztec42_link
-LINK86=pcdev_linkcmd
-RASM86=pcdev_rasm86
+CFLAGS=-target=cpm86 -I. -squeeze
+LDFLAGS=-target=cpm86
 
 BINARIES=yacc.cmd
 
@@ -15,11 +11,12 @@ all: binaries
 binaries: $(BINARIES) 
 
 yacc.cmd: y1.o y2.o y3.o y4.o
-	$(LD) -o $@ $^ $(LDFLAGS)
+	$(LD) $(LDFLAGS) -o $@ $^
 
 %.o: %.c
-	$(CC) $(CFLAGS) $<
-	$(STRIP) $@
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
 	$(RM) *.o *.h86 *.log *.sym *.prn *.lst *.obj $(BINARIES)
+
+.PHONY: all binaries clean
