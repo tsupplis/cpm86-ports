@@ -1,8 +1,8 @@
-CC=aztec42_acc
+CC=aztec43_acc
 AR=aztec42_lib
 CFLAGS=-target=cpm86 -I. -squeeze
 LDFLAGS=-target=cpm86 -lm
-LD=aztec42_acc
+LD=aztec43_acc
 ASM86=cpm86_asm86
 GENCMD=cpm86_gencmd
 BIN2CMD=bin2cmd

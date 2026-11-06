@@ -1,6 +1,6 @@
-CC = aztec42_acc
+CC = aztec43_acc
 LIB = aztec42_lib
-LD = aztec42_acc
+LD = aztec43_acc
 CFLAGS = -target=cpm86 -I. -squeeze
 LDFLAGS = -target=cpm86 -lm
 
