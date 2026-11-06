@@ -1,5 +1,5 @@
-SUBDIRS1=filer lbr fv seemem disk7 wash15 xsq uucp dc grep sed diff ndbm life kermit \
-    crc banner tr uniq sort
+SUBDIRS1=filer lbr fv seemem disk7 wash15 xsq uucp grep sed diff ndbm life kermit \
+    crc banner tr uniq sort dc
 
 SUBDIRS2=ansi2kr tinybas xlisp vtl2 ratfor cpu diskstat sokoban edlin 
     

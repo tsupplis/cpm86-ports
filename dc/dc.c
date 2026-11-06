@@ -135,13 +135,13 @@ Blk*	add0(Blk *p, int ct);
 Blk*	mult(Blk *p, Blk *q);
 void	chsign(Blk *p);
 int	readc(void);
-void	unreadc(char c);
-void	binop(char c);
+void	unreadc(int c);
+void	binop(int c);
 void	dcprint(Blk *hptr);
 Blk*	dcexp(Blk *base, Blk *ex);
 Blk*	getdec(Blk *p, int sc);
 void	tenot(Blk *p, int sc);
-void	oneot(Blk *p, int sc, char ch);
+void	oneot(Blk *p, int sc, int ch);
 void	hexot(Blk *p, int flg);
 void	bigot(Blk *p, int flg);
 Blk*	add(Blk *a1, Blk *a2);
@@ -151,7 +151,7 @@ Blk*	scalint(Blk *p);
 Blk*	scale(Blk *p, int n);
 int	subt(void);
 int	command(void);
-int	cond(char c);
+int	cond(int c);
 void	load(void);
 int	dclog2(long n);
 Blk*	salloc(int size);
@@ -1490,7 +1490,7 @@ loop:
 }
 
 void
-unreadc(char c)
+unreadc(int c)
 {
 
 	if((readptr != &readstk[0]) && (*readptr != 0)) {
@@ -1501,7 +1501,7 @@ unreadc(char c)
 }
 
 void
-binop(char c)
+binop(int c)
 {
 	Blk *r;
 
@@ -1702,7 +1702,7 @@ tenot(Blk *p, int sc)
 }
 
 void
-oneot(Blk *p, int sc, char ch)
+oneot(Blk *p, int sc, int ch)
 {
 	Blk *q;
 
@@ -1961,7 +1961,7 @@ command(void)
 }
 
 int
-cond(char c)
+cond(int c)
 {
 	Blk *p;
 	int cc;
