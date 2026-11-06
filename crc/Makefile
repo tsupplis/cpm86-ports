@@ -1,8 +1,8 @@
-CC=aztec42_cc
-LD=aztec42_link
-CFLAGS=
-CPM_LDFLAGS=-lc86
-DOS_LDFLAGS=-lc
+CC=aztec42_acc
+LD=aztec42_acc
+CFLAGS=-I. -squeeze
+CPM_LDFLAGS=-target=cpm86
+DOS_LDFLAGS=-target=dos1
 
 all: binaries
 
@@ -14,10 +14,10 @@ binaries: crc.cmd crc.com
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 crc.com: $(OBJS)
-	$(LD) -o $@ $(OBJS) $(DOS_LDFLAGS)
+	$(LD) $(DOS_LDFLAGS) -o $@ $(OBJS)
 
 crc.cmd: $(OBJS)
-	$(LD) -o $@ $(OBJS) $(CPM_LDFLAGS)
+	$(LD) $(CPM86_LDFLAGS) -o $@ $(OBJS)
 
 test: binaries
 	sh test.sh
