@@ -1,6 +1,6 @@
 CC=aztec42_acc
 LD=aztec42_acc
-CFLAGS=-I. -DAZTEC -squeeze
+CFLAGS=-I. -squeeze
 CPM_LDFLAGS=-target=cpm86
 
 all: sokoban.cmd

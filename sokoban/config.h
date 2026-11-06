@@ -1,7 +1,7 @@
 #ifndef _CONFIG_H_
 #define _CONFIG_H_
 
-#if defined(AZTEC)
+#if defined(__AZTEC__)
 #define USE_CONIO
 #define USE_COLOR
 #define COLOR_BLUE 1

@@ -18,11 +18,11 @@
 
 #include "config.h"
 
-#if defined(USE_CONIO) || defined(USE_HTC) || defined(AZTEC)
+#if defined(USE_CONIO) || defined(USE_HTC) || defined(__AZTEC__)
 #include "conio.h"
 #endif
 
-#if defined(AZTEC)
+#if defined(__AZTEC__)
 #include "gameio.h"
 #define gotoxy(x, y) game_gotoxy(x, y)
 #endif
@@ -951,11 +951,11 @@ int main(int argc, char *argv[])
             level = optlevel;
         }
     }
-#if defined(AZTEC)
+#if defined(__AZTEC__)
     game_keys_init();
 #endif
     ret = gameloop();
-#if defined(AZTEC)
+#if defined(__AZTEC__)
     game_keys_exit();
 #endif
     errmess(ret);
