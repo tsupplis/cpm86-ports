@@ -1,10 +1,9 @@
-CC      = aztec42_cc
-LD      = aztec42_link
+CC      = aztec42_acc
+LD      = aztec42_acc
 LIB     = aztec42_lib
-STRIP   = aztec42_sqz
-CFLAGS  = -I. +F +0
-CPM_LDFLAGS = -lc86
-DOS_LDFLAGS = -lc
+CFLAGS  = -I. -squeeze
+CPM_LDFLAGS = -target=cpm86
+DOS_LDFLAGS = -target=dos1
 
 all: ndbm.lib keydb.cmd keydb.com
 
@@ -19,28 +18,27 @@ ndbm.lib: ndbm.o
 # Binaries
 # --------------------------------------------------------------------
 keydb.cmd: keydb.o ndbm.lib
-	$(LD) -o $@ keydb.o ndbm.lib $(CPM_LDFLAGS)
+	$(LD) $(CPM_LDFLAGS) -o $@ keydb.o ndbm.lib
 
 keydb.com: keydb.o ndbm.lib
-	$(LD) -o $@ keydb.o ndbm.lib $(DOS_LDFLAGS)
+	$(LD) $(DOS_LDFLAGS) -o $@ keydb.o ndbm.lib
 
 # --------------------------------------------------------------------
 # Compile rules
 # --------------------------------------------------------------------
 %.o: %.c
-	$(CC) $(CFLAGS) -o $@ $<
-	$(STRIP) $@
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 # --------------------------------------------------------------------
 # Test
 # --------------------------------------------------------------------
 tests/testdb.cmd: testdb.o ndbm.lib
 	mkdir -p tests
-	$(LD) -o $@ testdb.o ndbm.lib $(CPM_LDFLAGS)
+	$(LD) $(CPM_LDFLAGS) -o $@ testdb.o ndbm.lib
 
 tests/testdb.com: testdb.o ndbm.lib
 	mkdir -p tests
-	$(LD) -o $@ testdb.o ndbm.lib $(DOS_LDFLAGS)
+	$(LD) $(DOS_LDFLAGS) -o $@ testdb.o ndbm.lib
 
 test: keydb.cmd keydb.com tests/testdb.cmd tests/testdb.com
 	sh test.sh
