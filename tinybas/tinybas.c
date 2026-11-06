@@ -15,10 +15,10 @@
 #include "options.h"
 #include "errors.h"
 #include "parser.h"
-#include "statement.h"
-#include "interpret.h"
-#include "formatter.h"
-#include "generatec.h"
+#include "statemnt.h"
+#include "interp.h"
+#include "format.h"
+#include "genc.h"
 
 /* static variables */
 static char *input_filename = NULL; /* name of the input file */

@@ -12,10 +12,10 @@
 
 
 /* pre-requisite headers */
-#include "statement.h"
+#include "statemnt.h"
 #include "errors.h"
 #include "options.h"
-#include "tokeniser.h"
+#include "toknzr.h"
 
 
 /*

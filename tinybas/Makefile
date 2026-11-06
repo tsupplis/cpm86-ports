@@ -1,11 +1,13 @@
-CC=aztec42_cc
-LD=aztec42_link
-CFLAGS=
+CC=aztec42_acc
+LD=aztec42_acc
+CFLAGS=-squeeze
+CPM_LDFLAGS=-target=cpm86
+DOS_LDFLAGS=-target=dos1
 
 all: binaries
 
-OBJECTS=tinybasic.o common.o errors.o expression.o formatter.o generatec.o interpret.o \
-options.o parser.o statement.o token.o tokeniser.o
+OBJECTS=tinybas.o common.o errors.o express.o format.o genc.o interp.o \
+	options.o parser.o statemnt.o token.o toknzr.o
 CMDS=tinybas.com tinybas.cmd 
 TOYS=lander.cmd lander.com wumpus.cmd wumpus.com mugwump.cmd mugwump.com \
 	hurkle.cmd hurkle.com tictacto.cmd tictacto.com hammurab.cmd hammurab.com \
@@ -14,21 +16,19 @@ TOYS=lander.cmd lander.com wumpus.cmd wumpus.com mugwump.cmd mugwump.com \
 binaries: $(CMDS) 
 
 tinybas.com: $(OBJECTS)
-	$(LD) -f dos.inp
-	[ -f tinybas.com ] || exit 1
+	$(LD) $(DOS_LDFLAGS) -o $@ $(OBJECTS)
 
 tinybas.cmd: $(OBJECTS)
-	$(LD) -f cpm86.inp
-	[ -f tinybas.cmd ] || exit 1
+	$(LD) $(CPM_LDFLAGS) -o $@ $(OBJECTS)
 
 %.cmd: %.o
-	$(LD) -o $@ $^ -lc86
+	$(LD) $(CPM_LDFLAGS) -o $@ $<
 
 %.com: %.o
-	$(LD) -o $@ $^ -lc
+	$(LD) $(DOS_LDFLAGS) -o $@ $<
 
 %.o: %.c
-	$(CC) -c $^ $(CFLAGS)
+	$(CC) $(CFLAGS) -c -o $@ $<
 	
 %.c: %.bas 
 	$(MAKE) tinybas.com
@@ -38,4 +38,3 @@ test: binaries $(TOYS)
 
 clean:
 	rm -rf *.o *.com *.cmd lander.c mugwump.c wumpus.c hurkle.c
-

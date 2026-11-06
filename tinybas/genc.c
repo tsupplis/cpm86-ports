@@ -11,12 +11,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "statement.h"
-#include "expression.h"
+#include "statemnt.h"
+#include "express.h"
 #include "errors.h"
 #include "parser.h"
 #include "options.h"
-#include "generatec.h"
+#include "genc.h"
 
 
 /*

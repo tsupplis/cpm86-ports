@@ -11,10 +11,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "interpret.h"
+#include "interp.h"
 #include "errors.h"
 #include "options.h"
-#include "statement.h"
+#include "statemnt.h"
 
 
 /* forward declarations */

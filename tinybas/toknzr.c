@@ -12,7 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "token.h"
-#include "tokeniser.h"
+#include "toknzr.h"
 #include "common.h"
 
 

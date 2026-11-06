@@ -16,9 +16,9 @@
 #include "errors.h"
 #include "options.h"
 #include "token.h"
-#include "tokeniser.h"
+#include "toknzr.h"
 #include "parser.h"
-#include "expression.h"
+#include "express.h"
 
 
 /*
