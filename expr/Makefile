@@ -1,8 +1,8 @@
-CC = aztec42_cc
+CC = aztec42_acc
 LIB = aztec42_lib
-LD = aztec42_link
-CFLAGS = -I. +F +0
-LDFLAGS = -lm -lc86
+LD = aztec42_acc
+CFLAGS = -target=cpm86 -I. -squeeze
+LDFLAGS = -target=cpm86 -lm
 
 .PHONY = all clean
 
@@ -29,19 +29,19 @@ reg.cmd: reg.o
 	$(LD) -o $@ reg.o $(LDFLAGS)
 
 expl.cmd: expl.o tinyexpr.lib
-	$(LD) -o $@  expl.o tinyexpr.lib $(LDFLAGS)
+	$(LD) -o $@ expl.o tinyexpr.lib $(LDFLAGS)
 
 expl2.cmd: expl2.o tinyexpr.lib
 	$(LD) -o $@ expl2.o tinyexpr.lib $(LDFLAGS)
 
 expl3.cmd: expl3.o tinyexpr.lib
-	$(LD)  -o $@ expl3.o tinyexpr.lib $(LDFLAGS)
+	$(LD) -o $@ expl3.o tinyexpr.lib $(LDFLAGS)
 
 # --------------------------------------------------------------------
 # Compile rules
 # --------------------------------------------------------------------
-.c.o:
-	$(CC) -B -c $< $(CFLAGS)
+%.o: %.c
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 test: expl.cmd expl2.cmd expl3.cmd smoke.cmd reg.cmd
 	emu2 expl.cmd
@@ -51,4 +51,4 @@ test: expl.cmd expl2.cmd expl3.cmd smoke.cmd reg.cmd
 	emu2 reg.cmd
 
 clean:
-	rm -f *.o *.com *.cmd
+	rm -f *.o *.com *.cmd *.lib
