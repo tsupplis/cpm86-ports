@@ -1,10 +1,8 @@
-AS=aztec42_as
-CC=aztec42_cc
+CC=aztec42_acc
 AR=aztec42_lib
-CFLAGS=-I. +F -B +0 -DAZTEC
-STRIP=aztec42_sqz
-LDFLAGS=-lm -lc86
-LD=aztec42_link
+CFLAGS=-target=cpm86 -I. -squeeze
+LDFLAGS=-target=cpm86 -lm
+LD=aztec42_acc
 ASM86=cpm86_asm86
 GENCMD=cpm86_gencmd
 BIN2CMD=bin2cmd
@@ -12,14 +10,13 @@ CMDINFO=cmdinfo
 
 BINARIES=lbrdir.cmd lbrtype.cmd delbr.cmd lu86.cmd
 
-
 all: $(BINARIES) 
 
 lu86.cmd: lu86.o
-	$(LD) -o $@ lu86.o $(LDFLAGS)
+	$(LD) $(LDFLAGS) -o $@ lu86.o
 
 delbr.cmd: delbr.o
-	$(LD) -o $@ delbr.o $(LDFLAGS)
+	$(LD) $(LDFLAGS) -o $@ delbr.o
 
 lbrtype.cmd: lbrtype.h86
 	#from code
@@ -34,15 +31,12 @@ lbrdir.cmd: lbrdir.h86
 	$(ASM86) $<
 
 %.o: %.c
-	$(CC) $(CFLAGS) $<
-	$(STRIP) $@
-
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
 	rm -rf *.h86 *.lst *.sym *.h86 *.cmd *.cmd *.log *.bin
 	rm -rf *.xxd *.map *.o
 	rm -rf cpmtest?.img
-
 
 test: all
 	python3 test.py

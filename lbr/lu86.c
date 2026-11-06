@@ -123,7 +123,7 @@ Stephen Hemminger,  Mitre Corp. Bedford MA
 #include <stdio.h>
 #include <ctype.h>
 
-#ifdef AZTEC
+#ifdef __AZTEC__
 #define fopenb	fopen	/* Aztec getc/putc/fread/fwrite are already binary */
 #define rewind(f)	fseek(f, 0L, 0)
 #endif
@@ -196,9 +196,9 @@ char  **argv;
     register char *flagp;
     char   *aname;			/* name of library file */
     static char libname[20];
-    int	   (*function)() = NULL;	/* function to do on library */
+    int	   (*function)() = 0;	/* function to do on library */
 /* set the function to be performed, but detect conflicts */
-#define setfunc(val)	if(function != NULL) conflict(); else function = val
+#define setfunc(val)	if(function != 0) conflict(); else function = val
 
 #ifdef UNIX
     cmdname = argv[0];
@@ -217,7 +217,7 @@ char  **argv;
 #else
     aname = libname;
     ucase (aname,argv[2]);	/* get library name */
-    if (index (nopath (aname), '.') == NULL)
+    if (index (nopath (aname), '.') == 0)
 	VOID strcat (aname, ".LBR");
 #endif /* UNIX */
 
@@ -267,7 +267,7 @@ char  **argv;
      help ();
     }
 
-    if(function == NULL) {
+    if(function == 0) {
 	fprintf(stderr,"No function key letter specified\n");
 	help();
     }
@@ -305,7 +305,7 @@ char   *str;
 cant (name)
 char   *name;
 {
-#ifdef AZTEC
+#ifdef __AZTEC__
     fprintf (stderr, "%s: can't open\n", name);
 #else
     extern int  errno;
@@ -336,7 +336,7 @@ char  **av;
 	if (i == MAXFILES)
 	    error ("Too many file names.");
     }
-    fname[i] = NULL;
+    fname[i] = 0;
     nfiles = i;
     for (i = 0; i < nfiles; i++)
 	for (j = i + 1; j < nfiles; j++)
@@ -354,7 +354,7 @@ char   *lib;
     int active = 0, unused = 0, deleted = 0;
     char *uname;
 
-    if ((lfd = fopenb (lib, "r")) == NULL)
+    if ((lfd = fopenb (lib, "r")) == 0)
 	cant (lib);
 
     getdir (lfd);
@@ -664,10 +664,10 @@ bool	pflag;
     register int    i;
     char   *unixname;
 
-    if ((lfd = fopenb (name, "r"))  == NULL)
+    if ((lfd = fopenb (name, "r"))  == 0)
 	cant (name);
 
-    ofd = pflag ? stdout : NULL;
+    ofd = pflag ? stdout : 0;
     getdir (lfd);
 
     for (i = 1; i < nslots; i++) {
@@ -679,7 +679,7 @@ bool	pflag;
 	fprintf(stderr,"%s", unixname);
 	if (ofd != stdout)
 	    ofd = fopenb (unixname, "w");
-	if (ofd == NULL) {
+	if (ofd == 0) {
 	    fprintf (stderr, "  - can't create");
 	    errcnt++;
 	}
@@ -700,7 +700,7 @@ FILE *fdi, *fdo;
 register unsigned int nsecs;
 {
     register int    i, c;
-#ifdef AZTEC
+#ifdef __AZTEC__
     int	    textfile = 0;	/* CP/M files are whole sectors: keep the ^Z */
 #else
     int	    textfile = 1;
@@ -731,8 +731,8 @@ char   *name;
     int     n;
     static char names[MAXFILES][16];
 
-    if ((lfd = fopenb (name, "r+")) == NULL) {
-	if ((lfd = fopenb (name, "w+")) == NULL)
+    if ((lfd = fopenb (name, "r+")) == 0) {
+	if ((lfd = fopenb (name, "w+")) == 0)
 	    cant (name);
 	initdir (lfd);
     }
@@ -769,7 +769,7 @@ FILE *lfd;
     register int secoffs, numsecs;
     register int i;
 
-    if ((ifd = fopenb (name, "r")) == NULL) {
+    if ((ifd = fopenb (name, "r")) == 0) {
 	fprintf (stderr, "%s: can't find to add\n",name);
 	errcnt++;
 	return;
@@ -829,7 +829,7 @@ char   *lname;
     FILE *f;
     register int    i;
 
-    if ((f = fopenb (lname, "r+")) == NULL)
+    if ((f = fopenb (lname, "r+")) == 0)
 	cant (lname);
 
     if (nfiles <= 0)
@@ -865,10 +865,10 @@ char  *name;
 	*cp++ = *dp++;
     VOID strcpy(cp, ".$$$");
 
-    if( (olib = fopenb(name,"r")) == NULL)
+    if( (olib = fopenb(name,"r")) == 0)
 	cant(name);
 
-    if( (nlib = fopenb(tmpname, "w")) == NULL)
+    if( (nlib = fopenb(tmpname, "w")) == 0)
 	cant(tmpname);
 
     getdir(olib);

@@ -3,7 +3,7 @@
  *
  *	Jeff Martin, 10/9/82
  *
- *	07/28/84 - Fixed AZTEC conditional defines.  (Tried it this
+ *	07/28/84 - Fixed __AZTEC__ conditional defines.  (Tried it this
  *		   time, instead of guessing). Removed DESMET stuff,
  *		   as the Read() function dosen't always know how many
  *		   bytes it has read!  That didn't work too well. <pjh>
@@ -29,10 +29,10 @@
 
 
 /* "#define" your compiler here to pick from following #define blocks */
-/* DRC, C86, and AZTEC have all been tested */
+/* DRC, C86, and __AZTEC__ have all been tested */
 
-#ifndef AZTEC
-#define AZTEC
+#ifndef __AZTEC__
+#define __AZTEC__
 #endif
 
 #ifdef	DRC		/* digital research */
@@ -59,7 +59,7 @@
 #define FGETC		fgetc
 #endif
 
-#ifdef AZTEC		/* aztec c ii v 1.05 */
+#ifdef __AZTEC__		/* aztec c ii v 1.05 */
 #define	VERSION		"1.1 28-Jul-84 Aztec"
 #define	OPN		open
 #define FOPN		fopen
@@ -77,7 +77,7 @@ char*malloc();
 #define BUFFSIZ		16384	/* be sure this is a multiple of 128 */
 #define ERR		(-1)
 
-#ifdef AZTEC
+#ifdef __AZTEC__
 #include <stdio.h>
 #include <fcntl.h>
 #else
