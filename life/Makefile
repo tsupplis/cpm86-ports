@@ -1,9 +1,8 @@
-CC=aztec42_cc
-LD=aztec42_link
-STRIP=aztec42_sqz
-CFLAGS=
-CPM_LDFLAGS=-lc86
-DOS_LDFLAGS=-lc
+CC=aztec42_acc
+LD=aztec42_acc
+CFLAGS=-I. -squeeze
+CPM_LDFLAGS=-target=cpm86
+DOS_LDFLAGS=-target=dos1
 RM=rm -rf
 
 all: binaries
@@ -13,14 +12,13 @@ OBJS=life.o
 binaries: life.cmd life.com
 
 %.o: %.c
-	$(CC) $(CFLAGS) -o $@ $<
-	$(STRIP) $@
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 life.com: $(OBJS)
-	$(LD) -o $@ $(OBJS) $(DOS_LDFLAGS)
+	$(LD) $(DOS_LDFLAGS) -o $@ $(OBJS)
 
 life.cmd: $(OBJS)
-	$(LD) -o $@ $(OBJS) $(CPM_LDFLAGS)
+	$(LD) $(CPM86_LDFLAGS) -o $@ $(OBJS)
 
 clean:
 	$(RM) *.o *.cmd *.com
