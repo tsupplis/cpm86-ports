@@ -1,8 +1,8 @@
-CC=aztec42_cc
-LD=aztec42_link
-CFLAGS=
-CPM_LDFLAGS=-lc86
-DOS_LDFLAGS=-lc
+CC=aztec42_acc
+LD=aztec42_acc
+CFLAGS=-squeeze
+CPM_LDFLAGS=-target=cpm86
+DOS_LDFLAGS=-target=dos1
 
 all: binaries
 
@@ -12,16 +12,16 @@ binaries: uuencode.cmd uudecode.cmd uuencode.com uudecode.com
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 uuencode.cmd: uuencode.o
-	$(LD) -o $@ uuencode.o $(CPM_LDFLAGS)
+	$(LD) $(CPM_LDFLAGS) -o $@ uuencode.o
 
 uudecode.cmd: uudecode.o
-	$(LD) -o $@ uudecode.o $(CPM_LDFLAGS)
+	$(LD) $(CPM_LDFLAGS) -o $@ uudecode.o
 
 uuencode.com: uuencode.o
-	$(LD) -o $@ uuencode.o $(DOS_LDFLAGS)
+	$(LD) $(DOS_LDFLAGS) -o $@ uuencode.o
 
 uudecode.com: uudecode.o
-	$(LD) -o $@ uudecode.o $(DOS_LDFLAGS)
+	$(LD) $(DOS_LDFLAGS) -o $@ uudecode.o
 
 test: binaries
 	sh test.sh
