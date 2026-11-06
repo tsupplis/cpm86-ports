@@ -1,12 +1,9 @@
-AS=aztec42_as
-ACC=aztec42_cc
+CC=aztec42_acc
+LD=aztec42_acc
 AR=aztec42_lib
-CFLAGS=-I. -B +0 -D__CPM86__
-STRIP=aztec42_sqz
-LDFLAGS=-lc86
-LD=aztec42_link
-LINK86=pcdev_linkcmd
-RASM86=pcdev_rasm86
+CFLAGS=-target=cpm86 -I. -squeeze
+LDFLAGS=-target=cpm86
+HOST_CC=cc
 HOST_CFLAGS=-Wno-deprecated-non-prototype
 
 BINARIES=ansi2kr.cmd
@@ -16,20 +13,19 @@ all: binaries ansi2kr
 binaries: $(BINARIES) 
 
 ansi2kr: ansi2krn.o
-	$(CC) $(HOST_CFLAGS) -O2 -o $@ $<
+	$(HOST_CC) $(HOST_CFLAGS) -O2 -o $@ $<
 
 ansi2krn.o: ansi2kr.c
-	$(CC) $(HOST_CFLAGS) -O2 -c -o $@ $<
+	$(HOST_CC) $(HOST_CFLAGS) -O2 -c -o $@ $<
 
 ansi2kr.cmd: ansi2kr.o
-	$(LD) -o $@ $< $(LDFLAGS)
+	$(LD) $(LDFLAGS) -o $@ $<
 
 %.o: %.c
-	$(ACC) $(CFLAGS) $<
-	$(STRIP) $@
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
-	$(RM) *.o *.h86 *.log *.sym *.prn *.lst *.obj $(BINARIES)
+	$(RM) *.o *.h86 *.log *.sym *.prn *.lst *.obj $(BINARIES) ansi2kr
 	$(RM) cpmtest.img
 
 cpmtest.img: binaries Makefile orig.c
