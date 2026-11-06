@@ -1,31 +1,25 @@
-AS=aztec42_as
-CC=aztec42_cc
+CC=aztec42_acc
+LD=aztec42_acc
 AR=aztec42_lib
-CFLAGS=-I. +F -B +0 -DAZTEC
-STRIP=aztec42_sqz
-LDFLAGS=-lm -lc86
-LD=aztec42_link
-
+CFLAGS=-target=cpm86 -I. -squeeze
+LDFLAGS=-target=cpm86 -lm
 
 all: sq.cmd usq.cmd sqtype.cmd
 
 sq.cmd: xsq.o
-	$(LD) -o $@ xsq.o $(LDFLAGS)
+	$(LD) $(LDFLAGS) -o $@ xsq.o
 
 usq.cmd: xusq.o
-	$(LD) -o $@ xusq.o $(LDFLAGS)
+	$(LD) $(LDFLAGS) -o $@ xusq.o
 
 sqtype.cmd: xtype.o
-	$(LD) -o $@ xtype.o $(LDFLAGS)
+	$(LD) $(LDFLAGS) -o $@ xtype.o
 
 %.o: %.c
-	$(CC) $(CFLAGS) $<
-	$(STRIP) $@
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
 	$(RM) *.o *.h86 *.log *.sym *.prn *.lst *.obj *.cmd
-
-
 
 test: all
 	python3 test.py

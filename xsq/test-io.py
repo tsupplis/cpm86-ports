@@ -61,7 +61,7 @@ for source,binary in (('xsq.c','sq'),('xusq.c','usq')):
             work=Path(name)
             (work/'FAULT.C').write_text(prefix+(root/source).read_text())
             for command in (
-                ['aztec42_cc','-I.','+F','-B','+0','-DAZTEC','-DFAULT='+str(mode),
+                ['aztec42_cc','-I.','-DFAULT='+str(mode),
                  '-DFAIL_AFTER='+str(after),'FAULT.C'],
                 ['aztec42_link','-o','FAULT.CMD','FAULT.o','-lm','-lc86'],
             ):
