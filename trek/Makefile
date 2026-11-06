@@ -1,8 +1,8 @@
-CC=aztec42_cc
-LD=aztec42_link
-CFLAGS=
-CPM_LDFLAGS=-lm -lc86 
-DOS_LDFLAGS=-lm -lc
+CC=aztec42_acc
+LD=aztec42_acc
+CFLAGS=-squeeze
+CPM_LDFLAGS=-target=cpm86 -lm
+DOS_LDFLAGS=-target=dos1 -lm
 
 all: binaries
 
@@ -12,16 +12,16 @@ trek.com: trek.o
 	$(LD) -o $@ trek.o $(DOS_LDFLAGS)
 
 trek.cmd: trekcp.o
-	$(LD) -o $@ trekcp.o $(CPM_LDFLAGS)
+	$(LD) -o $@ trekcp.o $(CPM_LDFLAGS) 
 
 test: binaries
 	sh test.sh
 
 trekcp.o: trek.c
-	$(CC) -D__CPM86__ $(CFLAGS) -c -o $@ $<
+	$(CC) -target=cpm86 $(CFLAGS) -c -o $@ $<
 
 trek.o: trek.c
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(CC) -target=dos1 $(CFLAGS) -c -o $@ $<
 
 clean:
 	rm -rf *.o *.cmd *.com

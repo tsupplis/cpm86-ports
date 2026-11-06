@@ -624,7 +624,7 @@ restart:
     if (!fgets(buf, sizeof(buf), stdin)) return 0;
     seed = (int)(unsigned char)buf[0];
     seed = seed - 11*(seed/11);
-    srand((unsigned)seed * 1234567u + 1u);
+    srand((unsigned int)((unsigned long)seed * 1234567UL + 1UL));
     for (i = 0; i <= seed; i++) rnd();
     printf("Working...\n");
 
