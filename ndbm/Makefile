@@ -1,7 +1,7 @@
-CC      = aztec43_acc
-LD      = aztec43_acc
-LIB     = aztec42_lib
-CFLAGS  = -I. -squeeze
+CC = aztec43_acc
+LD = aztec43_acc
+LIB = aztec43_lib
+CFLAGS = -I. -squeeze
 CPM_LDFLAGS = -target=cpm86
 DOS_LDFLAGS = -target=dos1
 

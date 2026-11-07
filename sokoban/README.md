@@ -59,7 +59,7 @@ at the start.
 
 ## Compiling
 
-Built with the Aztec C compiler (`aztec42_cc`) targeting CP/M-86:
+Built with the Aztec C compiler (`aztec43_acc`) targeting CP/M-86:
 
 ```sh
 make

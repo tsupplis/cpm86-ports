@@ -1,8 +1,7 @@
 /*
  * trek.c  -  C port of STARTREK.BAS
  *
- * Build:  aztec42_cc -c -o trek.o trek.c
- *         aztec42_link -o trek.cmd trek.o -lc86 -lm
+ * Build:  aztec43_acc -target=cpm86 -squeeze -o trek.cmd trek.c -lm
  */
 
 #include <stdio.h>

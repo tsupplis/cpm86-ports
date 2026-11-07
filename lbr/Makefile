@@ -1,5 +1,4 @@
 CC=aztec43_acc
-AR=aztec42_lib
 CFLAGS=-target=cpm86 -I. -squeeze
 LDFLAGS=-target=cpm86 -lm
 LD=aztec43_acc

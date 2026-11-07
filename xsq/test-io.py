@@ -60,13 +60,11 @@ for source,binary in (('xsq.c','sq'),('xusq.c','usq')):
         with tempfile.TemporaryDirectory(prefix='xsq-io-') as name:
             work=Path(name)
             (work/'FAULT.C').write_text(prefix+(root/source).read_text())
-            for command in (
-                ['aztec42_cc','-I.','-DFAULT='+str(mode),
-                 '-DFAIL_AFTER='+str(after),'FAULT.C'],
-                ['aztec42_link','-o','FAULT.CMD','FAULT.o','-lm','-lc86'],
-            ):
-                result=subprocess.run(command,cwd=work,capture_output=True,timeout=30)
-                assert result.returncode==0,(command,result.stdout,result.stderr)
+            command = ['aztec43_acc', '-I.', '-target=cpm86', '-lm', '-squeeze',
+                       '-DFAULT='+str(mode), '-DFAIL_AFTER='+str(after),
+                       '-o', 'FAULT.CMD', 'FAULT.C']
+            result=subprocess.run(command,cwd=work,capture_output=True,timeout=30)
+            assert result.returncode==0,(command,result.stdout,result.stderr)
             payload=bytes(range(256))*8
             (work/'DATA.BIN').write_bytes(payload)
             if binary=='usq':
