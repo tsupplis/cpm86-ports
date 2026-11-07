@@ -17,7 +17,7 @@ for binary in $TARGETS; do
 	fi
 done
 
-trap 'rm -f out.tmp err.tmp PROG.FOC' EXIT INT TERM
+trap 'rm -f out.tmp err.tmp prog.foc' EXIT INT TERM
 
 pass() {
 	printf 'PASS  %-9s %s\n' "$1" "$2"
@@ -93,14 +93,14 @@ check_eval 'absolute value' 'type fabs(-42), !' '42.0000'
 check_eval 'integer truncation' 'type fitr(3.99), !' '3.0000'
 
 echo "== program loops and logic =="
-cat > PROG.FOC <<'EOF'
+cat > prog.foc <<'EOF'
 01.10 set s = 0
 01.20 for i = 1, 10; set s = s + i
 01.30 type "sum=", s, !
 01.40 quit
 EOF
 
-check_eval 'inline loop execution' '1.10 set s=0; 1.20 for i=1,5; set s=s+i; 1.30 type s, !; do 1' '15.0000'
+check_eval 'inline loop execution' "$(printf '01.10 set s=0\n01.20 for i=1,5; set s=s+i\n01.30 type s, !\ndo 1')" '15.0000'
 
 echo "== command line file loading and execution =="
 check_load_only 'load without run stays at prompt' 'queens.foc' '10.10 c main'
