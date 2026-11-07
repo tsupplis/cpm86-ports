@@ -41,6 +41,7 @@ double	fitr ARG((double arg));
 double	fran ARG((double arg));
 #endif
 
+void	loadfile ARG((char *cp));
 void	library ARG((void));
 void	catchcc ARG((void));
 void	onintr ARG((void));
