@@ -6,7 +6,7 @@
 # define EXIT_SUCCESS 0
 #endif
 
-int	main ARG((void));
+int	main ARG((int argc, char **argv));
 void	builtin ARG((char *cp, double (*fp)()));
 void	process ARG((void));
 void	ask ARG((void));

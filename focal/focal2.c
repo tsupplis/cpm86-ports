@@ -31,6 +31,40 @@ struct direct	db;
 #endif
 
 /*
+ * Load a focal script file into memory.
+ */
+void loadfile(p)
+char	*p;
+{
+	struct line	*lp1;
+	struct line	*lp2;
+	char	*sctp;
+	FILE	*fp;
+	int	c;
+
+	if ((fp=fopen(p, "r")) == NULL)
+		diag("Cannot open");
+	lp1 = line;
+	while (lp1 != NULL) {
+		lp2 = lp1->l_fp;
+		free ((char *) lp1);
+		lp1 = lp2;
+	}
+	line = NULL;
+	sctp = ctp;
+	while (getline(abuf, fp) != 0) {
+		ctp = abuf;
+		if ((c=getnb()) != 0) {
+			if (isdigit(c) == 0)
+				diag("Direct line in call");
+			inject(c);
+		}
+	}
+	fclose(fp);
+	ctp = sctp;
+}
+
+/*
  * Process the library command.
  * This command (sadly) requires a rather
  * detailed knowledge of the file system of
@@ -41,9 +75,6 @@ void library()
 	char	*p;
 	int	c;
 	int	d;
-	char	*sctp;
-	struct line	*lp1;
-	struct line	*lp2;
 	FILE	*fp;
 
 	c = getnb();
@@ -61,26 +92,7 @@ void library()
 	switch (c) {
 
 	case 'c':
-		if ((fp=fopen(p, "r")) == NULL)
-			diag("Cannot open");
-		lp1 = line;
-		while (lp1 != NULL) {
-			lp2 = lp1->l_fp;
-			free ((char *) lp1);
-			lp1 = lp2;
-		}
-		line = NULL;
-		sctp = ctp;
-		while (getline(abuf, fp) != 0) {
-			ctp = abuf;
-			if ((c=getnb()) != 0) {
-				if (isdigit(c) == 0)
-					diag("Direct line in call");
-				inject(c);
-			}
-		}
-		fclose(fp);
-		ctp = sctp;
+		loadfile(p);
 		break;
 
 	case 'd':
@@ -179,7 +191,9 @@ void library()
  */
 void catchcc()
 {
+#ifdef __CPM86__
 	signal(SIGINT, (void (*) ARG((int)))onintr);
+#endif
 }
 
 /*

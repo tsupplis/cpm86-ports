@@ -2,11 +2,11 @@
 
 FOCAL (FOrmula CALculator) is an ancient, block-structured interpretive language originally designed for the DEC PDP-8 and PDP-11.
 
-This implementation (FOCAL-81) was written by **Dave Conroy** (1981) and later enhanced by **Akira KIDA** (1995). This version is ported to **CP/M-86** using Aztec C86.
+This implementation (FOCAL-81) was written by **Dave Conroy** (1981) and later enhanced by **Akira KIDA** (1995). This version is ported to **CP/M-86** and **PC-DOS 1.x / MS-DOS** using Aztec C86.
 
 ## Building
 
-To build the CP/M-86 binary `focal.cmd`:
+To build both `focal.cmd` (CP/M-86) and `focal.com` (DOS 1):
 
 ```sh
 make
@@ -18,9 +18,29 @@ To clean build artifacts:
 make clean
 ```
 
-## Running
+## Running and Command Line Usage
 
-Under CP/M-86 or an emulator such as `emu2`:
+### Command-Line Arguments
+
+```text
+focal [file.foc] [[R] | [R | [r] | [r | /R | /r]
+```
+
+- **`focal`**: Starts in interactive mode at the `*` prompt.
+- **`focal file.foc`**: Loads `file.foc` into program memory and remains at the interactive prompt.
+- **`focal file.foc [R]`** (or `[R`, `[r]`, `[r`, `/R`, `/r`): Loads `file.foc` into memory and immediately executes it (`goto`).
+
+Examples:
+
+```sh
+emu2 focal.cmd queens.foc [R]
+emu2 focal.cmd sieve.foc [R
+emu2 focal.com queens.foc /r
+```
+
+### Interactive Usage
+
+Under CP/M-86 or DOS:
 
 ```text
 A>FOCAL
@@ -29,7 +49,7 @@ A>FOCAL
 
 When started, FOCAL displays the `*` prompt. Commands can be entered interactively for immediate execution or prefixed with a line number to store them in program memory.
 
-To load and run sample scripts:
+To load and run sample scripts from within FOCAL:
 
 ```text
 *library call queens.foc

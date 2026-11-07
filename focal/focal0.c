@@ -66,9 +66,14 @@ int	intflag;			/* Interrupt flag */
 
 struct	sym	*sym[N_HASH + 1];	/* Symbol table */
 
-int main()
+int main(argc, argv)
+int argc;
+char *argv[];
 {
 	int	c;
+	int	i;
+	int	run = 0;
+	char	*filename = NULL;
 
 #ifdef FUNCTIONS
 	builtin("fsin", fsin);
@@ -82,8 +87,47 @@ int main()
 	builtin("fitr", fitr);
 	builtin("fran", fran);
 #endif
+
+	for (i = 1; i < argc; ++i) {
+		char *arg = argv[i];
+		char *p;
+		if (arg[0] == '[') {
+			if (arg[1] == 'R' || arg[1] == 'r') {
+				if (arg[2] == '\0' || arg[2] == ']')
+					run = 1;
+			}
+		} else if (arg[0] == '/' || arg[0] == '-') {
+			if (arg[1] == 'R' || arg[1] == 'r')
+				run = 1;
+		} else if ((p = strchr(arg, '[')) != NULL) {
+			*p = '\0';
+			if (p[1] == 'R' || p[1] == 'r') {
+				if (p[2] == '\0' || p[2] == ']')
+					run = 1;
+			}
+			if (arg[0] != '\0')
+				filename = arg;
+		} else {
+			filename = arg;
+		}
+	}
+
 	setjmp(env);
 	catchcc();
+
+	if (filename != NULL) {
+		loadfile(filename);
+		filename = NULL;
+		if (run) {
+			run = 0;
+			mode = C_TOP;
+			if ((clp = line) != NULL) {
+				ctp = clp->l_text;
+				process();
+			}
+		}
+	}
+
 	for (;;) {
 		putchar('*');
 		if (gets(cbuf) == NULL) {
