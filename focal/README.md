@@ -1,43 +1,123 @@
-; -*- indented-text -*-
+# FOCAL-81
 
-Focal-81 is originally written by Dave Conroy <mrm@Sceard.COM>.
-Modified and debugged by Akira KIDA <SDI00379@niftyserve.or.jp>
+FOCAL (FOrmula CALculator) is an ancient, block-structured interpretive language originally designed for the DEC PDP-8 and PDP-11.
 
-List of modifications:
+This implementation (FOCAL-81) was written by **Dave Conroy** (1981) and later enhanced by **Akira KIDA** (1995). This version is ported to **CP/M-86** using Aztec C86.
 
-  - Now compile under ANSI-C environment.
-    Still compile under K&R C, but require ANSI compatible headers.
+## Building
 
-  - Supports 'lib list' command using <dirent.h> directory handling
-    libraries.  i.e. opendir(), readdir(), ... etc.  I think they are
-    POSIX compatible.
+To build the CP/M-86 binary `focal.cmd`:
 
-  - Also supports 'lib list' command on MS-DOS / MS-C environment.
+```sh
+make
+```
 
-  - Uses simple hash mechanisms for symbol tables.
+To clean build artifacts:
 
-  - Critical bug in releasing nested 'for' control stack frame is
-    now fixed.
+```sh
+make clean
+```
 
+## Running
 
-I (Kida) tested in the following environments:
+Under CP/M-86 or an emulator such as `emu2`:
 
-  Sun SPARCstation running SunOS 4.1.3 + sun cc (K&R)
-  Sun SPARCstation running SunOS 4.1.3 + gcc 2.6.3 (ANSI)
-  Sun SPARCstation running Solaris 2.3 + SunPro cc 2.0.1 (ANSI)
-  Sun SPARCstation running Solaris 2.3 + gcc 2.6.3 (ANSI)
-  HP9000 model 720 (HPPA) running HPUX 8.05 + hp cc (ANSI)
-  HP9000 model 720 (HPPA) running HPUX 8.05 + gcc 2.5.8 (ANSI)
-  MS-DOS + MS-C 6.0 (ANSI)
-  MS-DOS + LSI C-86 3.30 (very close to ANSI)
+```text
+A>FOCAL
+*
+```
 
+When started, FOCAL displays the `*` prompt. Commands can be entered interactively for immediate execution or prefixed with a line number to store them in program memory.
 
-Copyright or lack of it:
+To load and run sample scripts:
 
-Akira KIDA puts all the modifications in the public domain.
-Although I'm not sure what the original copyright condition is.
+```text
+*library call queens.foc
+*goto
+```
 
+or:
 
-enjoy!
-	Apr. 11, 1995
-	Akira KIDA, SDI00379@niftyserve.or.jp
+```text
+*library call sieve.foc
+*goto
+```
+
+## Language Reference
+
+### Line Numbering and Structure
+
+Programs are organized into groups and lines:
+
+- **`LGRP`**: A group number (integer, e.g., `10`, `20`).
+- **`LNUM`**: A line number specifying group and line within the group (e.g., `10.10`, `10.20`, `20.40`).
+
+Lines are stored in numerical order. Entering a line number followed by text adds or replaces that line in memory. Entering a line number alone with no text removes that line.
+
+### Command Syntax
+
+All command keywords may be abbreviated to their first letter (e.g., `t` for `type`, `d` for `do`, `w` for `write`). Multiple commands on a single line are separated by semicolons (`;`).
+
+| Command | Syntax | Description |
+| --- | --- | --- |
+| **`ask`** | `ask (["prompt"][,][v][,])...` | Prompts for interactive numeric value assignment to variable(s). Subscripted variables (`v(i)`) are supported. |
+| **`comment`** | `comment ...` | Ignores the remainder of the line. |
+| **`do`** | `do all`<br>`do LGRP`<br>`do LNUM` | Subroutine call:<br>• `do all`: Executes all groups in order as a subroutine.<br>• `do LGRP`: Executes all lines in the specified group and returns.<br>• `do LNUM`: Executes only the specified line and returns. |
+| **`erase`** | `erase`<br>`erase all`<br>`erase LGRP`<br>`erase LNUM` | Clears variables or program text:<br>• `erase`: Clears all variables from memory.<br>• `erase all`: Erases the entire program.<br>• `erase LGRP`: Erases all lines in the group.<br>• `erase LNUM`: Erases the specified line. |
+| **`for`** | `for v=start,limit; CMD`<br>`for v=start,limit,step; CMD` | Loop iteration. Executes `CMD` while varying `v` from `start` to `limit` (default step is 1.0). Subscripted loop variables are supported. |
+| **`goto`** | `goto LNUM`<br>`goto` | Transfers execution:<br>• `goto LNUM`: Jumps to the specified line.<br>• `goto`: Jumps to the beginning of the program. |
+| **`if`** | `if (expr) L_NEG ; CMD`<br>`if (expr) L_NEG, L_ZERO ; CMD`<br>`if (expr) L_NEG, L_ZERO, L_POS` | Conditional branching based on expression evaluation:<br>• 1 target: Jumps to `L_NEG` if `< 0`; otherwise executes `CMD`.<br>• 2 targets: Jumps to `L_NEG` if `< 0`, `L_ZERO` if `== 0`; otherwise executes `CMD`.<br>• 3 targets: Jumps to `L_NEG` if `< 0`, `L_ZERO` if `== 0`, `L_POS` if `> 0`. |
+| **`library`** | `library call <FILE>`<br>`library save <FILE>`<br>`library delete <FILE>`<br>`library list [<DIR>]` | File and library management:<br>• `call`: Loads program lines from `<FILE>`.<br>• `save`: Saves the current program to `<FILE>`.<br>• `delete`: Deletes `<FILE>`.<br>• `list`: Lists directory contents. |
+| **`quit`** | `quit` | Exits to the operating system when called at top level, or stops execution. |
+| **`return`** | `return` | Returns early from a subroutine (`do`). |
+| **`set`** | `set v = expr` | Evaluates `expr` and assigns the result to variable `v`. Subscripted variables (`v(i)`) are supported. |
+| **`type`** | `type item[, item]...` | Outputs text and expressions. Items can be:<br>• An arithmetic expression.<br>• `"%IW.FW"`: Sets integer width (`IW`) and fraction precision (`FW`).<br>• `"%"`: Restores exponential notation.<br>• `"string"`: Prints literal text.<br>• `!`: Prints a newline.<br>• `#`: Prints a carriage return. |
+| **`write`** | `write`<br>`write LGRP`<br>`write LNUM` | Lists program source code:<br>• `write`: Lists the entire program.<br>• `write LGRP`: Lists all lines in `LGRP`.<br>• `write LNUM`: Lists line `LNUM`. |
+
+### Built-in Functions
+
+FOCAL includes standard mathematical functions:
+
+| Function | Description |
+| --- | --- |
+| `fsin(x)` | Sine of $x$ (radians) |
+| `fcos(x)` | Cosine of $x$ (radians) |
+| `fatn(x)` | Arctangent of $x$ |
+| `fexp(x)` | Exponential $e^x$ |
+| `flog(x)` | Natural logarithm $\ln(x)$ |
+| `fsqt(x)` | Square root $\sqrt{x}$ ($x \ge 0$) |
+| `fabs(x)` | Absolute value $\|x\|$ |
+| `fsgn(x)` | Sign of $x$ (`-1.0` if $x < 0$, `1.0` if $x \ge 0$) |
+| `fitr(x)` | Integer part / floor of $x$ |
+| `fran()` | Pseudo-random number in $[0.0, 1.0)$ |
+
+### Expression Grammar
+
+Enclosures `()`, `[]`, and `<>` are interchangeable for grouping expressions.
+
+```text
+EXPR     ::= [ SIGN ] PRIMARY { ADDOP PRIMARY }
+ADDOP    ::= '+' | '-'
+PRIMARY  ::= TERM { MULOP TERM }
+MULOP    ::= '*' | '/' | '^'
+TERM     ::= '(' EXPR ')' | '[' EXPR ']' | '<' EXPR '>'
+           | NUMBER
+           | VARIABLE [ '(' EXPR ')' ]
+           | BUILTIN '(' EXPR ')'
+NUMBER   ::= MANTISSA [ 'e' SIGNED ]
+MANTISSA ::= INTEGER | INTEGER '.' | '.' INTEGER | INTEGER '.' INTEGER
+SIGNED   ::= [ SIGN ] INTEGER
+SIGN     ::= '+' | '-'
+INTEGER  ::= DIGIT { DIGIT }
+VARIABLE ::= ALPHA { ALPHA | DIGIT }
+```
+
+## Sample Programs
+
+- **`queens.foc`**: Solves the Eight Queens chess problem.
+- **`sieve.foc`**: Sieve of Eratosthenes prime number benchmark.
+
+## Credits and Copyright
+
+- **Dave Conroy** (1981) — Original author (released freely without explicit copyright restrictions).
+- **Akira KIDA** (1995) — ANSI C cleanup, symbol hash table, nested `for` stack fixes, and placed all modifications into the **Public Domain**.

@@ -146,7 +146,7 @@ term()
 struct	sym *
 lookup(id, type, subs)
 char *id;
-type;
+int	type;
 int	subs;
 {
 	struct sym *sp;

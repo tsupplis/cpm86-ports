@@ -1,47 +1,21 @@
 CC = aztec43_acc
-CFLAGS= 
+LD = aztec43_acc
+CFLAGS = -target=cpm86 -I. -squeeze
+LDFLAGS = -target=cpm86 -lm
 
-OBJECTS	= \
-	focal0.o \
-	focal1.o \
-	focal2.o \
-	focal3.o
+OBJS = focal0.o focal1.o focal2.o focal3.o
 
-SHAR	= \
-	README \
-	INSTALL \
-	Makefile \
-	makefile.dos \
-	focal.doc \
-	focal.h \
-	proto.h \
-	focal0.c \
-	focal1.c \
-	focal2.c \
-	focal3.c \
-	sieve.foc \
-	queens.foc
+.PHONY = all clean
 
-all:	focal
+all: focal.cmd
 
-$(OBJECTS) : focal.h proto.h
+$(OBJS): focal.h proto.h
 
-focal:	$(OBJECTS)
-	$(CC) $(CFLAGS) -o focal $(OBJECTS) -lm
+focal.cmd: $(OBJS)
+	$(LD) -o $@ $(OBJS) $(LDFLAGS)
 
-shar:
-	shar -s SDI00379@niftyserve.or.jp -c -v -x -w -n Focal -a $(SHAR) > focal.shar
-
-tar:
-	tar cvof focal.tar $(SHAR)
-
-targz:	tar
-	gzip focal.tar
+%.o: %.c
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
-	rm -f *~ *.o core a.out
-
-clobber: clean
-	rm -f focal
-	rm -f focal.shar
-	rm -f focal.tar focal.tar.gz
+	rm -f *.o *.com *.cmd *.lib
