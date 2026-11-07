@@ -7,7 +7,7 @@ DOS_LDFLAGS = -target=dos1 -lm
 OBJS = focal0.o focal1.o focal2.o focal3.o
 CMDS = focal.cmd focal.com
 
-.PHONY = all clean
+.PHONY = all test clean
 
 all: $(CMDS)
 
@@ -21,6 +21,9 @@ focal.com: $(OBJS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<
+
+test: $(CMDS)
+	sh test.sh
 
 clean:
 	rm -f *.o *.com *.cmd *.lib
