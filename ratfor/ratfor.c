@@ -223,7 +223,7 @@ int lex(char *lexstr);
 int look(const char *name,char *defn);
 void otherc(const char *lexstr);
 void outasis(FILE *fd);
-void outch(char c);
+void outch(int c);
 void outcmnt(FILE *fd);
 void outcon(int n);
 void outdon(void);
@@ -234,7 +234,7 @@ void outstr(const char *str);
 void outtab(void);
 void parse(void);
 void pbstr(const char *string);
-void putbak(char c);
+void putbak(int c);
 int relate(char *token, FILE *fd);
 void repcod(int *lab);
 void retcod(void);
@@ -246,7 +246,7 @@ void swend(int lab);
 void swvar (int lab);
 void synerr(const char *msg);
 int type(signed char c);
-void unstak(int *sp, const int *lextyp, const int *labval, char token);
+void unstak(int *sp, const int *lextyp, const int *labval, int token);
 void untils(int lab, int token);
 void whilec(int *lab);
 void whiles(int lab);
@@ -997,7 +997,7 @@ void pbstr(const char *string)
  * putbak - push char back onto input
  *
  */
-void putbak(char c)
+void putbak(int c)
 {
 	bp++;
 	if (bp > BUFSIZE)
@@ -1388,7 +1388,7 @@ void otherc(const char *lexstr)
  * outch - put one char into output buffer
  *
  */
-void outch(char c)
+void outch(int c)
 {
 	int i;
 
@@ -1819,7 +1819,7 @@ void strdcl(void)
  * unstak - unstack at end of statement
  *
  */
-void unstak(int *sp, const int *lextyp, const int *labval, char token)
+void unstak(int *sp, const int *lextyp, const int *labval, int token)
 {
 	int tp;
 
