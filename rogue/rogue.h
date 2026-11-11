@@ -467,7 +467,6 @@ extern char score_only;
 extern char see_invisible;
 extern char sustain_strength;
 extern char trap_door;
-extern char wizard;
 extern char *byebye_string;
 extern char *curse_message;
 extern char *error_file;
@@ -667,7 +666,6 @@ int is_passable(int row, int col);
 int gr_room(void);
 int party_objects(int rn);
 int pack_count(object *new_obj);
-int r_index(char *str, int ch, boolean last);
 int get_input_line(char *prompt, char *insert, char *buf, char *if_cancelled,
                    boolean add_blank, boolean do_echo);
 int drop_check(void);
@@ -678,7 +676,6 @@ int md_link_count(char *fname);
 int gmc(object *monster);
 
 long xxx(boolean st);
-long lget_number(char *s);
 
 boolean is_direction(int c, int *d);
 boolean mon_sees(object *monster, int row, int col);

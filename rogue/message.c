@@ -317,27 +317,3 @@ is_digit(ch)
 {
 	return((ch >= '0') && (ch <= '9'));
 }
-
-int
-r_index(str, ch, last)
-        char *str;
-        int ch;
-        boolean last;
-{
-	int i = 0;
-
-	if (last) {
-		for (i = strlen(str) - 1; i >= 0; i--) {
-			if (str[i] == ch) {
-				return(i);
-			}
-		}
-	} else {
-		for (i = 0; str[i]; i++) {
-			if (str[i] == ch) {
-				return(i);
-			}
-		}
-	}
-	return(-1);
-}

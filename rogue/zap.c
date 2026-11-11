@@ -9,7 +9,6 @@
 #include <string.h>
 #include "rogue.h"
 
-char wizard = 0;
 
 static void
 wdrain_life(monster)

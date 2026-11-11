@@ -444,9 +444,6 @@ get_desc(obj, desc)
 	}
 	id_table = get_id_table(obj);
 
-	if (wizard) {
-		goto ID;
-	}
 	if (obj->what_is & (WEAPON | ARMOR | WAND | RING)) {
 		goto CHECK;
 	}
@@ -510,7 +507,7 @@ ID:		switch(obj->what_is) {
 			(void) strcat(desc, id_table[obj->which_kind].real);
 			break;
 		case RING:
-			if (wizard || obj->identified) {
+			if (obj->identified) {
 				if ((obj->which_kind == DEXTERITY) ||
 					(obj->which_kind == ADD_STRENGTH)) {
 					sprintf(more_info, "%s%d ", ((obj->class > 0) ? "+" : ""),
@@ -524,7 +521,7 @@ ID:		switch(obj->what_is) {
 		case WAND:
 			(void) strcat(desc, item_name);
 			(void) strcat(desc, id_table[obj->which_kind].real);
-			if (wizard || obj->identified) {
+			if (obj->identified) {
 				sprintf(more_info, "[%d]", obj->class);
 				(void) strcat(desc, more_info);
 			}

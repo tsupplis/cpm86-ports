@@ -30,9 +30,6 @@ mon_hit(monster)
 		hit_chance = monster->m_hit_chance;
 		hit_chance -= (((2 * rogue.exp) + (2 * ring_exp)) - r_rings);
 	}
-	if (wizard) {
-		hit_chance /= 2;
-	}
 	if (!fight_monster) {
 		interrupted = 1;
 	}
@@ -62,9 +59,6 @@ mon_hit(monster)
 	} else {
 		damage = monster->stationary_damage++;
 	}
-	if (wizard) {
-		damage /= 3;
-	}
 	if (damage > 0) {
 		rogue_damage(damage, monster, 0);
 	}
@@ -86,9 +80,6 @@ rogue_hit(monster, force_hit)
 		}
 		hit_chance = force_hit ? 100 : get_hit_chance(rogue.weapon);
 
-		if (wizard) {
-			hit_chance *= 2;
-		}
 		if (!rand_percent(hit_chance)) {
 			if (!fight_monster) {
 				(void) strcpy(hit_message, "you miss  ");
@@ -96,9 +87,6 @@ rogue_hit(monster, force_hit)
 			goto RET;
 		}
 		damage = get_weapon_damage(rogue.weapon);
-		if (wizard) {
-			damage *= 3;
-		}
 		if (con_mon) {
 			s_con_mon(monster);
 		}
@@ -182,20 +170,6 @@ get_number(s)
 {
 	register int i = 0;
 	register int total = 0;
-
-	while ((s[i] >= '0') && (s[i] <= '9')) {
-		total = (10 * total) + (s[i] - '0');
-		i++;
-	}
-	return(total);
-}
-
-long
-lget_number(s)
-        char *s;
-{
-	int i = 0;
-	long total = 0;
 
 	while ((s[i] >= '0') && (s[i] <= '9')) {
 		total = (10 * total) + (s[i] - '0');

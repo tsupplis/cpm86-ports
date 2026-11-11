@@ -209,7 +209,6 @@ save_into_file(sfile)
 	r_write(fp, (char *) &haste_self, sizeof(haste_self));
 	r_write(fp, (char *) &see_invisible, sizeof(see_invisible));
 	r_write(fp, (char *) &detect_monster, sizeof(detect_monster));
-	r_write(fp, (char *) &wizard, sizeof(wizard));
 	r_write(fp, (char *) &score_only, sizeof(score_only));
 	r_write(fp, (char *) &m_moves, sizeof(m_moves));
 	md_gct(&rt_buf);
@@ -351,7 +350,6 @@ restore(fname)
 	r_read(fp, (char *) &haste_self, sizeof(haste_self));
 	r_read(fp, (char *) &see_invisible, sizeof(see_invisible));
 	r_read(fp, (char *) &detect_monster, sizeof(detect_monster));
-	r_read(fp, (char *) &wizard, sizeof(wizard));
 	r_read(fp, (char *) &score_only, sizeof(score_only));
 	r_read(fp, (char *) &m_moves, sizeof(m_moves));
 	r_read(fp, (char *) &saved_time, sizeof(saved_time));
@@ -367,7 +365,7 @@ restore(fname)
 		clear();
 		clean_up("sorry, file has been touched");
 	}
-	if ((!wizard) && !md_df(fname)) {
+	if (!md_df(fname)) {
 		clean_up("cannot delete file");
 	}
 	msg_cleared = 0;

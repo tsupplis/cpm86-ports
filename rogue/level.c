@@ -746,9 +746,6 @@ put_player(nr)
 int
 drop_check()
 {
-	if (wizard) {
-		return(1);
-	}
 	if (dungeon[rogue.row][rogue.col] & STAIRS) {
 		if (levitate) {
 			message("you're floating in the air!", 0);
@@ -834,6 +831,6 @@ hp_raise()
 {
 	int hp;
 
-	hp = (wizard ? 10 : get_rand(3, 10));
+	hp = get_rand(3, 10);
 	return(hp);
 }
