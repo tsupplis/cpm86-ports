@@ -20,7 +20,7 @@ char save_is_interactive = 1;
 char ask_quit = 1;
 char no_skull = 0;
 char passgo = 0;
-char *error_file = "rogue.esave";
+char *error_file = "rogue.esv";
 char *byebye_string = "Okay, bye bye!";
 
 static void
@@ -176,7 +176,7 @@ do_opts()
 	 * to them so that the options editor has data to work with.
 	 */
 	init_str(&nick_name, login_name);
-	init_str(&save_file, "rogue.save");
+	init_str(&save_file, "rogue.sav");
 	init_str(&fruit, "slime-mold");
 }
 

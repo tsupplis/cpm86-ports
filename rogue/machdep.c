@@ -624,3 +624,164 @@ md_tstp()
 #endif
 
 #endif
+
+#ifdef __CPM86__
+/*
+ * CP/M-86 (Aztec C86): console through conio and util.lib.  There are no
+ * signals, users, links or file ids, so those routines are stubs.
+ */
+#include <stdlib.h>
+#include <string.h>
+#include "rogue.h"
+#include "util.h"
+
+void
+md_slurp()
+{
+	while (kbhit()) {
+		(void) getch();
+	}
+}
+
+void
+md_control_keybord(mode)
+	boolean mode;
+{
+}
+
+void
+md_heed_signals()
+{
+}
+
+void
+md_ignore_signals()
+{
+}
+
+int
+md_get_file_id(fname)
+	char *fname;
+{
+	FILE *fp;
+
+	if ((fp = fopen(fname, "r")) == NULL) {
+		return(-1);
+	}
+	fclose(fp);
+	return(1);		/* no inode: the same for every file */
+}
+
+int
+md_link_count(fname)
+	char *fname;
+{
+	return(1);
+}
+
+void
+md_gct(rt_buf)
+	struct rogue_time *rt_buf;
+{
+	struct sysdt dt;
+
+	if (getdatetime(&dt)) {
+		rt_buf->year = rt_buf->month = rt_buf->day = 0;
+		rt_buf->hour = rt_buf->minute = rt_buf->second = 0;
+		return;
+	}
+	rt_buf->year = dt.year;
+	rt_buf->month = dt.mon;
+	rt_buf->day = dt.day;
+	rt_buf->hour = dt.hour;
+	rt_buf->minute = dt.min;
+	rt_buf->second = dt.sec;
+}
+
+/* File stamps may be unavailable: report a date far in the past, so a
+ * saved game is never taken as "touched".
+ */
+void
+md_gfmt(fname, rt_buf)
+	char *fname;
+	struct rogue_time *rt_buf;
+{
+	rt_buf->year = rt_buf->month = rt_buf->day = 0;
+	rt_buf->hour = rt_buf->minute = rt_buf->second = 0;
+}
+
+boolean
+md_df(fname)
+	char *fname;
+{
+	return(unlink(fname) == 0);
+}
+
+char *
+md_gln()
+{
+	return("player");
+}
+
+void
+md_sleep(nsecs)
+	int nsecs;
+{
+	long end = epoch_now() + nsecs;
+
+	while (epoch_now() < end) {
+	}
+}
+
+char *
+md_getenv(name)
+	char *name;
+{
+	return(getenv(name));
+}
+
+char *
+md_malloc(n)
+	int n;
+{
+	return(malloc(n));
+}
+
+int
+md_gseed()
+{
+	long t = epoch_now();
+
+	return((int) (t ^ (t >> 16)));
+}
+
+void
+md_exit(status)
+	int status;
+{
+	exit(status);
+}
+
+void
+md_lock(l)
+	boolean l;
+{
+}
+
+void
+md_shell(shell)
+	char *shell;
+{
+}
+
+void
+md_cbreak_no_echo_nonl(on)
+	boolean on;
+{
+}
+
+void
+md_tstp()
+{
+}
+#endif

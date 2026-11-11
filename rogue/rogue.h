@@ -147,8 +147,13 @@
 
 #define GOLD_PERCENT 46
 
+#ifdef __CPM86__
+#define SCORE_FILE "rogue.scr"
+#define LOCK_FILE  "rogue.lck"
+#else
 #define SCORE_FILE "/usr/games/lib/rogue.scores"
 #define LOCK_FILE  "/usr/games/lib/rogue.lock"
+#endif
 
 #define MAX_OPT_LEN 40
 
@@ -434,6 +439,12 @@ int mvinch(int row, int col);
 #   include </usr/include/stdio.h>
 #else
 #   include <stdio.h>
+#endif
+
+#ifdef __CPM86__
+#include "conio.h"
+#undef getchar
+#define getchar() getch()	/* unbuffered, no echo */
 #endif
 
 extern char ask_quit;

@@ -150,7 +150,7 @@ save_screen()
 	char buf[DCOLS+2];
 	boolean found_non_blank;
 
-	fp = fopen("rogue.screen", "w");
+	fp = fopen("rogue.scn", "w");
 	if (fp != NULL) {
 		for (i = 0; i < DROWS; i++) {
 			found_non_blank = 0;

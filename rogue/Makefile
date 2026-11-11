@@ -1,8 +1,8 @@
 CC=aztec43_acc
 LD=aztec43_acc
 CMDINFO=pcdev_cmdinfo
-CFLAGS=-I. -squeeze -DCURSES -DANSI
-LDFLAGS=-target=cpm86 -lm
+CFLAGS=-target=cpm86 -I. -squeeze -DCURSES -DANSI
+LDFLAGS=-target=cpm86 -L. -lutil -lm
 
 all: rogue.cmd
 
@@ -15,7 +15,7 @@ OBJS=curses.o hit.o init.o invent.o level.o machdep.o main.o message.o \
 
 rogue.cmd: $(OBJS)
 	$(LD) -o $@ $(OBJS) $(LDFLAGS)
-	$(CMDINF) $@
+	$(CMDINFO) $@
 
 test: rogue.cmd
 
