@@ -44,8 +44,26 @@ may be given in either case. The archive extension defaults to `.ARC`.
 | `w` | Suppress warning messages |
 | `n` | Suppress notes and comments |
 | `o` | Overwrite existing files when extracting |
-| `g<passw>` | Encrypt or decrypt archive entries with a password (must be last) |
+| `g<passw>` | Encrypt or decrypt archive entries with a password (must be last); see [Passwords](#passwords) |
 | `q` | Squash instead of crunching: **not supported** on CP/M-86 |
+
+### Passwords
+
+The CP/M-86 CCP folds the whole command tail to upper case, so the letters of
+a password would always arrive as capitals. As in [`grep`](../grep/README.md),
+letters are therefore taken as **lower case** by default and `%` toggles the
+case for the rest of the word:
+
+| Typed | Password |
+| --- | --- |
+| `gsecret` | `secret` |
+| `g%s%ecret` | `Secret` |
+| `g%secret` | `SECRET` |
+| `g10%%` or `g10\%` | `10%` (literal `%`) |
+
+Digits and `_` keep the toggle; any other character switches it off. The same
+text must be given to extract. Passwords are not interchangeable with
+`ARC86`, whose `g` option takes no inline password.
 
 ## CP/M-86 port
 
@@ -82,8 +100,9 @@ make clean
 
 `make test` runs [`test.sh`](test.sh) under `emu2` and checks: add, list,
 integrity test, extract of all files and of a single file, wildcard add,
-delete, store-only, overwrite on extract, refusal of squash, and `marc86`
-merging. Extracted files are compared as a prefix of the original with only
+delete, store-only, overwrite on extract, refusal of squash, `marc86`
+merging, cross-extraction with `ARC86` and passwords (including the `%` case
+toggle). Extracted files are compared as a prefix of the original with only
 NUL record padding allowed after it.
 
 ## Compatibility with ARC86
@@ -124,9 +143,9 @@ Known ARC86 quirks, which this ARC does not reproduce:
 
 ### Not covered
 
-Squashed (`q`) entries, the `z` option, password-protected entries
-cross-checked between the two tools, and file stamps read from a system that
-supports them.
+Squashed (`q`) entries, the `z` option, password-protected entries (`ARC86`
+cannot take an inline password, so they cannot be cross-checked), and file
+stamps read from a system that supports them.
 
 ---
 

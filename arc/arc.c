@@ -105,6 +105,45 @@ u_char		*pinbuf, *pakbuf, *outbuf, *outend;
 static char   **lst;		/* files list */
 static int	lnum;		/* length of files list */
 
+#if	__CPM86__
+/*
+ * The CP/M-86 CCP folds the command tail to upper case, so password letters
+ * are lower case by default. '%' toggles the case of the rest of the word
+ * (letters, digits and '_'), any other character resets the toggle, and
+ * "%%" or "\%" is a literal '%'. Same convention as grep. Done in place.
+ */
+static VOID
+pwfold(s)
+	char	       *s;
+{
+	char	       *p = s;
+	int		c, up = 0;
+
+	while ((c = *s++) != '\0') {
+		if (c == '\\' && *s == '%') {
+			*p++ = *s++;
+			up = 0;
+		} else if (c == '%') {
+			if (*s == '%') {
+				*p++ = *s++;
+				up = 0;
+			} else
+				up = !up;
+		} else if (c >= 'A' && c <= 'Z')
+			*p++ = up ? c : c + ('a' - 'A');
+		else if (c >= 'a' && c <= 'z')
+			*p++ = up ? c - ('a' - 'A') : c;
+		else if ((c >= '0' && c <= '9') || c == '_')
+			*p++ = c;
+		else {
+			*p++ = c;
+			up = 0;
+		}
+	}
+	*p = '\0';
+}
+#endif
+
 int
 main(num, arg)			/* system entry point */
 	int		num;	/* number of arguments */
@@ -298,6 +337,9 @@ main(num, arg)			/* system entry point */
 
 		else if (*a == 'G') {	/* garble */
 			password = a + 1;
+#if	__CPM86__
+			pwfold(password);
+#endif
 			while (*a)
 				a++;
 			a--;
