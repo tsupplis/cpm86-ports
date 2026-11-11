@@ -26,11 +26,15 @@ check() {		# check "description" command...
 	desc=$1; shift
 	checks=$((checks+1))
 	if "$@"; then
-		:
+		echo "  ok    $desc"
 	else
-		echo "FAIL: $desc"
+		echo "  FAIL  $desc"
 		fails=$((fails+1))
 	fi
+}
+
+section() {		# section "title"
+	echo "== $1"
 }
 
 same() {		# same orig extracted: prefix match, NUL padding only
@@ -52,10 +56,13 @@ open('TEXT.TXT', 'wb').write(b'hello hello hello world\r\n' * 400)
 open('BIN.DAT', 'wb').write(bytes(range(256)) * 20)
 open('ONE.DAT', 'wb').write(b'X' * 1000)
 open('RAND.DAT', 'wb').write(bytes((i * 7919 + (i >> 3) * 31) & 255 for i in range(4096)))
+for i in range(60):
+    open('M%02d.TXT' % i, 'wb').write(b'file number %d\r\n' % i * 3)
 EOF
 mkdir orig && cp TEXT.TXT BIN.DAT ONE.DAT RAND.DAT orig/
 
 # add several files, list, test
+section "add, list, test"
 run arc86.cmd a T text.txt bin.dat one.dat rand.dat > add.log
 check "add reports files" has "Adding file" add.log
 run arc86.cmd v T > list.log
@@ -66,6 +73,7 @@ run arc86.cmd t T > test.log
 check "integrity test clean" has "No errors detected" test.log
 
 # extract everything elsewhere and compare
+section "extract and compare"
 mkdir out && cp T.ARC out/ && (cd out && run ../arc86.cmd x T > ../x.log)
 for f in TEXT.TXT BIN.DAT ONE.DAT RAND.DAT; do
 	lc=$(echo "$f" | tr 'A-Z' 'a-z')
@@ -78,6 +86,7 @@ check "extract one file" same orig/ONE.DAT out2/one.dat
 check "extract one file only" test "$(ls out2 | wc -l)" -eq 2
 
 # wildcard add
+section "wildcard add"
 mkdir w && cp orig/TEXT.TXT orig/BIN.DAT orig/ONE.DAT w/
 (cd w && run ../arc86.cmd a W '*.dat' > ../w.log; run ../arc86.cmd v W > ../wl.log)
 check "wildcard adds BIN" has "BIN.DAT" wl.log
@@ -85,6 +94,7 @@ check "wildcard adds ONE" has "ONE.DAT" wl.log
 check "wildcard skips TEXT" sh -c '! grep -q TEXT.TXT wl.log'
 
 # delete
+section "delete"
 cp T.ARC D.ARC
 run arc86.cmd d D bin.dat > d.log
 run arc86.cmd v D > dl.log
@@ -92,20 +102,32 @@ check "delete removed BIN" sh -c '! grep -q BIN.DAT dl.log'
 check "delete kept TEXT" has "TEXT.TXT" dl.log
 
 # store only
+section "store only"
 run arc86.cmd as S one.dat > s.log
 run arc86.cmd v S > sl.log
 check "store only" has "ONE.DAT *1024 *-- *0%" sl.log
 
 # overwrite extract
+section "overwrite extract"
 mkdir out3 && cp T.ARC out3/ && cp orig/ONE.DAT out3/one.dat
 (cd out3 && run ../arc86.cmd xo T one.dat > ../o.log)
 check "overwrite extract" same orig/ONE.DAT out3/one.dat
 
 # squash is refused rather than crashing
+section "squash"
 run arc86.cmd aq Q one.dat > q.log
 check "squash refused" has "CP/M-86" q.log
 
+# many files on one command line
+section "many files"
+run arc86.cmd a MANY 'm*.txt' > many.log
+run arc86.cmd t MANY > manyt.log
+check "60 files added" has "M59.TXT" many.log
+check "60 files test clean" has "No errors detected" manyt.log
+check "no memory error" sh -c '! grep -q "Not enough memory" many.log'
+
 # marc merges archives
+section "marc"
 run arc86.cmd a A1 one.dat > /dev/null
 run arc86.cmd a A2 bin.dat > /dev/null
 run marc86.cmd A1 A2 > m.log
@@ -116,6 +138,7 @@ check "marc kept ONE" has "ONE.DAT" ml.log
 # ---------------------------------------------------------------------------
 # Compatibility with the CP/M-86 ARC86 (legacy/arc86.cmd, D. J. Weatherall)
 # ---------------------------------------------------------------------------
+section "compatibility with ARC86"
 if [ $legacy = 1 ]; then
 	# archive written by ARC86, read by us
 	run legacy.cmd a L1 text.txt bin.dat one.dat > /dev/null
@@ -157,6 +180,7 @@ fi
 # are lower case by default and '%' toggles case. ARC86 cannot take an inline
 # password, so this is not cross-tested.
 # ---------------------------------------------------------------------------
+section "passwords"
 run arc86.cmd ag1234 P1 text.txt > /dev/null
 mkdir xp1 && cp P1.ARC xp1/ && (cd xp1 && run ../arc86.cmd xg1234 P1 > /dev/null)
 check "password round trip" same orig/TEXT.TXT xp1/text.txt

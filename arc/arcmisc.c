@@ -317,8 +317,12 @@ dir(filename)		/* get files, one by one */
 			root = NULL;
 		cur = root;
 	}
-	if (!cur)
+	if (!cur) {
+		if (root)	/* list used up: give the memory back */
+			dirent_free(root);
+		root = NULL;
 		return (NULL);
+	}
 	name = malloc(FNLEN);
 	for (n = 0, i = 1; i < 9 && (cur->entry[i] & 0x7f) != ' '; i++)
 		name[n++] = cur->entry[i] & 0x7f;

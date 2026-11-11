@@ -126,7 +126,7 @@ Reimer Mellin's ARCCPM ([`legacy/arc86.md`](legacy/arc86.md)).
 | --- | --- | --- |
 | `a`, `m`, `x`, `e`, `d`, `l`, `v` | Yes | Yes |
 | Options `b`, `n`, `w`, `s`, `g<passw>` | Yes | Yes |
-| `t` | Set the entry date and time (prompts) | Test archive integrity |
+| `t` | Set the entry date and time; the docs say it prompts. Under `emu2` no prompt appeared and piped input was ignored (entries got the clock time) | Test archive integrity |
 | `z` (extended BIOS date, DEC Rainbow) | Yes | Not accepted |
 | `u`, `f`, `p`, `c`, `o` | No | Yes |
 | Number of files on one `a` command | In testing only the first three names were added | No limit |
