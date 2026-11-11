@@ -76,16 +76,16 @@ char *argv[];
 	char	*filename = NULL;
 
 #ifdef FUNCTIONS
-	builtin("fsin", fsin);
-	builtin("fcos", fcos);
-	builtin("fexp", fexp);
-	builtin("flog", flog);
-	builtin("fatn", fatn);
-	builtin("fsqt", fsqt);
-	builtin("fabs", fabt);
-	builtin("fsgn", fsgn);
-	builtin("fitr", fitr);
-	builtin("fran", fran);
+	builtin("fsin", (double (*)())fsin);
+	builtin("fcos", (double (*)())fcos);
+	builtin("fexp", (double (*)())fexp);
+	builtin("flog", (double (*)())flog);
+	builtin("fatn", (double (*)())fatn);
+	builtin("fsqt", (double (*)())fsqt);
+	builtin("fabs", (double (*)())fabt);
+	builtin("fsgn", (double (*)())fsgn);
+	builtin("fitr", (double (*)())fitr);
+	builtin("fran", (double (*)())fran);
 #endif
 
 	for (i = 1; i < argc; ++i) {
