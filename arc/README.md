@@ -116,9 +116,11 @@ Reimer Mellin's ARCCPM ([`legacy/arc86.md`](legacy/arc86.md)).
 
 Known ARC86 quirks, which this ARC does not reproduce:
 
-* The documented "I/O error 91" when a file is added after a shorter one
-  (adding the 6000 byte file `LONG.DAT` on its own aborted `ARC86` in testing).
-* A list may report a bad header after such an abort.
+* The "I/O error 91" described in `legacy/arc86.md`. In testing, adding a
+  6000 byte file on its own aborted `ARC86` with that error and left an
+  empty archive.
+* `legacy/arc86.md` also says a later list may report a bad header; this was
+  not reproduced.
 
 ### Not covered
 

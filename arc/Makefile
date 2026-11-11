@@ -1,5 +1,6 @@
 CC=aztec43_acc
 LD=aztec43_acc
+CMDINFO=pcdev_cmdinfo
 CFLAGS=-target=cpm86 -I. -squeeze
 LDFLAGS=-target=cpm86 -L. -lutil
 
@@ -17,9 +18,11 @@ binaries: $(BINARIES)
 
 arc86.cmd: $(OBJS) util.lib
 	$(LD) -o $@ $(OBJS) $(LDFLAGS)
+	$(CMDINFO) $@
 
 marc86.cmd: $(MOBJS) util.lib
 	$(LD) -o $@ $(MOBJS) $(LDFLAGS)
+	$(CMDINFO) $@
 
 %.o: %.c arc.h arcs.h proto.h util.h dirent.h
 	$(CC) $(CFLAGS) -c -o $@ $<
