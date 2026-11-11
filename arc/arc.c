@@ -182,7 +182,7 @@ main(num, arg)			/* system entry point */
 		printf(" extracting\n");
 		printf("	 q   = squash instead of crunching\n");
 		printf("	 g   = Encrypt/decrypt archive entry\n");
-		printf("\nAdapted from MSDOS by Howard Chu\n");
+		/*printf("\nAdapted from MSDOS by Howard Chu\n");*/
 		/*
 		 * printf("\nPlease refer to the program documentation for");
 		 * printf(" complete instructions.\n"); 

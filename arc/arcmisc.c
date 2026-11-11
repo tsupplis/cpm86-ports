@@ -20,7 +20,8 @@
 #endif
 
 #if	__CPM86__
-#include <cpm.h>
+#include "util.h"
+#include "dirent.h"
 #endif
 
 #if	GEMDOS
@@ -297,73 +298,36 @@ char           *pattern;	/* global so that fmatch can use it */
 
 #if	__CPM86__
 /*
-	* Build the 11 character FCB name from a template; '*' fills with '?'.
-	*/
-static VOID
-tofcb(fcb, name)
-	char           *fcb, *name;
-{
-	int             i;
-	char           *p;
-
-	if ((p = rindex(name, ':')))
-		name = p + 1;
-	for (i = 0; i < 11; i++)
-		fcb[i] = ' ';
-	for (i = 0; i < 8 && *name && *name != '.'; name++)
-		if (*name == '*')
-			while (i < 8)
-				fcb[i++] = '?';
-		else
-			fcb[i++] = toupper(*name);
-	while (*name && *name != '.')
-		name++;
-	if (*name == '.')
-		name++;
-	for (i = 8; i < 11 && *name; name++)
-		if (*name == '*')
-			while (i < 11)
-				fcb[i++] = '?';
-		else
-			fcb[i++] = toupper(*name);
-}
-
-/*
-	* Get files one by one with BDOS search first (17) / next (18).  There are
-	* no directories: only the file name part of the template is used, the
-	* drive is picked up by the caller from the pathname.
-	*/
+ * Get files one by one using dirent_load() from util.lib.  There are no
+ * directories: the template may carry a drive ("B:*.DAT") and wildcards.
+ */
 char           *
 dir(filename)		/* get files, one by one */
 	char           *filename;	/* template, or NULL */
 {
-	static char     fcb[36], dmabuf[128];
-	char           *e, *name;
-	int             i, rc;
+	static dirent_t *root = NULL, *cur = NULL;
+	char           *name;
+	int             i, n;
 
 	if (filename) {		/* first call */
-		for (i = 0; i < 36; i++)
-			fcb[i] = 0;
-		if (filename[0] && filename[1] == ':')
-			fcb[0] = toupper(filename[0]) - 'A' + 1;
-		tofcb(fcb + 1, filename);
-		bdos(26, (int) dmabuf);
-		rc = bdos(17, (int) fcb) & 0xff;
-	} else {
-		bdos(26, (int) dmabuf);
-		rc = bdos(18, (int) fcb) & 0xff;
+		if (root)
+			dirent_free(root);
+		root = cur = NULL;
+		if (dirent_load(filename, &root, NULL, NULL, 0, 0))
+			root = NULL;
+		cur = root;
 	}
-	if (rc == 0xff)
+	if (!cur)
 		return (NULL);
-	e = dmabuf + (rc & 3) * 32;
 	name = malloc(FNLEN);
-	for (rc = 0, i = 1; i < 9 && (e[i] & 0x7f) != ' '; i++)
-		name[rc++] = e[i] & 0x7f;
-	if ((e[9] & 0x7f) != ' ')
-		name[rc++] = '.';
-	for (i = 9; i < 12 && (e[i] & 0x7f) != ' '; i++)
-		name[rc++] = e[i] & 0x7f;
-	name[rc] = '\0';
+	for (n = 0, i = 1; i < 9 && (cur->entry[i] & 0x7f) != ' '; i++)
+		name[n++] = cur->entry[i] & 0x7f;
+	if ((cur->entry[9] & 0x7f) != ' ')
+		name[n++] = '.';
+	for (i = 9; i < 12 && (cur->entry[i] & 0x7f) != ' '; i++)
+		name[n++] = cur->entry[i] & 0x7f;
+	name[n] = '\0';
+	cur = cur->next;
 	return (name);
 }
 #else

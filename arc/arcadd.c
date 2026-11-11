@@ -297,6 +297,9 @@ addfile(path, name, update, fresh)	/* add named file to archive */
 	strcpy(nhdr.name, name);/* save name */
 	nhdr.size = 0;		/* clear out size storage */
 	nhdr.crc = 0;		/* clear out CRC check storage */
+#if	__CPM86__
+	getstamp(path, &nhdr.date, &nhdr.time);
+#else
 #if	!_MTS
 	getstamp(f, &nhdr.date, &nhdr.time);
 #else
@@ -312,6 +315,7 @@ addfile(path, name, update, fresh)	/* add named file to archive */
 	f->_mods&=~_IC;		/* turn it off, if set... */
 	}
 	getstamp(path, &nhdr.date, &nhdr.time);
+#endif
 #endif
 
 	/* position archive to spot for new file */

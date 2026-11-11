@@ -47,11 +47,31 @@ struct	timeval {
 
 #if	__CPM86__
 #include <time.h>
+#include <cpm.h>
+#include "util.h"
 
 static long
 clocknow()			/* packed DOS date/time from the BDOS clock */
 {
 	return (long) time((time_t *) 0);
+}
+
+/*
+ * Open an FCB for name so that util.lib can read or write its stamps.
+ * Returns 0 on success.
+ */
+static int
+openfcb(name, fcb)
+	char           *name;
+	char           *fcb;
+{
+	int             i;
+
+	for (i = 0; i < 36; i++)
+		fcb[i] = 0;
+	if (fcbinit(name, fcb) < 0)
+		return (-1);
+	return ((bdos(15, (int) fcb) & 0xff) == 0xff ? -1 : 0);
 }
 #endif
 
@@ -62,7 +82,7 @@ char	*malloc();
 
 VOID
 getstamp(f, date, time)		/* get a file's date/time stamp */
-#if	!_MTS
+#if	!_MTS && !__CPM86__
 	FILE           *f;	/* file to get stamp from */
 #else
 	char           *f;	/* filename "" "" */
@@ -70,9 +90,22 @@ getstamp(f, date, time)		/* get a file's date/time stamp */
 	unsigned short   *date, *time;	/* storage for the stamp */
 {
 #if	__CPM86__
-	/* no per-file stamps: use the clock; time_t is already DOS packed */
-	long		now = clocknow();
+	/* update stamp via util.lib; any failure falls back to the clock */
+	char		fcb[36];
+	struct sysdt	dt;
+	long		now;
 
+	if (!openfcb(f, fcb)) {
+		int	ok = !getfdatetime(fcb, &dt, 1) && dt.year >= 1980;
+
+		bdos(16, (int) fcb);
+		if (ok) {
+			*date = ((dt.year - 1980) << 9) | (dt.mon << 5) | dt.day;
+			*time = (dt.hour << 11) | (dt.min << 5) | (dt.sec >> 1);
+			return;
+		}
+	}
+	now = clocknow();	/* time_t is already DOS packed */
 	*date = (unsigned short) (now >> 16);
 	*time = (unsigned short) (now & 0xffff);
 #endif
@@ -161,6 +194,29 @@ setstamp(f, date, time)		/* set a file's date/time stamp */
 	char           *f;	/* filename to stamp */
 	unsigned short    date, time;	/* desired date, time */
 {
+#if	__CPM86__
+	static int	warned = 0;
+	char		fcb[36];
+	struct sysdt	dt;
+	int		ok = 0;
+
+	dt.year = 1980 + (date >> 9);
+	dt.mon = (date >> 5) & 15;
+	dt.day = date & 31;
+	dt.hour = time >> 11;
+	dt.min = (time >> 5) & 63;
+	dt.sec = (time & 31) << 1;
+	if (!openfcb(f, fcb)) {
+		int	rc = setfdatetime(fcb, (struct sysdt *) 0, &dt);
+
+		ok = rc >= 0 && rc < 4;
+		bdos(16, (int) fcb);
+	}
+	if (!ok && warn && !warned) {	/* failure is accepted, say it once */
+		warned = 1;
+		printf("WARNING: cannot set file date/time on this system\n");
+	}
+#endif
 #if	__MSDOS__
 	FILE	*ff;
 	struct {
