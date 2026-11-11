@@ -760,15 +760,13 @@ drop_check()
 int
 check_up()
 {
-	if (!wizard) {
-		if (!(dungeon[rogue.row][rogue.col] & STAIRS)) {
-			message("I see no way up", 0);
-			return(0);
-		}
-		if (!has_amulet()) {
-			message("your way is magically blocked", 0);
-			return(0);
-		}
+	if (!(dungeon[rogue.row][rogue.col] & STAIRS)) {
+		message("I see no way up", 0);
+		return(0);
+	}
+	if (!has_amulet()) {
+		message("your way is magically blocked", 0);
+		return(0);
 	}
 	new_level_message = "you feel a wrenching sensation in your gut";
 	if (cur_level == 1) {
