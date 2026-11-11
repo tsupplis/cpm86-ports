@@ -49,7 +49,6 @@ Ancillary goals:
 
 | Project | What | From | License |
 | --- | --- | --- | --- |
-| [arc](arc/README.md) | Create, list and extract ARC archives (`arc86.cmd`, `marc86.cmd`); archives are interchangeable with the CP/M-86 Classic freeware `ARC86.CMD` | Unix ARC 5.21 / Howard Chu, from MSDOS ARC by Thom Henderson, SEA Sources (https://github.com/ani6al/arc) | GPL |
 | [banner](banner/) | Print large-text banners | RetroBSD / Vadim Antonov, ported by Serge Vakulenko | Public domain |
 | [crc](crc/README.md) | Calculate 32-bit CRC checksums | RetroBSD / Gary S. Brown | BSD 3-Clause |
 | [dc](dc/README.md) | Arbitrary precision reverse Polish calculator | Plan 9 / Unix Research Edition | MIT |
@@ -68,6 +67,7 @@ Ancillary goals:
 
 | Project | What | From | License |
 | --- | --- | --- | --- |
+| [arc86](arc/README.md) | Create, list and extract ARC archives (`arc86.cmd`, `marc86.cmd`); archives are interchangeable with the CP/M-86 Classic freeware `ARC86.CMD` | Unix ARC 5.21 / Howard Chu, from MSDOS ARC by Thom Henderson, SEA Sources (https://github.com/ani6al/arc) | GPL |
 | [disk7](disk7/README.md) | DISK7, a full-screen file manager, translated from CP/M-80 with XLT86 | Frank Gaudé | Non-commercial (© 1984) |
 | [diskstat](diskstat/README.md) | DISKSTAT 1.2, display a disk drive's DPB, DPH and usage statistics (used / free blocks), translated from CP/M-80 with XLT86 | D. Powys-Lybbe, MML Systems (1983); 8086 conversion by John Elliott (2015) | Freeware / Abandonware |
 | [filer](filer/README.md) | VFILER, a full-screen file manager | ZCPR2 VFILER by Rich Conn, CP/M-86 translation by H. M. Van Tassell | Public domain / Abandonware |
