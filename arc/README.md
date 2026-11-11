@@ -100,7 +100,8 @@ make clean
 
 `make test` runs [`test.sh`](test.sh) under `emu2` and checks: add, list,
 integrity test, extract of all files and of a single file, wildcard add,
-delete, store-only, overwrite on extract, refusal of squash, `marc86`
+delete, store-only, overwrite on extract, refusal of squash, 60 files on one
+command line, `marc86`
 merging, cross-extraction with `ARC86` and passwords (including the `%` case
 toggle). Extracted files are compared as a prefix of the original with only
 NUL record padding allowed after it.
@@ -129,7 +130,7 @@ Reimer Mellin's ARCCPM ([`legacy/arc86.md`](legacy/arc86.md)).
 | `t` | Set the entry date and time; the docs say it prompts. Under `emu2` no prompt appeared and piped input was ignored (entries got the clock time) | Test archive integrity |
 | `z` (extended BIOS date, DEC Rainbow) | Yes | Not accepted |
 | `u`, `f`, `p`, `c`, `o` | No | Yes |
-| Number of files on one `a` command | In testing only the first three names were added | No limit |
+| Number of files on one `a` command | 60 files by wildcard were added. An earlier run with 4 or more explicit names added only the first three; not re-checked | 60 by wildcard tested; the limit above that is not measured |
 | Dates | Entered with `t`, or from the system clock | File stamp when available, else system clock |
 | Messages and listing layout | ARCCPM style | ARC 5.21 style |
 
