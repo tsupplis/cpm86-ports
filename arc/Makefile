@@ -3,7 +3,7 @@ LD=aztec43_acc
 CFLAGS=-target=cpm86 -I. -squeeze
 LDFLAGS=-target=cpm86 -L. -lutil
 
-BINARIES=arc.cmd marc.cmd
+BINARIES=arc86.cmd marc86.cmd
 
 OBJS=arc.o arcadd.o arccode.o arccvt.o arcdata.o arcdel.o arcdos.o \
 	arcext.o arcio.o arclst.o arclzw.o arcmatch.o arcpack.o arcrun.o \
@@ -15,10 +15,10 @@ all: binaries
 
 binaries: $(BINARIES)
 
-arc.cmd: $(OBJS) util.lib
+arc86.cmd: $(OBJS) util.lib
 	$(LD) -o $@ $(OBJS) $(LDFLAGS)
 
-marc.cmd: $(MOBJS) util.lib
+marc86.cmd: $(MOBJS) util.lib
 	$(LD) -o $@ $(MOBJS) $(LDFLAGS)
 
 %.o: %.c arc.h arcs.h proto.h util.h dirent.h

@@ -61,3 +61,5 @@ tinybas/wumpus.c
 tinybas/wumpus.com
 tinybas/wumpus.cmd
 !sokoban/util.lib
+!util/util.lib
+!arc/util.lib

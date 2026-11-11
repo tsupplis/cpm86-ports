@@ -96,10 +96,15 @@ getstamp(f, date, time)		/* get a file's date/time stamp */
 	long		now;
 
 	if (!openfcb(f, fcb)) {
-		int	ok = !getfdatetime(fcb, &dt, 1) && dt.year >= 1980;
+		int	ok = !getfdatetime(fcb, &dt, 1);
 
 		bdos(16, (int) fcb);
 		if (ok) {
+			if (dt.year < 1980) {	/* DOS packed dates start in 1980 */
+				dt.year = 1980;
+				dt.mon = dt.day = 1;
+				dt.hour = dt.min = dt.sec = 0;
+			}
 			*date = ((dt.year - 1980) << 9) | (dt.mon << 5) | dt.day;
 			*time = (dt.hour << 11) | (dt.min << 5) | (dt.sec >> 1);
 			return;
