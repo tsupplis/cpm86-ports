@@ -37,8 +37,7 @@ char **argv;
                 printf("No adventure just now\n");
                 exit(0);
         }
-	setuid(getuid());
-        signal(SIGINT, trapdel);
+	       signal(SIGINT, trapdel);
 
 	if (savfile != 0) {
                 if (restore(savfile)) {

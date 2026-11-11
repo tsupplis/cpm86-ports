@@ -338,14 +338,14 @@ char *infile, *outfile;                 /* datfile we were called with  */
 	clsses = 1;
 	for (;;)                        /* read data sections           */
 	{       sect=next()-'0';        /* 1st digit of section number  */
-		//printf("Section %c",sect+'0');
+		/*printf("Section %c",sect+'0');*/
 		if ((ch=next())!=LF)    /* is there a second digit?     */
 		{
 			FLUSHLF;
-			//putchar(ch);
+			/*putchar(ch);*/
 			sect=10*sect+ch-'0';
 		}
-		//putchar('\n');
+		/*putchar('\n');*/
 		switch(sect)
 		{   case 0:             /* finished reading database    */
 			fclose(inbuf);
@@ -428,9 +428,10 @@ struct text *msg;/* msg is a pointer to seek address and length of mess */
 {       register char *s,nonfirst;
 	register char *tbuf;
 	lseek(datfd, (long) msg->seekadr, 0);
-	tbuf = (char *) alloca(msg->txtlen + 1);
-	if (read(datfd,tbuf,msg->txtlen) != msg->txtlen) {
+	tbuf = (char *) malloc(msg->txtlen + 1);
+	if (tbuf == NULL || read(datfd,tbuf,msg->txtlen) != msg->txtlen) {
 	        printf("Corrupted dat file!\n");
+	        if (tbuf) free(tbuf);
 	        return;
 	}
 	s=tbuf;
@@ -449,6 +450,7 @@ struct text *msg;/* msg is a pointer to seek address and length of mess */
 			putchar(*s^*tape);
 		} while ((*s++^*tape++)!=LF);   /* better end with LF   */
 	}
+	free(tbuf);
 }
 
 void
@@ -461,9 +463,10 @@ int skip;         /* assumes object 1 doesn't have prop 1, obj 2 no prop 2 &c*/
 	int lstr;
 	lseek(datfd, (long) ptext[msg].seekadr, 0);
 	lstr = ptext[msg].txtlen;
-	tbuf = (char *) alloca(lstr + 1);
-	if (read(datfd,tbuf,lstr) != lstr) {
+	tbuf = (char *) malloc(lstr + 1);
+	if (tbuf == NULL || read(datfd,tbuf,lstr) != lstr) {
 	        printf("Corrupted dat file!\n");
+	        if (tbuf) free(tbuf);
 	        return;
         }
 	s=tbuf;
@@ -486,4 +489,5 @@ int skip;         /* assumes object 1 doesn't have prop 1, obj 2 no prop 2 &c*/
 		} while ((*s++^*tape++)!=LF);   /* better end with LF   */
 		if (skip<0) break;
 	}
+	free(tbuf);
 }
