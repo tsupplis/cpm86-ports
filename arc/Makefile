@@ -1,7 +1,7 @@
 CC=aztec43_acc
 LD=aztec43_acc
 CFLAGS=-target=cpm86 -I. -squeeze
-LDFLAGS=-target=cpm86
+LDFLAGS=-target=cpm86 -L. -lutil
 
 BINARIES=arc.cmd marc.cmd
 
@@ -15,13 +15,13 @@ all: binaries
 
 binaries: $(BINARIES)
 
-arc.cmd: $(OBJS)
-	$(LD) $(LDFLAGS) -o $@ $(OBJS)
+arc.cmd: $(OBJS) util.lib
+	$(LD) -o $@ $(OBJS) $(LDFLAGS)
 
-marc.cmd: $(MOBJS)
-	$(LD) $(LDFLAGS) -o $@ $(MOBJS)
+marc.cmd: $(MOBJS) util.lib
+	$(LD) -o $@ $(MOBJS) $(LDFLAGS)
 
-%.o: %.c arc.h arcs.h proto.h
+%.o: %.c arc.h arcs.h proto.h util.h dirent.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 test: binaries
