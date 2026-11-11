@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+import sys
+import struct
+import os
+
+def dump_ovr(path):
+    if not os.path.exists(path):
+        print(f"Error: {path} not found", file=sys.stderr)
+        return False
+    size = os.path.getsize(path)
+    with open(path, "rb") as f:
+        data = f.read(14)
+    if len(data) < 14:
+        print(f"Error: {path} is too small ({len(data)} bytes, expected >= 14)", file=sys.stderr)
+        return False
+    magic, corg, csize, dorg, dsize, bss, entry = struct.unpack("<HHHHHHH", data)
+    valid_magic = (magic == 0x00F2)
+    print(f"File: {path} ({size} bytes)")
+    print(f"  Magic:     0x{magic:04X} {'(OK: 0x00F2)' if valid_magic else '(INVALID)'}")
+    print(f"  Code Org:  0x{corg:04X} ({corg:5d})   Code Size: 0x{csize:04X} ({csize:5d} bytes)")
+    print(f"  Data Org:  0x{dorg:04X} ({dorg:5d})   Data Size: 0x{dsize:04X} ({dsize:5d} bytes)")
+    print(f"  BSS Size:  0x{bss:04X} ({bss:5d})   Entry:     0x{entry:04X} ({entry:5d})")
+    print(f"  Total In-Memory: Code={csize} Data={dsize+bss} Total={csize+dsize+bss} bytes")
+    return True
+
+def main():
+    if len(sys.argv) < 2:
+        print(f"Usage: {sys.argv[0]} <file.ovr> [file2.ovr ...]", file=sys.stderr)
+        sys.exit(1)
+    for path in sys.argv[1:]:
+        dump_ovr(path)
+
+if __name__ == "__main__":
+    main()

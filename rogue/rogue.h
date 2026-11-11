@@ -442,7 +442,8 @@ int mvinch(int row, int col);
 #endif
 
 #ifdef __CPM86__
-#include "conio.h"
+int getch(void);
+int kbhit(void);
 #undef getchar
 #define getchar() getch()	/* unbuffered, no echo */
 #endif

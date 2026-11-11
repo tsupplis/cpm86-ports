@@ -1,8 +1,8 @@
 CC=aztec43_acc
 LD=aztec43_acc
 CMDINFO=pcdev_cmdinfo
-CFLAGS=-Osize -target=cpm86 -I. -squeeze -DCURSES -DANSI
-LDFLAGS=-target=cpm86 -L. -lutil
+CFLAGS=-Osize -target=cpm86 -I. -DCURSES -DANSI
+LDFLAGS=-v -target=cpm86 -L. -lutil
 ROOT_OVR_FLAGS=-overlay-root=1000,400
 
 all: rogue.cmd init.ovr save.ovr score.ovr
@@ -14,17 +14,17 @@ OBJS=fmt.o curses.o hit.o init.o invent.o level.o machdep.o main.o message.o \
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-rogue.cmd: $(OBJS)
+rogue.cmd rogue.rsm: $(OBJS)
 	$(LD) $(ROOT_OVR_FLAGS) -o $@ $(OBJS) $(LDFLAGS)
 	$(CMDINFO) $@
 
-init.ovr: initovr.o rogue.cmd
+init.ovr: initovr.o rogue.rsm
 	$(LD) -target=cpm86 -overlay=rogue.rsm $< -o $@
 
-save.ovr: saveovr.o rogue.cmd
+save.ovr: saveovr.o rogue.rsm
 	$(LD) -target=cpm86 -overlay=rogue.rsm $< -o $@
 
-score.ovr: scoreovr.o rogue.cmd
+score.ovr: scoreovr.o rogue.rsm
 	$(LD) -target=cpm86 -overlay=rogue.rsm $< -o $@
 
 test: rogue.cmd

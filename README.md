@@ -86,6 +86,7 @@ Ancillary goals:
 | --- | --- | --- | --- |
 | [advent](advent/README.md) | Colossal Cave Adventure, the classic text exploration game | RetroBSD / DiscoBSD; C re-write by Jim Gillogly (1977) of the Crowther and Woods original | BSD 3-Clause |
 | [life](life/README.md) | Conway's Game of Life for VT52 terminals, 20×60 grid | Kevin Boone, May 2021 | Public domain |
+| [rogue](rogue/README.md) | Rogue 5.4, the classic dungeon exploration adventure | RetroBSD / DiscoBSD / Tim Stoehr | BSD 3-Clause |
 | [sokoban](sokoban/README.md) | Sokoban puzzle game for VT52 terminals | CP/M-80 C sources | Freeware / Copyright |
 | [trek](trek/README.md) | Star Trek, the classic 1970s text-mode strategy game: hunt down the Klingon fleet before the stardate deadline (C port of the BASIC original) | Classic Star Trek BASIC game | Public domain / Abandonware |
 
