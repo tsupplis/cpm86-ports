@@ -768,6 +768,14 @@ md_lock(l)
 {
 }
 
+int
+is_vowel(ch)
+	int ch;
+{
+	return((ch == 'a') || (ch == 'e') || (ch == 'i') || (ch == 'o') ||
+		(ch == 'u'));
+}
+
 void
 md_shell(shell)
 	char *shell;

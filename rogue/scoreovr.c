@@ -1,0 +1,291 @@
+/*
+ * This source herein may be modified and/or distributed by anybody who
+ * so desires, with the following restrictions:
+ *    1.)  No portion of this notice shall be removed.
+ *    2.)  Credit shall not be taken for the creation of this source.
+ *    3.)  This code is not to be traded, sold, or used for personal
+ *         gain or profit.
+ */
+#include <string.h>
+#include "rogue.h"
+
+static void
+center(row, buf)
+        int row;
+        char *buf;
+{
+	int margin;
+
+	margin = ((DCOLS - strlen(buf)) / 2);
+	mvaddstr(row, margin, buf);
+}
+
+static int
+get_value(obj)
+        object *obj;
+{
+	int wc;
+	int val = 0;
+
+	wc = obj->which_kind;
+
+	switch(obj->what_is) {
+	case WEAPON:
+		val = id_weapons[wc].value;
+		if ((wc == ARROW) || (wc == DAGGER) || (wc == SHURIKEN) ||
+			(wc == DART)) {
+			val *= obj->quantity;
+		}
+		val += (obj->d_enchant * 85);
+		val += (obj->hit_enchant * 85);
+		break;
+	case ARMOR:
+		val = id_armors[wc].value;
+		val += (obj->d_enchant * 75);
+		if (obj->is_protected) {
+			val += 200;
+		}
+		break;
+	case WAND:
+		val = id_wands[wc].value * (obj->class + 1);
+		break;
+	case SCROL:
+		val = id_scrolls[wc].value * obj->quantity;
+		break;
+	case POTION:
+		val = id_potions[wc].value * obj->quantity;
+		break;
+	case AMULET:
+		val = 5000;
+		break;
+	case RING:
+		val = id_rings[wc].value * (obj->class + 1);
+		break;
+	}
+	if (val <= 0) {
+		val = 10;
+	}
+	return(val);
+}
+
+static void
+sell_pack()
+{
+	object *obj;
+	int row = 2, val;
+	char buf[DCOLS];
+
+	obj = rogue.pack.next_object;
+
+	clear();
+	mvaddstr(1, 0, "Value      Item");
+
+	while (obj) {
+		if (obj->what_is != FOOD) {
+			obj->identified = 1;
+			val = get_value(obj);
+			rogue.gold += val;
+
+			if (row < DROWS) {
+				sprintf(buf, "%5d      ", val);
+				get_desc(obj, buf+11);
+				mvaddstr(row++, 0, buf);
+			}
+		}
+		obj = obj->next_object;
+	}
+	refresh();
+	if (rogue.gold > MAX_GOLD) {
+		rogue.gold = MAX_GOLD;
+	}
+	message("", 0);
+}
+
+static void
+id_all()
+{
+	int i;
+
+	for (i = 0; i < SCROLS; i++) {
+		id_scrolls[i].id_status = IDENTIFIED;
+	}
+	for (i = 0; i < WEAPONS; i++) {
+		id_weapons[i].id_status = IDENTIFIED;
+	}
+	for (i = 0; i < ARMORS; i++) {
+		id_armors[i].id_status = IDENTIFIED;
+	}
+	for (i = 0; i < WANDS; i++) {
+		id_wands[i].id_status = IDENTIFIED;
+	}
+	for (i = 0; i < POTIONS; i++) {
+		id_potions[i].id_status = IDENTIFIED;
+	}
+}
+
+static void
+real_put_scores(monster, other)
+        object *monster;
+        int other;
+{
+	message("", 0);
+	clean_up("");
+}
+
+static void
+real_killed_by(monster, other)
+        object *monster;
+        int other;
+{
+	char buf[128];
+
+	md_ignore_signals();
+
+	if (other != QUIT) {
+		rogue.gold = ((rogue.gold * 9) / 10);
+	}
+
+	if (other) {
+		switch(other) {
+		case HYPOTHERMIA:
+			(void) strcpy(buf, "died of hypothermia");
+			break;
+		case STARVATION:
+			(void) strcpy(buf, "died of starvation");
+			break;
+		case POISON_DART:
+			(void) strcpy(buf, "killed by a dart");
+			break;
+		case QUIT:
+			(void) strcpy(buf, "quit");
+			break;
+		case KFIRE:
+			(void) strcpy(buf, "killed by fire");
+			break;
+		}
+	} else {
+		(void) strcpy(buf, "Killed by ");
+		if (is_vowel(m_names[monster->m_char - 'A'][0])) {
+			(void) strcat(buf, "an ");
+		} else {
+			(void) strcat(buf, "a ");
+		}
+		(void) strcat(buf, m_names[monster->m_char - 'A']);
+	}
+	(void) strcat(buf, " with ");
+	sprintf(buf+strlen(buf), "%ld gold", rogue.gold);
+	if ((!other) && (!no_skull)) {
+		clear();
+		mvaddstr(4, 32, "__---------__");
+		mvaddstr(5, 30, "_~             ~_");
+		mvaddstr(6, 29, "/                 \\");
+		mvaddstr(7, 28, "~                   ~");
+		mvaddstr(8, 27, "/                     \\");
+		mvaddstr(9, 27, "|    XXXX     XXXX    |");
+		mvaddstr(10, 27, "|    XXXX     XXXX    |");
+		mvaddstr(11, 27, "|    XXX       XXX    |");
+		mvaddstr(12, 28, "\\         @         /");
+		mvaddstr(13, 29, "--\\     @@@     /--");
+		mvaddstr(14, 30, "| |    @@@    | |");
+		mvaddstr(15, 30, "| |           | |");
+		mvaddstr(16, 30, "| vvVvvvvvvvVvv |");
+		mvaddstr(17, 30, "|  ^^^^^^^^^^^  |");
+		mvaddstr(18, 31, "\\_           _/");
+		mvaddstr(19, 33, "~---------~");
+		center(21, nick_name);
+		center(22, buf);
+	} else {
+		message(buf, 0);
+	}
+	message("", 0);
+	real_put_scores(monster, other);
+}
+
+static void
+real_win()
+{
+	unwield(rogue.weapon);		/* disarm and relax */
+	unwear(rogue.armor);
+	un_put_on(rogue.left_ring);
+	un_put_on(rogue.right_ring);
+
+	clear();
+	mvaddstr(10, 11, "@   @  @@@   @   @      @  @  @   @@@   @   @   @");
+	mvaddstr(11, 11, " @ @  @   @  @   @      @  @  @  @   @  @@  @   @");
+	mvaddstr(12, 11, "  @   @   @  @   @      @  @  @  @   @  @ @ @   @");
+	mvaddstr(13, 11, "  @   @   @  @   @      @  @  @  @   @  @  @@");
+	mvaddstr(14, 11, "  @    @@@    @@@        @@ @@    @@@   @   @   @");
+	mvaddstr(17, 11, "Congratulations,  you have  been admitted  to  the");
+	mvaddstr(18, 11, "Fighters' Guild.   You return home,  sell all your");
+	mvaddstr(19, 11, "treasures at great profit and retire into comfort.");
+	message("", 0);
+	message("", 0);
+	id_all();
+	sell_pack();
+	real_put_scores((object *) 0, WIN);
+}
+
+static void
+real_quit(from_intrpt)
+        boolean from_intrpt;
+{
+	char buf[128];
+	int i, orow = 0, ocol = 0;
+	boolean mc = 0;
+
+	md_ignore_signals();
+
+	if (from_intrpt) {
+		orow = rogue.row;
+		ocol = rogue.col;
+
+		mc = msg_cleared;
+
+		for (i = 0; i < DCOLS; i++) {
+			buf[i] = mvinch(0, i);
+		}
+	}
+	check_message();
+	message("really quit?", 1);
+	if (rgetchar() != 'y') {
+		md_heed_signals();
+		check_message();
+		if (from_intrpt) {
+			for (i = 0; i < DCOLS; i++) {
+				mvaddch(0, i, buf[i]);
+			}
+			msg_cleared = mc;
+			move(orow, ocol);
+			refresh();
+		}
+		return;
+	}
+	if (from_intrpt) {
+		clean_up(byebye_string);
+	}
+	check_message();
+	real_killed_by((object *) 0, QUIT);
+}
+
+int
+ovmain(op, arg1, arg2)
+        int op;
+        int arg1;
+        int arg2;
+{
+	switch (op) {
+	case 1:
+		real_killed_by((object *) arg1, arg2);
+		break;
+	case 2:
+		real_win();
+		break;
+	case 3:
+		real_quit((boolean) arg1);
+		break;
+	case 4:
+		real_put_scores((object *) arg1, arg2);
+		break;
+	}
+	return 0;
+}

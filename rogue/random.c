@@ -91,3 +91,35 @@ coin_toss()
 {
 	return(((rrandom() & 01) ? 1 : 0));
 }
+
+long
+xxx(st)
+        boolean st;
+{
+	static long f, s;
+	long r;
+
+	if (st) {
+		f = 37;
+		s = 7;
+		return(0L);
+	}
+	r = ((f * s) + 9337) % 8887;
+	f = s;
+	s = r;
+	return(r);
+}
+
+void
+xxxx(buf, n)
+        char *buf;
+        int n;
+{
+	int i;
+	unsigned char c;
+
+	for (i = 0; i < n; i++) {
+		c = (unsigned char) xxx(0);
+		buf[i] ^= c;
+	}
+}

@@ -7,6 +7,10 @@
  *         gain or profit.
  */
 #include "rogue.h"
+#include <stdio.h>
+
+void * w=fwrite;
+void * r=fread;
 
 int
 main(argc, argv)
