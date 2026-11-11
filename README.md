@@ -49,7 +49,7 @@ Ancillary goals:
 
 | Project | What | From | License |
 | --- | --- | --- | --- |
-| [arc](arc/README.md) | Create, list and extract ARC archives (`arc86.cmd`, `marc86.cmd`); archives are interchangeable with the CP/M-86 `ARC86.CMD` | Unix ARC 5.21 / Howard Chu, from MSDOS ARC by Thom Henderson, SEA Sources (https://github.com/ani6al/arc) | GPL |
+| [arc](arc/README.md) | Create, list and extract ARC archives (`arc86.cmd`, `marc86.cmd`); archives are interchangeable with the CP/M-86 Classic freeware `ARC86.CMD` | Unix ARC 5.21 / Howard Chu, from MSDOS ARC by Thom Henderson, SEA Sources (https://github.com/ani6al/arc) | GPL |
 | [banner](banner/) | Print large-text banners | RetroBSD / Vadim Antonov, ported by Serge Vakulenko | Public domain |
 | [crc](crc/README.md) | Calculate 32-bit CRC checksums | RetroBSD / Gary S. Brown | BSD 3-Clause |
 | [dc](dc/README.md) | Arbitrary precision reverse Polish calculator | Plan 9 / Unix Research Edition | MIT |
