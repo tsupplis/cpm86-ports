@@ -36,6 +36,8 @@ ports.zip: clean all
 	cp tinybas/*.bas tmp-dist; \
 	cp sokoban/*.hlp tmp-dist; \
 	cp sokoban/*.dat tmp-dist; \
+    cp advent/advent.msg tmp-dist; \
+    cp advent/advent.dat tmp-dist; \
 	cp xlisp/*.lsp tmp-dist; \
 	cp ndbm/*.h tmp-dist; \
 	cp ndbm/*.lib tmp-dist; \

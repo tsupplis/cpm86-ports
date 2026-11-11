@@ -23,7 +23,7 @@ char **argv;
 	if (argc > 1)
                 savfile = argv[1];
 
-        if (savfile != 0 && strcmp(savfile, DATFILE) == 0) {
+        if (savfile != 0 && stricmp(savfile, DATFILE) == 0) {	/* CCP upcases */
                 /* read data from orig. file and write to datfile */
                 rdata(DATFILE, "advent.dat");
                 linkdata();
