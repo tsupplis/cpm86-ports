@@ -293,6 +293,7 @@ addfile(path, name, update, fresh)	/* add named file to archive */
 		}
 	}
 #endif
+	setmem(nhdr.name, FNLEN, 0);
 	strcpy(nhdr.name, name);/* save name */
 	nhdr.size = 0;		/* clear out size storage */
 	nhdr.crc = 0;		/* clear out CRC check storage */

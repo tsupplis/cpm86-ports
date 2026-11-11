@@ -1,0 +1,374 @@
+#--------------------------------CUT HERE-------------------------------------
+#! /bin/sh
+#
+# This is a shell archive.  Save this into a file, edit it
+# and delete all lines above this comment.  Then give this
+# file to sh by executing the command "sh file".  The files
+# will be extracted into the current directory owned by
+# you with default permissions.
+#
+# The files contained herein are:
+#
+# -rw-r--r--  1 hyc           539 Jul 22 16:30 README
+# -rw-r--r--  1 hyc           787 Jul 22 15:10 getwd.c
+# -rw-r--r--  1 hyc           280 Jul 22 16:14 rename.c
+# -rw-r--r--  1 hyc          2353 Jul 22 15:55 scandir.3
+# -rw-r--r--  1 hyc          1875 Jul 22 15:55 scandir.c
+# -rw-r--r--  1 hyc           397 Jul 22 15:10 utimes.c
+#
+echo 'x - README'
+if test -f README; then echo 'shar: not overwriting README'; else
+sed 's/^X//' << '________This_Is_The_END________' > README
+XThe enclosed files should be sufficient for bringing up ARC on a Sys V R3
+Xsystem. As Jon mentions, Doug Gwyn's directory routines are needed for
+XSys V R2. The enclosed copy of scandir is new, as far as I can tell, and
+XI've removed the (unneeded) ftw.? files. Also added a rename() routine,
+Xcourtesy of Janet Walz. (And an addition from Rich Salz.)
+X
+X[see comp.sources.unix, volume 9, for gwyn-dir-lib...]
+X
+XThanks again to Jon Zeeff, Janet Walz, and Rich Salz for their help.
+X  -- Howard Chu
+X	hyc@umix.cc.umich.edu
+X	{uunet,rutgers}!umix!hyc
+________This_Is_The_END________
+if test `wc -c < README` -ne      539; then
+	echo 'shar: README was damaged during transit (should have been      539 bytes)'
+fi
+fi		; : end of overwriting check
+echo 'x - getwd.c'
+if test -f getwd.c; then echo 'shar: not overwriting getwd.c'; else
+sed 's/^X//' << '________This_Is_The_END________' > getwd.c
+X/*
+X * 4.2bsd getwd simulation for Sys V.3
+X */
+X
+X#include <stdio.h>
+X
+X#define SYSV3
+X
+X#define MAXWD 1024	     /* limited by 4.2 getwd(2) */
+X
+X#ifdef SYSV3
+X
+Xchar *getcwd();
+X
+Xchar *
+Xgetwd(path)
+Xchar *path;
+X{
+X    return(getcwd(path,MAXWD));
+X}
+X
+X#else
+X
+X/*
+X * 4.2bsd getwd simulation for Sys V.2
+X */
+X
+X#include <stdio.h>
+X
+X#define MAXWD 1024	     /* limited by 4.2 getwd(2) */
+X
+Xchar *
+Xgetwd(path)
+Xchar *path;
+X{
+X     char *nlp;
+X     FILE *fp;
+X     FILE *popen();
+X     char *strrchr();
+X
+X	putenv("IFS= \t\n");
+X     fp = popen("PATH=/bin:/usr/bin pwd", "r");
+X     if (fp == NULL)
+X	     return 0;
+X     if (fgets(path, MAXWD, fp) == NULL) {
+X	     (void) pclose(fp);
+X	     return 0;
+X     }
+X     if ((nlp = strrchr(path, '\n')) != NULL)
+X	     *nlp = '\0';
+X     (void) pclose(fp);
+X     return path;
+X}
+X#endif
+X
+________This_Is_The_END________
+if test `wc -c < getwd.c` -ne      787; then
+	echo 'shar: getwd.c was damaged during transit (should have been      787 bytes)'
+fi
+fi		; : end of overwriting check
+echo 'x - rename.c'
+if test -f rename.c; then echo 'shar: not overwriting rename.c'; else
+sed 's/^X//' << '________This_Is_The_END________' > rename.c
+X/*
+X * substitute for BSD/SVR3 rename() system call, from
+X * Janet Walz, walz@mimsy.umd.edu & Rich Salz, rsalz@pineapple.bbn.com
+X */
+X
+Xint rename(oldname,newname)
+Xchar *oldname,*newname;
+X{
+X	(void)unlink(newname);
+X	if(link(oldname,newname))
+X		return(-1);
+X	return(unlink(oldname));
+X}
+________This_Is_The_END________
+if test `wc -c < rename.c` -ne      280; then
+	echo 'shar: rename.c was damaged during transit (should have been      280 bytes)'
+fi
+fi		; : end of overwriting check
+echo 'x - scandir.3'
+if test -f scandir.3; then echo 'shar: not overwriting scandir.3'; else
+sed 's/^X//' << '________This_Is_The_END________' > scandir.3
+X.TH SCANDIR 3
+X.SH NAME
+Xscandir, alphasort \- scan a directory
+X.SH SYNOPSIS
+X.nf
+X.ft B
+X#include <sys/types.h>
+X#include <sys/dirent.h>
+X
+Xint
+Xscandir(name, list, selector, sorter)
+X.in +4n
+Xchar *name;
+Xstruct dirent ***list;
+Xint (*selector)();
+Xint (*sorter)();
+X.in -4n
+X
+Xint
+Xalphasort(d1, d2)
+X.in +4n
+Xstruct dirent **d1;
+Xstruct dirent **d2;
+X.in -4n
+X.ft R
+X.fi
+X.SH DESCRIPTION
+X.I Scandir
+Xreads the directory
+X.I name
+Xand builds a NULL\-terminated array of pointers to the entries found
+Xin that directory.
+XThis array is put into the location pointed to by the
+X.I list
+Xparameter.
+X.PP
+XIf the
+X.I selector
+Xparameter is non\-NULL, it is taken to be a pointer to a function called
+Xwith each entry, to determine whether or not it should be included in
+Xthe returned list.
+XIf the parameter is NULL, all entries are included.
+X.PP
+XAs an added feature, the entries can be sorted (with
+X.IR qsort (3))
+Xbefore the list is returned.
+XIf the
+X.I sorter
+Xparameter is non\-NULL, it is passed to qsort to use as the comparison
+Xfunction.
+XThe
+X.I alphasort
+Xroutine is provided to sort the array alphabetically.
+X.PP
+XThe array pointed to by
+X.I list
+Xand the items it points to are all space obtained through
+X.IR malloc (3),
+Xand their storage can be reclaimed as shown in the example below.
+X.SH "EXAMPLE"
+XHere is a small
+X.IR ls (1)\-like
+Xprogram:
+X.ne 50
+X.RS
+X.nf
+X#include <stdio.h>
+X#include <sys/types.h>
+X#include <sys/stat.h>
+X#include <sys/dir.h>
+X
+Xextern int alphasort();
+X
+Xstatic int
+Xfilesonly(e)
+X	struct dirent *e;
+X{
+X	struct stat sb;
+X
+X	return(stat(e->d_name, &sb) >= 0 && (sb.st_mode & S_IFMT) == S_IFREG);
+X}
+X
+Xmain(ac, av)
+X	int ac;
+X	char *av[];
+X{
+X	register int i;
+X	register int j;
+X	struct dirent **list;
+X
+X	if (ac != 2) {
+X		fprintf(stderr, "usage: %s dirname\n", av[0]);
+X		exit(1);
+X	}
+X	if (chdir(av[1]) < 0) {
+X		perror(av[1]);
+X		exit(1);
+X	}
+X	if ((i = scandir(".", &list, filesonly, alphasort)) < 0) {
+X		perror("Error reading directory");
+X		exit(1);
+X	}
+X	for (j = 0; j < i; j++)
+X		printf("%s\n", list[j]->d_name);
+X	for (j = 0; j < i; j++)
+X		free((char *)list[j]);
+X	free((char *)list);
+X	exit(0);
+X}
+X.fi
+X.RE
+X.SH "SEE ALSO"
+Xdirectory(3), qsort(3)
+X.SH DIAGNOSTICS
+XReturns the number of entries in the ``list,'' or \-1 if the directory
+Xcould not be opened or a memory allocation failed.
+X.SH BUGS
+XThe routine can be slightly wasteful of space.
+________This_Is_The_END________
+if test `wc -c < scandir.3` -ne     2353; then
+	echo 'shar: scandir.3 was damaged during transit (should have been     2353 bytes)'
+fi
+fi		; : end of overwriting check
+echo 'x - scandir.c'
+if test -f scandir.c; then echo 'shar: not overwriting scandir.c'; else
+sed 's/^X//' << '________This_Is_The_END________' > scandir.c
+X/*
+X**  SCANDIR
+X**  Scan a directory, collecting all (selected) items into a an array.
+X*/
+X#include <stdio.h>
+X#include <sys/types.h>
+X#include <dirent.h>
+X
+X#ifdef	RCSID
+Xstatic char RCS[] = "$Header: /cvsroot/arc/arc/Sysvarcstuf,v 1.2 2003/10/31 02:22:36 highlandsun Exp $";
+X#endif	/* RCSID */
+X
+X/* Initial guess at directory size. */
+X#define INITIAL_SIZE	20
+X
+X/* A convenient shorthand. */
+Xtypedef struct dirent	 ENTRY;
+X	    
+X#define DIRSIZ(d) (sizeof(struct dirent) + strlen(d->d_name) + 1) 
+X
+X/* Linked in later. */
+Xextern char		*malloc();
+Xextern char		*realloc();
+Xextern char		*strcpy();
+X
+X
+Xint
+Xscandir(Name, List, Selector, Sorter)
+X    char		  *Name;
+X    ENTRY		***List;
+X    int			 (*Selector)();
+X    int			 (*Sorter)();
+X{
+X    register ENTRY	 **names;
+X    register ENTRY	  *E;
+X    register DIR	  *Dp;
+X    register int	   i;
+X    register int	   size;
+X
+X    /* Get initial list space and open directory. */
+X    size = INITIAL_SIZE;
+X    if ((names = (ENTRY **)malloc(size * sizeof names[0])) == NULL
+X     || (Dp = opendir(Name)) == NULL)
+X	return(-1);
+X
+X    /* Read entries in the directory. */
+X    for (i = 0; E = readdir(Dp); )
+X	if (Selector == NULL || (*Selector)(E)) {
+X	    /* User wants them all, or he wants this one. */
+X	    if (++i >= size) {
+X		size <<= 1;
+X		names = (ENTRY **)realloc((char *)names, size * sizeof names[0]);
+X		if (names == NULL) {
+X		    closedir(Dp);
+X		    return(-1);
+X		}
+X	    }
+X
+X	    /* Copy the entry. */
+X	    if ((names[i - 1] = (ENTRY *)malloc(DIRSIZ(E))) == NULL) { 
+X		closedir(Dp);
+X		return(-1);
+X	    }
+X	    names[i - 1]->d_ino = E->d_ino;
+X	    names[i - 1]->d_reclen = E->d_reclen;
+X	 /*   names[i - 1]->d_namlen = E->d_namlen; */
+X	    (void)strcpy(names[i - 1]->d_name, E->d_name);
+X	}
+X
+X    /* Close things off. */
+X    names[i] = NULL;
+X    *List = names;
+X    closedir(Dp);
+X
+X    /* Sort? */
+X    if (i && Sorter)
+X	qsort((char *)names, i, sizeof names[0], Sorter);
+X
+X    return(i);
+X}
+________This_Is_The_END________
+if test `wc -c < scandir.c` -ne     1875; then
+	echo 'shar: scandir.c was damaged during transit (should have been     1875 bytes)'
+fi
+fi		; : end of overwriting check
+echo 'x - utimes.c'
+if test -f utimes.c; then echo 'shar: not overwriting utimes.c'; else
+sed 's/^X//' << '________This_Is_The_END________' > utimes.c
+X
+X/* bsd utimes emulation for Sys V */
+X/* by Jon Zeeff */
+X
+X#include <sys/types.h>
+X
+Xstruct utimbuf {
+X     time_t  actime;
+X     time_t  modtime;
+X};
+X
+Xstruct timeval {
+X     long    tv_sec;
+X     long    tv_usec;
+X};
+X
+Xutimes(path,tvp)
+Xchar *path;
+Xstruct timeval tvp[2];
+X{
+X
+Xstruct utimbuf times;
+X
+Xtimes.actime = (time_t) tvp[0].tv_sec;
+Xtimes.modtime = (time_t) tvp[1].tv_sec;
+X
+Xreturn utime(path,times);
+X
+X}
+________This_Is_The_END________
+if test `wc -c < utimes.c` -ne      397; then
+	echo 'shar: utimes.c was damaged during transit (should have been      397 bytes)'
+fi
+fi		; : end of overwriting check
+exit 0

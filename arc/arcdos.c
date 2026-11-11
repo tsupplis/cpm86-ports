@@ -45,6 +45,16 @@ struct	timeval {
 #include <osbind.h>
 #endif
 
+#if	__CPM86__
+#include <time.h>
+
+static long
+clocknow()			/* packed DOS date/time from the BDOS clock */
+{
+	return (long) time((time_t *) 0);
+}
+#endif
+
 #include <string.h>
 #ifndef	__STDC__
 char	*malloc();
@@ -59,6 +69,13 @@ getstamp(f, date, time)		/* get a file's date/time stamp */
 #endif
 	unsigned short   *date, *time;	/* storage for the stamp */
 {
+#if	__CPM86__
+	/* no per-file stamps: use the clock; time_t is already DOS packed */
+	long		now = clocknow();
+
+	*date = (unsigned short) (now >> 16);
+	*time = (unsigned short) (now & 0xffff);
+#endif
 #if	__MSDOS__
 	struct {
 		int             ax, bx, cx, dx, si, di, ds, es;
