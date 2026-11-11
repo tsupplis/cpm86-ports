@@ -169,20 +169,6 @@ id_trap()
 }
 
 void
-show_traps()
-{
-	int i, j;
-
-	for (i = 0; i < DROWS; i++) {
-		for (j = 0; j < DCOLS; j++) {
-			if (dungeon[i][j] & TRAP) {
-				mvaddch(i, j, '^');
-			}
-		}
-	}
-}
-
-void
 search(n, is_auto)
         int n;
         boolean is_auto;

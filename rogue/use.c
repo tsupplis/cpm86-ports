@@ -23,29 +23,31 @@ static void
 potion_heal(extra)
 	int extra;
 {
-	float ratio;
 	int add;
+	long cur, max;
 
 	rogue.hp_current += rogue.exp;
 
-	ratio = ((float)rogue.hp_current) / rogue.hp_max;
+	cur = rogue.hp_current;
+	max = rogue.hp_max;
 
-	if (ratio >= 1.00) {
+	if (cur >= max) {
 		rogue.hp_max += (extra ? 2 : 1);
 		extra_hp += (extra ? 2 : 1);
 		rogue.hp_current = rogue.hp_max;
-	} else if (ratio >= 0.90) {
+	} else if (cur * 100 >= max * 90) {
 		rogue.hp_max += (extra ? 1 : 0);
 		extra_hp += (extra ? 1 : 0);
 		rogue.hp_current = rogue.hp_max;
 	} else {
-		if (ratio < 0.33) {
-			ratio = 0.33;
+		if (cur * 100 < max * 33) {
+			add = (int) (33L * (max - cur) / 100);
+		} else {
+			add = (int) (cur * (max - cur) / max);
 		}
 		if (extra) {
-			ratio += ratio;
+			add += add;
 		}
-		add = (int) (ratio * ((float)rogue.hp_max - rogue.hp_current));
 		rogue.hp_current += add;
 		if (rogue.hp_current > rogue.hp_max) {
 			rogue.hp_current = rogue.hp_max;

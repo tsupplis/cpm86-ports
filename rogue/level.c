@@ -837,26 +837,3 @@ hp_raise()
 	hp = (wizard ? 10 : get_rand(3, 10));
 	return(hp);
 }
-
-void
-show_average_hp()
-{
-	char mbuf[80];
-	int real_average;
-	int effective_average;
-	static int init_hp[2] = {INIT_HP};
-
-	if (rogue.exp == 1) {
-		real_average = effective_average = 0.00;
-	} else {
-		real_average = 100 *
-			((rogue.hp_max - extra_hp - init_hp[0]) + less_hp) / (rogue.exp - 1);
-		effective_average = 100 * (rogue.hp_max - init_hp[0]) / (rogue.exp - 1);
-
-	}
-	sprintf(mbuf, "R-Hp: %d.%02d, E-Hp: %d.%02d (!: %d, V: %d)",
-                real_average / 100, real_average % 100,
-		effective_average / 100, effective_average % 100,
-                extra_hp, less_hp);
-	message(mbuf, 0);
-}

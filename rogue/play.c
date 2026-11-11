@@ -142,9 +142,6 @@ CH:
 			} while (ch == '\020');
 			goto CMCH;
 			break;
-		case '\027':
-			wizardize();
-			break;
 		case '>':
 			if (drop_check()) {
 				return;
@@ -226,51 +223,6 @@ CH:
 			}
 			break;
 		case ' ':
-			break;
-		case '\011':
-			if (wizard) {
-				inventory(&level_objects, ALL_OBJECTS);
-			} else {
-				message(unknown_command, 0);
-			}
-			break;
-		case '\023':
-			if (wizard) {
-				draw_magic_map();
-			} else {
-				message(unknown_command, 0);
-			}
-			break;
-		case '\024':
-			if (wizard) {
-				show_traps();
-			} else {
-				message(unknown_command, 0);
-			}
-			break;
-		case '\017':
-			if (wizard) {
-				show_objects();
-			} else {
-				message(unknown_command, 0);
-			}
-			break;
-		case '\001':
-			show_average_hp();
-			break;
-		case '\003':
-			if (wizard) {
-				c_object_for_wizard();
-			} else {
-				message(unknown_command, 0);
-			}
-			break;
-		case '\015':
-			if (wizard) {
-				show_monsters();
-			} else {
-				message(unknown_command, 0);
-			}
 			break;
 		case 'S':
 			save_game();

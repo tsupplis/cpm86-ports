@@ -18,7 +18,7 @@ mon_hit(monster)
 {
 	int damage, hit_chance;
 	char *mn;
-	float minus;
+	int minus;
 
 	if (fight_monster && (monster != fight_monster)) {
 		fight_monster = 0;
@@ -54,12 +54,11 @@ mon_hit(monster)
 	if (!(monster->m_flags & STATIONARY)) {
 		damage = get_damage(monster->m_damage, 1);
 		if (cur_level >= (AMULET_LEVEL * 2)) {
-			minus = (float) ((AMULET_LEVEL * 2) - cur_level);
+			minus = (AMULET_LEVEL * 2) - cur_level;
 		} else {
-			minus = (float) get_armor_class(rogue.armor) * 3.00;
-			minus = minus/100.00 * (float) damage;
+			minus = (int) ((long) get_armor_class(rogue.armor) * 3 * damage / 100);
 		}
-		damage -= (int) minus;
+		damage -= minus;
 	} else {
 		damage = monster->stationary_damage++;
 	}

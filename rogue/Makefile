@@ -1,8 +1,8 @@
 CC=aztec43_acc
 LD=aztec43_acc
 CMDINFO=pcdev_cmdinfo
-CFLAGS=-target=cpm86 -I. -squeeze -DCURSES -DANSI
-LDFLAGS=-target=cpm86 -L. -lutil -lm
+CFLAGS=-Osize -target=cpm86 -I. -squeeze -DCURSES -DANSI
+LDFLAGS=-target=cpm86 -L. -lutil
 
 all: rogue.cmd
 
