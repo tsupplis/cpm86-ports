@@ -388,7 +388,7 @@ setup(argc,argv) int argc; char *argv[];
 	finact();
 	if( t == MARK ){
 		fprintf( ftable, "\n# line %d \"%s\"\n", lineno, infile );
-		while( (c=getc(finput)) != EOF ) putc( c, ftable );
+		copytext(finput, ftable);
 		}
 	fclose( finput );
 	}

@@ -35,8 +35,6 @@ callopt(){
         int g=gtnm();
 		switch(g){
 
-		case '\r':
-            continue;
 		case '\n':
 			yypact[++nstate] = (--pmem) - mem;
 		case ',':
@@ -58,8 +56,6 @@ callopt(){
         int g=gtnm();
 		switch( g ){
 
-		case '\r':
-            continue;
 		case '\n':
 			yypgo[++nnonter]= pmem-mem;
 		case ',':
@@ -320,6 +316,9 @@ gtnm(){
 	val = 0;
 
 	while( (c=getc(finput)) != EOF ){
+		/* fprintf writes CR/LF on CP/M. Ignore CR before committing a
+		 * number, otherwise every line adds a spurious zero to mem. */
+		if( c == '\r' ) continue;
 		if( isdigit(c) ){
 			val = val * 10 + c - '0';
 			}

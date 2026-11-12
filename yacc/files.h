@@ -12,8 +12,7 @@
  * #define WORD32
  * #endif
  */
-	/* location of the parser text file */
-# define PARSER "yaccpar.tpl"
+	/* Parser text is embedded in the CMD EXTRA group by the build. */
 
 	/* basic size of the Yacc implementation */
 /* # define HUGE */

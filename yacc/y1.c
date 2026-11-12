@@ -1,4 +1,5 @@
 # include "dextern.h"
+# include "template.h"
 
 	/* variables used locally */
 
@@ -45,6 +46,10 @@ int pempty[NNONTERM+1];  /* vector of nonterminals nontrivially deriving e */
 
 main(argc,argv) int argc; char *argv[]; {
 
+	if( !template_init() ){
+		fprintf(stderr, "yacc: missing or invalid embedded parser template\n");
+		return 1;
+		}
 	setup(argc,argv); /* initialize and read productions */
 	tbitset = NWORDS(ntokens);
 	cpres(); /* make table of which productions yield a given nonterminal */
@@ -60,11 +65,15 @@ main(argc,argv) int argc; char *argv[]; {
 	exit(0);
 	}
 
+/* CP/M text files can end before their final 128-byte record does. */
+void copytext(FILE *source, FILE *destination){
+	int c;
+	while( (c=getc(source)) != EOF && c != 0x1a && c != 0 )
+		putc(c, destination);
+	}
+
 others(){ /* put out other arrays, copy the parsers */
 	register c, i, j;
-
-	finput = fopen( PARSER, "r" );
-	if( finput == NULL ) error( "cannot find parser %s", PARSER );
 
 	warray( "yyr1", levprd, nprod );
 
@@ -89,19 +98,19 @@ others(){ /* put out other arrays, copy the parsers */
 
 	/* copy parser text */
 
-	while( (c=getc(finput) ) != EOF ){
+	while( (c=template_getc() ) != EOF ){
 		if( c == '$' ){
-			if( (c=getc(finput)) != 'A' ) putc( '$', ftable );
+			if( (c=template_getc()) != 'A' ) putc( '$', ftable );
 			else { /* copy actions */
 				faction = fopen( ACTNAME, "r" );
 				if( faction == NULL ) error( "cannot reopen action tempfile" );
-				while( (c=getc(faction) ) != EOF ) putc( c, ftable );
+				copytext(faction, ftable);
 				fclose(faction);
 				ZAPFILE(ACTNAME);
-				c = getc(finput);
+				c = template_getc();
 				}
 			}
-		putc( c, ftable );
+		if( c != EOF ) putc( c, ftable );
 		}
 
 	fclose( ftable );

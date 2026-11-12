@@ -224,6 +224,7 @@ extern char *cstash();
 extern struct looksets *flset();
 extern char *symnam();
 extern char *writem();
+void copytext(FILE *, FILE *);
 
 	/* default settings for a number of macros */
 
