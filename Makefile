@@ -1,9 +1,9 @@
 SUBDIRS1=filer lbr fv seemem disk7 wash15 xsq uucp grep sed diff ndbm life kermit \
     crc banner tr uniq sort dc
 
-SUBDIRS2=ansi2kr tinybas xlisp vtl2 ratfor cpu diskstat sokoban edlin advent 
+SUBDIRS2=ansi2kr tinybas xlisp vtl2 ratfor diskstat sokoban edlin advent 
     
-SUBDIRS3=trek setboot expr kilo yacc focal arc rogue
+SUBDIRS3=trek setboot expr kilo yacc focal arc rogue cpu
 
 SUBDIRS=$(SUBDIRS1) $(SUBDIRS2) $(SUBDIRS3)
 all:
