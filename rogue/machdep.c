@@ -633,7 +633,45 @@ md_tstp()
 #include <stdlib.h>
 #include <string.h>
 #include "rogue.h"
-#include "util.h"
+
+#define GETCH_BUFLEN (64)
+
+static char getch_buffer[GETCH_BUFLEN];
+
+/* Non-blocking key test: BDOS 6 (direct console I/O), DL=254. */
+int
+kbhit()
+{
+	return(bdos(6, 254));
+}
+
+/* Blocking, unbuffered, no echo key read: BDOS 6, DL=255.  Keys that are
+ * already pending (e.g. arrow key escape sequences) are queued so they are
+ * returned by the following calls.
+ */
+int
+getch()
+{
+	int c, d;
+	static int s = 0;
+	static int o = 0;
+
+	if (s > 0) {
+		c = (unsigned char) getch_buffer[o];
+		s--;
+		o++;
+		o = o % GETCH_BUFLEN;
+		return(c);
+	}
+	while (!(c = bdos(6, 255))) {
+		continue;
+	}
+	while (s < GETCH_BUFLEN && (d = bdos(6, 255))) {
+		getch_buffer[(o + s) % GETCH_BUFLEN] = d;
+		s++;
+	}
+	return(c);
+}
 
 void
 md_slurp()
@@ -683,19 +721,8 @@ void
 md_gct(rt_buf)
 	struct rogue_time *rt_buf;
 {
-	struct sysdt dt;
-
-	if (getdatetime(&dt)) {
-		rt_buf->year = rt_buf->month = rt_buf->day = 0;
-		rt_buf->hour = rt_buf->minute = rt_buf->second = 0;
-		return;
-	}
-	rt_buf->year = dt.year;
-	rt_buf->month = dt.mon;
-	rt_buf->day = dt.day;
-	rt_buf->hour = dt.hour;
-	rt_buf->minute = dt.min;
-	rt_buf->second = dt.sec;
+	rt_buf->year = rt_buf->month = rt_buf->day = 0;
+	rt_buf->hour = rt_buf->minute = rt_buf->second = 0;
 }
 
 /* File stamps may be unavailable: report a date far in the past, so a
@@ -727,9 +754,10 @@ void
 md_sleep(nsecs)
 	int nsecs;
 {
-	long end = epoch_now() + nsecs;
-
-	while (epoch_now() < end) {
+	volatile long count;
+	while (nsecs-- > 0) {
+		for (count = 0; count < 20000L; count++) {
+		}
 	}
 }
 
@@ -737,7 +765,7 @@ char *
 md_getenv(name)
 	char *name;
 {
-	return(getenv(name));
+	return(0);
 }
 
 char *
@@ -750,9 +778,8 @@ md_malloc(n)
 int
 md_gseed()
 {
-	long t = epoch_now();
-
-	return((int) (t ^ (t >> 16)));
+	static int seed_val = 1337;
+	return ++seed_val;
 }
 
 void

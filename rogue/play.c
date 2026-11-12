@@ -47,6 +47,10 @@ CMCH:
                         if (ch == '[' || ch == 'O') {
                                 /* Escape sequence continued. */
                                 esc_level = 2;
+                        } else if (ch >= 'A' && ch <= 'D') {
+                                /* VT52 arrow keys: ESC A..D. */
+                                esc_level = 2;
+                                goto CMCH;
                         } else {
                                 /* Unknown escape sequence, ignore. */
                                 esc_level = 0;

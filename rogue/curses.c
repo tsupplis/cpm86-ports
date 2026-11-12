@@ -79,7 +79,7 @@ char *SE = "";
 short cur_row;
 short cur_col;
 
-#ifndef ANSI
+#if !defined(ANSI) && !defined(VT52)
 #define BUFLEN 256
 
 static boolean
@@ -334,11 +334,32 @@ tc_gtdata(fp, buf)
 	}
 	tc_cmget();
 }
-#endif /* ANSI */
+#endif /* !ANSI && !VT52 */
 
 static void
 get_term_info()
 {
+#ifdef VT52
+        /* VT52 display (CP/M-86 console): cursor address is ESC Y row col,
+         * both biased by 32.
+         */
+        LINES = DROWS;
+        COLS  = DCOLS;
+
+        CL = "\033E";		/* clear screen and home */
+        UC = "\033A";		/* cursor up */
+        DO = "\033B";		/* cursor down */
+        SO = "\033p";		/* reverse video on */
+        SE = "\033q";		/* reverse video off */
+        TI = "\033w";		/* no wrap at end of line */
+        TE = "\033v";		/* wrap at end of line */
+
+        cm_inc = 32;
+        cm_char = 1;
+        strcpy (cm_esc, "\033Y");
+        strcpy (cm_sep, "");
+        strcpy (cm_end, "");
+#else
 #ifdef ANSI
         /* Generic ANSI display. */
         LINES = DROWS;
@@ -386,6 +407,7 @@ get_term_info()
 	tc_gtdata(fp, buf);
 	fclose(fp);
 #endif
+#endif /* VT52 */
 }
 
 void

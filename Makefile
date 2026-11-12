@@ -1,9 +1,9 @@
 SUBDIRS1=filer lbr fv seemem disk7 wash15 xsq uucp grep sed diff ndbm life kermit \
     crc banner tr uniq sort dc
 
-SUBDIRS2=ansi2kr tinybas xlisp vtl2 ratfor cpu diskstat sokoban edlin 
+SUBDIRS2=ansi2kr tinybas xlisp vtl2 ratfor cpu diskstat sokoban edlin advent 
     
-SUBDIRS3=trek setboot expr kilo yacc focal arc advent rogue
+SUBDIRS3=trek setboot expr kilo yacc focal arc rogue
 
 SUBDIRS=$(SUBDIRS1) $(SUBDIRS2) $(SUBDIRS3)
 all:
@@ -97,6 +97,7 @@ cpmtest3.img: all
 	    for i in $$d/*.cmd; do cpmcp -f cpm86-320 tmp.img $$i 0:; done; \
 	done; \
 	for i in focal/*.foc; do cpmcp -f cpm86-320 tmp.img $$i 0:; done
+	cpmcp -f cpm86-320 tmp.img rogue/*.ovr 0:
 	cpmls -F -f cpm86-320 tmp.img
 	python3 tools/cpm86twist.py twist tmp.img $@
 	rm -f tmp.img

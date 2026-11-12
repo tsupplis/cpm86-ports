@@ -1,8 +1,8 @@
 CC=aztec43_acc
 LD=aztec43_acc
 CMDINFO=pcdev_cmdinfo
-CFLAGS=-Osize -target=cpm86 -I. -DCURSES -DANSI
-LDFLAGS=-v -target=cpm86 -L. -lutil
+CFLAGS=-Osize -target=cpm86 -I. -DCURSES -DVT52
+LDFLAGS=-v -target=cpm86 -L.
 ROOT_OVR_FLAGS=-overlay-root=1000,400
 
 all: rogue.cmd init.ovr save.ovr score.ovr

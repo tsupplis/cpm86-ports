@@ -194,10 +194,12 @@ real_killed_by(monster, other)
 		mvaddstr(19, 33, "~---------~");
 		center(21, nick_name);
 		center(22, buf);
+		check_message();
+		message("", 0);		/* arm exactly one -more- (in put_scores) */
 	} else {
+		/* real_put_scores() does the -more- for this message */
 		message(buf, 0);
 	}
-	message("", 0);
 	real_put_scores(monster, other);
 }
 
