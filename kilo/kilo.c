@@ -46,8 +46,7 @@
 #include <ctype.h>
 #include <stdarg.h>
 #include <fcntl.h>
-
-typedef int ssize_t;
+#include "fsave.h"
 
 #define STDIN_FILENO 0
 #define STDOUT_FILENO 1
@@ -404,7 +403,6 @@ void editorUpdateSyntax(erow *row) {
     char *mcs;
     char *mce;
 
-    row->hl = realloc(row->hl,row->rsize);
     memset(row->hl,HL_NORMAL,row->rsize);
 
     if (E.syntax == NULL) return; /* No syntax, everything is HL_NORMAL. */
@@ -576,58 +574,88 @@ void editorSelectSyntaxHighlight(char *filename) {
 /* ======================= Editor rows implementation ======================= */
 
 /* Update the rendered version and the syntax highlight of a row. */
-void editorUpdateRow(erow *row) {
-    unsigned int tabs = 0, nonprint = 0;
+static int editorRenderRow(erow *row) {
+    long capacity = (long)row->size + 1;
+    char *render;
+    unsigned char *hl;
     int j, idx;
 
-   /* Create a version of the row we can directly print on the screen,
-     * respecting tabs, substituting non printable characters with '?'. */
-    free(row->render);
     for (j = 0; j < row->size; j++)
-        if (row->chars[j] == TAB) tabs++;
-
-    row->render = malloc(row->size + tabs*8 + nonprint*9 + 1);
+        if (row->chars[j] == TAB) capacity += 8;
+    /* All row offsets are signed 16-bit integers on CP/M-86. */
+    if (capacity > 32767L) return 0;
+    render = malloc((size_t)capacity);
+    hl = malloc((size_t)capacity);
+    if (render == NULL || hl == NULL) {
+        free(render);
+        free(hl);
+        return 0;
+    }
     idx = 0;
     for (j = 0; j < row->size; j++) {
         if (row->chars[j] == TAB) {
-            row->render[idx++] = ' ';
-            while((idx+1) % 8 != 0) row->render[idx++] = ' ';
+            render[idx++] = ' ';
+            while ((idx+1) % 8 != 0) render[idx++] = ' ';
         } else {
-            row->render[idx++] = row->chars[j];
+            render[idx++] = row->chars[j];
         }
     }
+    render[idx] = '\0';
+    free(row->render);
+    free(row->hl);
+    row->render = render;
+    row->hl = hl;
     row->rsize = idx;
-    row->render[idx] = '\0';
-
-    /* Update the syntax highlighting attributes of the row. */
-    editorUpdateSyntax(row);
+    return 1;
 }
 
-/* Insert a row at the specified position, shifting the other rows on the bottom
- * if required. */
-void editorInsertRow(int at, char *s, size_t len) {
+int editorUpdateRow(erow *row) {
+    if (!editorRenderRow(row)) {
+        editorSetStatusMessage("Not enough memory to render line");
+        return 0;
+    }
+    editorUpdateSyntax(row);
+    return 1;
+}
+
+/* Allocate the complete row before changing the document. A failed load must
+ * never leave a partial document available for saving over the original. */
+int editorInsertRow(int at, char *s, size_t len) {
     int j;
-    if (at > E.numrows) return;
-    /* Grow the row array 64 rows at a time, not one row per insert. */
+    erow fresh, *rows;
+    long capacity;
+
+    if (at < 0 || at > E.numrows || len > 32766U) return 0;
+    memset(&fresh,0,sizeof(fresh));
+    fresh.size = len;
+    fresh.idx = at;
+    fresh.chars = malloc(len+1);
+    if (fresh.chars == NULL) return 0;
+    memcpy(fresh.chars,s,len);
+    fresh.chars[len] = '\0';
+    if (!editorRenderRow(&fresh)) {
+        free(fresh.chars);
+        return 0;
+    }
     if (E.numrows >= E.rowcap) {
-        E.row = realloc(E.row,sizeof(erow)*(E.rowcap+64));
+        capacity = ((long)E.rowcap+64)*sizeof(erow);
+        rows = capacity <= 32767L ? realloc(E.row,(size_t)capacity) : NULL;
+        if (rows == NULL) {
+            free(fresh.chars);
+            free(fresh.render);
+            free(fresh.hl);
+            return 0;
+        }
+        E.row = rows;
         E.rowcap += 64;
     }
-    if (at != E.numrows) {
-        memmove(E.row+at+1,E.row+at,sizeof(E.row[0])*(E.numrows-at));
-        for (j = at+1; j <= E.numrows; j++) E.row[j].idx++;
-    }
-    E.row[at].size = len;
-    E.row[at].chars = malloc(len+1);
-    memcpy(E.row[at].chars,s,len+1);
-    E.row[at].hl = NULL;
-    E.row[at].hl_oc = 0;
-    E.row[at].render = NULL;
-    E.row[at].rsize = 0;
-    E.row[at].idx = at;
-    editorUpdateRow(E.row+at);
+    memmove(E.row+at+1,E.row+at,sizeof(E.row[0])*(E.numrows-at));
+    E.row[at] = fresh;
     E.numrows++;
+    for (j = at+1; j < E.numrows; j++) E.row[j].idx++;
+    editorUpdateSyntax(E.row+at);
     E.dirty++;
+    return 1;
 }
 
 /* Free row's heap allocated stuff. */
@@ -650,33 +678,6 @@ void editorDelRow(int at) {
     for (j = at; j < E.numrows-1; j++) E.row[j].idx++;
     E.numrows--;
     E.dirty++;
-}
-
-/* Turn the editor rows into a single heap-allocated string.
- * Returns the pointer to the heap-allocated string and populate the
- * integer pointed by 'buflen' with the size of the string, escluding
- * the final nulterm. */
-char *editorRowsToString(int *buflen) {
-    char *buf = NULL, *p;
-    int totlen = 0;
-    int j;
-
-    /* Compute count of bytes. CP/M text files use CR LF line ends, so
-     * rows are always saved that way. */
-    for (j = 0; j < E.numrows; j++)
-        totlen += E.row[j].size+2; /* +2 is for "\r\n" at end of every row */
-    *buflen = totlen;
-    totlen++; /* Also make space for nulterm */
-
-    p = buf = malloc(totlen);
-    for (j = 0; j < E.numrows; j++) {
-        memcpy(p,E.row[j].chars,E.row[j].size);
-        p += E.row[j].size;
-        *p++ = '\r';
-        *p++ = '\n';
-    }
-    *p = '\0';
-    return buf;
 }
 
 /* Insert a character at the specified position in a row, moving the remaining
@@ -732,7 +733,7 @@ void editorInsertChar(int c) {
      * logical representaion of the file, add enough empty rows as needed. */
     if (!row) {
         while(E.numrows <= filerow)
-            editorInsertRow(E.numrows,"",0);
+            if (!editorInsertRow(E.numrows,"",0)) return;
     }
     row = &E.row[filerow];
     editorRowInsertChar(row,filecol,c);
@@ -752,7 +753,7 @@ void editorInsertNewline(void) {
 
     if (!row) {
         if (filerow == E.numrows) {
-            editorInsertRow(filerow,"",0);
+            if (!editorInsertRow(filerow,"",0)) return;
             goto fixcursor;
         }
         return;
@@ -761,10 +762,10 @@ void editorInsertNewline(void) {
      * think it's just over the last character. */
     if (filecol >= row->size) filecol = row->size;
     if (filecol == 0) {
-        editorInsertRow(filerow,"",0);
+        if (!editorInsertRow(filerow,"",0)) return;
     } else {
         /* We are in the middle of a line. Split it between two rows. */
-        editorInsertRow(filerow+1,row->chars+filecol,row->size-filecol);
+        if (!editorInsertRow(filerow+1,row->chars+filecol,row->size-filecol)) return;
         row = &E.row[filerow];
         row->chars[filecol] = '\0';
         row->size = filecol;
@@ -817,92 +818,102 @@ void editorDelChar() {
 
 #define CPM_EOF 0x1a /* Ctrl-Z: CP/M text end-of-file marker */
 
-/* Minimal getline(): reads one line (without a size limit) into a heap
- * buffer, stopping at '\n', real EOF or the CP/M Ctrl-Z marker. Returns the
- * line length including the '\n' if any, or -1 at end of file. */
-ssize_t getline(char **lineptr, size_t *n, FILE *fp) {
+/* -1 means clean EOF, -2 means a read/allocation failure. The caller owns
+ * the EOF state so bytes after a CP/M text marker are never read as lines. */
+static int editorReadLine(char **lineptr, size_t *n, FILE *fp, int *ended) {
     int c;
-    size_t len = 0;
+    size_t len = 0, capacity;
+    char *p;
 
-    if (*lineptr == NULL || *n == 0) {
+    if (*ended) return -1;
+    if (*lineptr == NULL) {
         *n = 128;
         *lineptr = malloc(*n);
-        if (*lineptr == NULL) return -1;
+        if (*lineptr == NULL) return -2;
     }
     while ((c = getc(fp)) != EOF && c != CPM_EOF && c != 0) {
         if (len+2 > *n) {
-            char *p = realloc(*lineptr,*n*2);
-            if (p == NULL) return -1;
+            if (*n >= 32767U) return -2;
+            capacity = *n > 16383U ? 32767U : *n*2;
+            p = realloc(*lineptr,capacity);
+            if (p == NULL) return -2;
             *lineptr = p;
-            *n *= 2;
+            *n = capacity;
         }
         (*lineptr)[len++] = c;
         if (c == '\n') break;
     }
+    if (ferror(fp)) return -2;
+    if (c == EOF || c == CPM_EOF || c == 0) *ended = 1;
     if (len == 0) return -1;
     (*lineptr)[len] = '\0';
     return len;
 }
 
-/* Load the specified program in the editor memory and returns 0 on success
- * or 1 on error. */
+/* Return 0 for a complete load/new file and -1 for failure. */
 int editorOpen(char *filename) {
     FILE *fp;
     size_t fnlen;
     char *line = NULL;
     size_t linecap = 0;
-    ssize_t linelen;
+    int linelen, ended = 0, failed = 0;
 
     E.dirty = 0;
     free(E.filename);
     fnlen = strlen(filename)+1;
     E.filename = malloc(fnlen);
+    if (E.filename == NULL) return -1;
     memcpy(E.filename,filename,fnlen);
-
     fp = fopen(filename,"r");
-    if (!fp) {
-        if (errno != ENOENT) {
-            fprintf(stderr,"Opening file failed\n");
-            exit(1);
-        }
-        return 1;
-    }
+    if (!fp) return errno == ENOENT ? 0 : -1;
 
-    while((linelen = getline(&line,&linecap,fp)) != -1) {
-        /* Read opportunistically: accept both LF and CR LF line ends. */
-        if (linelen && line[linelen-1] == '\n')
-            line[--linelen] = '\0';
-        if (linelen && line[linelen-1] == '\r')
-            line[--linelen] = '\0';
-        editorInsertRow(E.numrows,line,linelen);
+    while ((linelen = editorReadLine(&line,&linecap,fp,&ended)) >= 0) {
+        if (linelen && line[linelen-1] == '\n') line[--linelen] = '\0';
+        if (linelen && line[linelen-1] == '\r') line[--linelen] = '\0';
+        if (!editorInsertRow(E.numrows,line,linelen)) {
+            failed = 1;
+            break;
+        }
     }
+    if (linelen == -2) failed = 1;
     free(line);
-    fclose(fp);
+    if (fclose(fp) != 0) failed = 1;
     E.dirty = 0;
-    return 0;
+    return failed ? -1 : 0;
 }
 
-/* Save the current file on disk. Return 0 on success, 1 on error. */
+/* Stream to a same-drive temporary, then commit only after successful close.
+ * Saving requires no second in-memory copy of the document. */
 int editorSave(void) {
-    int len;
-    char *buf = editorRowsToString(&len);
-    int fd = open(E.filename,O_RDWR|O_CREAT,0644);
-    if (fd == -1) goto writeerr;
+    char temporary[FS_NAME];
+    FILE *fp;
+    int j, failed = 0;
+    long len = 0;
 
-    /* CP/M has no truncate: write the data followed by a Ctrl-Z marker so
-     * that any stale tail of a previously longer file is ignored on load. */
-    if (write(fd,buf,len) != len) goto writeerr;
-    if (write(fd,"\032",1) != 1) goto writeerr;
-
-    close(fd);
-    free(buf);
+    fp = fs_create(temporary,sizeof(temporary),E.filename);
+    if (fp == NULL) goto writeerr;
+    for (j = 0; j < E.numrows; j++) {
+        if (fwrite(E.row[j].chars,1,E.row[j].size,fp) != E.row[j].size ||
+            fwrite("\r\n",1,2,fp) != 2) {
+            failed = 1;
+            break;
+        }
+        len += (long)E.row[j].size+2;
+    }
+    if (putc(CPM_EOF,fp) == EOF || ferror(fp)) failed = 1;
+    if (fclose(fp) != 0) failed = 1;
+    if (failed) {
+        unlink(temporary);
+        goto writeerr;
+    }
+    if (!fs_commit(temporary,E.filename,(char *)0)) {
+        editorSetStatusMessage("Save failed; copy in %s",temporary);
+        return 1;
+    }
     E.dirty = 0;
-    editorSetStatusMessage("%d bytes written on disk", len);
+    editorSetStatusMessage("%ld bytes written on disk",len);
     return 0;
-
 writeerr:
-    free(buf);
-    if (fd != -1) close(fd);
     editorSetStatusMessage("Can't save! I/O error");
     return 1;
 }
@@ -1367,7 +1378,10 @@ int main(int argc, char **argv) {
 
     initEditor();
     editorSelectSyntaxHighlight(argv[1]);
-    editorOpen(argv[1]);
+    if (editorOpen(argv[1]) != 0) {
+        fprintf(stderr,"Cannot load complete file (I/O error or insufficient memory)\n");
+        return 1;
+    }
     enableRawMode(STDIN_FILENO);
     editorSetStatusMessage(
         "HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find");

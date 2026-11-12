@@ -13,5 +13,16 @@ kilo.cmd: kilo.o
 
 clean:
 	rm -f *.o *.cmd *.exe
+	rm -rf tests
 
-.PHONY: all clean
+tests/testfile.cmd: testfile.c kilo.c fsave.h
+	mkdir -p tests
+	$(CC) $(CFLAGS) $(CPM_LDFLAGS) -o $@ testfile.c
+
+test: kilo.cmd tests/testfile.cmd
+	python3 test-file.py
+
+.PHONY: all clean test
+
+# Shared portable file replacement implementation.
+kilo.o: ../util/fsave.h
