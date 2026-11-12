@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
+#include <unistd.h>
 #include <errno.h>
 #include "ndbm.h"
 
@@ -40,7 +41,7 @@ static long _filesize(fd)
     long size = 0;
     int n;
     while ((n = read(fd, buf, sizeof(buf))) > 0) size += n;
-    lseek(fd, 0L, 0);
+    if (lseek(fd, 0L, 0) < 0) return -1L;
     return n < 0 ? -1L : size;
 }
 
@@ -173,6 +174,42 @@ dbm_close(db)
 	free((char *)db);
 }
 
+/* A zero-length read is an unallocated block. Other short reads and seek
+ * failures are errors, never empty database pages. */
+static int readblock(db, fd, block, buffer, size)
+DBM *db;
+int fd, size;
+long block;
+char *buffer;
+{
+    int n;
+    if (lseek(fd, block * size, 0) < 0)
+        goto failed;
+    n = read(fd, buffer, size);
+    if (n == size)
+        return 1;
+    if (n == 0) {
+        memset(buffer, 0, size);
+        return 1;
+    }
+failed:
+    db->dbm_flags |= _DBM_IOERR;
+    return 0;
+}
+
+static int writeblock(db, fd, block, buffer, size)
+DBM *db;
+int fd, size;
+long block;
+char *buffer;
+{
+    if (lseek(fd, block * size, 0) >= 0 &&
+        write(fd, buffer, size) == size)
+        return 1;
+    db->dbm_flags |= _DBM_IOERR;
+    return 0;
+}
+
 static int
 getbit(db)
 	register DBM *db;
@@ -188,46 +225,45 @@ getbit(db)
 	b = bn / DBLKSIZ;
 	if (b != db->dbm_dirbno) {
 		db->dbm_dirbno = b;
-		(void) lseek(db->dbm_dirf, b*DBLKSIZ, 0);
-		if (read(db->dbm_dirf, db->dbm_dirbuf, DBLKSIZ) != DBLKSIZ)
-			memset(db->dbm_dirbuf, 0, DBLKSIZ);
+        if (!readblock(db, db->dbm_dirf, b, db->dbm_dirbuf, DBLKSIZ))
+            return 0;
 	}
 	return (db->dbm_dirbuf[i] & (1<<n));
 }
 
-long
-dbm_forder(db, key)
+static long
+findblock(db, hash)
 	register DBM *db;
-	datum key;
-{
 	long hash;
-
-	hash = dcalchash(key);
+{
 	for (db->dbm_hmask=0;; db->dbm_hmask=(db->dbm_hmask<<1)+1) {
 		db->dbm_blkno = hash & db->dbm_hmask;
 		db->dbm_bitno = db->dbm_blkno + db->dbm_hmask;
-		if (getbit(db) == 0)
+		if (getbit(db) == 0 || dbm_error(db))
 			break;
 	}
 	return (db->dbm_blkno);
 }
 
+long
+dbm_forder(db, key)
+    DBM *db;
+    datum key;
+{
+    return findblock(db, dcalchash(key));
+}
+
 static void
 dbm_access(db, hash)
-	register DBM *db;
-	long hash;
+    DBM *db;
+    long hash;
 {
-	for (db->dbm_hmask=0;; db->dbm_hmask=(db->dbm_hmask<<1)+1) {
-		db->dbm_blkno = hash & db->dbm_hmask;
-		db->dbm_bitno = db->dbm_blkno + db->dbm_hmask;
-		if (getbit(db) == 0)
-			break;
-	}
+    findblock(db, hash);
+    if (dbm_error(db))
+        return;
 	if (db->dbm_blkno != db->dbm_pagbno) {
 		db->dbm_pagbno = db->dbm_blkno;
-		(void) lseek(db->dbm_pagf, db->dbm_blkno*PBLKSIZ, 0);
-		if (read(db->dbm_pagf, db->dbm_pagbuf, PBLKSIZ) != PBLKSIZ)
-			memset(db->dbm_pagbuf, 0, PBLKSIZ);
+        readblock(db, db->dbm_pagf, db->dbm_blkno, db->dbm_pagbuf, PBLKSIZ);
 	}
 }
 
@@ -262,6 +298,8 @@ dbm_fetch(db, key)
 	if (dbm_error(db))
 		goto err;
 	dbm_access(db, dcalchash(key));
+    if (dbm_error(db))
+        goto err;
 	if ((i = finddatum(db->dbm_pagbuf, key)) >= 0) {
 		item = makdatum(db->dbm_pagbuf, i+1);
 		if (item.dptr != NULL)
@@ -317,13 +355,15 @@ dbm_delete(db, key)
 		return (-1);
 	}
 	dbm_access(db, dcalchash(key));
+    if (dbm_error(db))
+        return -1;
 	if ((i = finddatum(db->dbm_pagbuf, key)) < 0)
 		return (-1);
 	if (!delitem(db->dbm_pagbuf, i))
 		goto err;
 	db->dbm_pagbno = db->dbm_blkno;
-	(void) lseek(db->dbm_pagf, db->dbm_blkno*PBLKSIZ, 0);
-	if (write(db->dbm_pagf, db->dbm_pagbuf, PBLKSIZ) != PBLKSIZ) {
+    if (!writeblock(db, db->dbm_pagf, db->dbm_blkno,
+                    db->dbm_pagbuf, PBLKSIZ)) {
 	err:
 		db->dbm_flags |= _DBM_IOERR;
 		return (-1);
@@ -331,30 +371,34 @@ dbm_delete(db, key)
 	return (0);
 }
 
-static void
+/* Persist the split bit, restoring its prior value on a failed write. */
+static int
 setbit(db)
-	register DBM *db;
+DBM *db;
 {
-	long bn, b;
-	register int i, n;
+    long bn, b;
+    int i, n;
+    char previous;
 
-	if (db->dbm_bitno > db->dbm_maxbno)
-		db->dbm_maxbno = db->dbm_bitno;
-	n = (int)(db->dbm_bitno % BYTESIZ);
-	bn = db->dbm_bitno / BYTESIZ;
-	i = (int)(bn % DBLKSIZ);
-	b = bn / DBLKSIZ;
-	if (b != db->dbm_dirbno) {
-		db->dbm_dirbno = b;
-		(void) lseek(db->dbm_dirf, b*DBLKSIZ, 0);
-		if (read(db->dbm_dirf, db->dbm_dirbuf, DBLKSIZ) != DBLKSIZ)
-			memset(db->dbm_dirbuf, 0, DBLKSIZ);
-	}
-	db->dbm_dirbuf[i] |= 1<<n;
-	db->dbm_dirbno = b;
-	(void) lseek(db->dbm_dirf, (long)b*DBLKSIZ, 0);
-	if (write(db->dbm_dirf, db->dbm_dirbuf, DBLKSIZ) != DBLKSIZ)
-		db->dbm_flags |= _DBM_IOERR;
+    n = (int)(db->dbm_bitno % BYTESIZ);
+    bn = db->dbm_bitno / BYTESIZ;
+    i = (int)(bn % DBLKSIZ);
+    b = bn / DBLKSIZ;
+    if (b != db->dbm_dirbno &&
+        !readblock(db, db->dbm_dirf, b, db->dbm_dirbuf, DBLKSIZ))
+        return 0;
+    db->dbm_dirbno = b;
+    previous = db->dbm_dirbuf[i];
+    db->dbm_dirbuf[i] |= 1 << n;
+    if (!writeblock(db, db->dbm_dirf, b, db->dbm_dirbuf, DBLKSIZ)) {
+        db->dbm_dirbuf[i] = previous;
+        if (!writeblock(db, db->dbm_dirf, b, db->dbm_dirbuf, DBLKSIZ))
+            fprintf(stderr, "ndbm: cannot restore split directory block\n");
+        return 0;
+    }
+    if (db->dbm_bitno > db->dbm_maxbno)
+        db->dbm_maxbno = db->dbm_bitno;
+    return 1;
 }
 
 static int
@@ -381,11 +425,12 @@ additem(buf, item, item1)
 	return (1);
 }
 
-int
-dbm_store(db, key, dat, replace)
+static int
+store(db, key, dat, replace, original)
 	register DBM *db;
 	datum key, dat;
 	int replace;
+    char *original;
 {
 	register int i;
 	datum item, item1;
@@ -399,6 +444,9 @@ dbm_store(db, key, dat, replace)
 	}
 loop:
 	dbm_access(db, dcalchash(key));
+    if (dbm_error(db))
+        return -1;
+    memcpy(original, db->dbm_pagbuf, PBLKSIZ);
 	if ((i = finddatum(db->dbm_pagbuf, key)) >= 0) {
 		if (!replace)
 			return (1);
@@ -410,14 +458,14 @@ loop:
 	if (!additem(db->dbm_pagbuf, key, dat))
 		goto split;
 	db->dbm_pagbno = db->dbm_blkno;
-	(void) lseek(db->dbm_pagf, db->dbm_blkno*PBLKSIZ, 0);
-	if (write(db->dbm_pagf, db->dbm_pagbuf, PBLKSIZ) != PBLKSIZ) {
-		db->dbm_flags |= _DBM_IOERR;
-		return (-1);
-	}
+    if (!writeblock(db, db->dbm_pagf, db->dbm_blkno,
+                    db->dbm_pagbuf, PBLKSIZ))
+        goto restore;
 	return (0);
 
 split:
+    /* Keep the old value during a split of a replacement operation. */
+    memcpy(db->dbm_pagbuf, original, PBLKSIZ);
 	if (key.dsize+dat.dsize+3*(int)sizeof(short) >= PBLKSIZ) {
 		db->dbm_flags |= _DBM_IOERR;
 		errno = ENOSPC;
@@ -433,7 +481,7 @@ split:
 			if (item1.dptr == NULL) {
 				fprintf(stderr, "ndbm: split not paired\n");
 				db->dbm_flags |= _DBM_IOERR;
-				break;
+				return -1;
 			}
 			if (!additem(ovfbuf, item, item1) ||
 			    !delitem(db->dbm_pagbuf, i)) {
@@ -444,19 +492,54 @@ split:
 		}
 		i += 2;
 	}
-	db->dbm_pagbno = db->dbm_blkno;
-	(void) lseek(db->dbm_pagf, db->dbm_blkno*PBLKSIZ, 0);
-	if (write(db->dbm_pagf, db->dbm_pagbuf, PBLKSIZ) != PBLKSIZ) {
-		db->dbm_flags |= _DBM_IOERR;
-		return (-1);
-	}
-	(void) lseek(db->dbm_pagf, (db->dbm_blkno+db->dbm_hmask+1)*PBLKSIZ, 0);
-	if (write(db->dbm_pagf, ovfbuf, PBLKSIZ) != PBLKSIZ) {
-		db->dbm_flags |= _DBM_IOERR;
-		return (-1);
-	}
-	setbit(db);
-	goto loop;
+    /* Allocate/write the overflow first. Disk-full failure here must leave
+     * the original page and directory unchanged. */
+    if (!writeblock(db, db->dbm_pagf, db->dbm_blkno + db->dbm_hmask + 1,
+                    ovfbuf, PBLKSIZ))
+        return -1;
+    if (!writeblock(db, db->dbm_pagf, db->dbm_blkno,
+                    db->dbm_pagbuf, PBLKSIZ))
+        goto restore;
+    if (!setbit(db))
+        goto restore;
+    goto loop;
+restore:
+    memcpy(db->dbm_pagbuf, original, PBLKSIZ);
+    if (!writeblock(db, db->dbm_pagf, db->dbm_blkno, original, PBLKSIZ))
+        fprintf(stderr, "ndbm: cannot restore original page after write failure\n");
+    return -1;
+}
+
+int
+dbm_store(db, key, dat, replace)
+DBM *db;
+datum key, dat;
+int replace;
+{
+    char *original;
+    int result;
+
+    if (dbm_error(db))
+        return -1;
+    /* Reject invalid/oversized data before modifying even the cached page. */
+    if (key.dsize < 0 || dat.dsize < 0 ||
+        (long)key.dsize + dat.dsize + 3 * sizeof(short) >= PBLKSIZ) {
+        db->dbm_flags |= _DBM_IOERR;
+        errno = ENOSPC;
+        return -1;
+    }
+    original = malloc(PBLKSIZ);
+    if (original == NULL) {
+        errno = ENOMEM;
+        return -1;
+    }
+    result = store(db, key, dat, replace, original);
+    free(original);
+    if (result < 0) {
+        db->dbm_pagbno = -1L;
+        db->dbm_dirbno = -1L;
+    }
+    return result;
 }
 
 datum
@@ -480,12 +563,29 @@ dbm_nextkey(db)
 	for (;;) {
 		if (db->dbm_blkptr != db->dbm_pagbno) {
 			db->dbm_pagbno = db->dbm_blkptr;
-			(void) lseek(db->dbm_pagf, db->dbm_blkptr*PBLKSIZ, 0);
+			if (lseek(db->dbm_pagf, db->dbm_blkptr*PBLKSIZ, 0) < 0) {
+                db->dbm_flags |= _DBM_IOERR;
+                goto err;
+            }
 			nr = read(db->dbm_pagf, db->dbm_pagbuf, PBLKSIZ);
-			if (nr <= 0)
-				break;
-			if (nr < PBLKSIZ)
-				memset(db->dbm_pagbuf + nr, 0, PBLKSIZ - nr);
+            if (nr == 0) break;
+            if (nr < 0) {
+                db->dbm_flags |= _DBM_IOERR;
+                goto err;
+            }
+            /* A failed split can leave an unreferenced (even partial)
+             * overflow page. Only committed directory leaves are records. */
+            findblock(db, db->dbm_blkptr);
+            if (dbm_error(db)) goto err;
+            if (db->dbm_blkno != db->dbm_blkptr) {
+                db->dbm_keyptr = 0;
+                ++db->dbm_blkptr;
+                continue;
+            }
+            if (nr != PBLKSIZ) {
+                db->dbm_flags |= _DBM_IOERR;
+                goto err;
+            }
 		}
 		if (*(short *)db->dbm_pagbuf != 0) {
 			item = makdatum(db->dbm_pagbuf, db->dbm_keyptr);

@@ -40,7 +40,17 @@ tests/testdb.com: testdb.o ndbm.lib
 	mkdir -p tests
 	$(LD) $(DOS_LDFLAGS) -o $@ testdb.o ndbm.lib
 
-test: keydb.cmd keydb.com tests/testdb.cmd tests/testdb.com
+tests/testfail.cmd: testfail.o
+	mkdir -p tests
+	$(LD) $(CPM_LDFLAGS) -o $@ testfail.o
+
+tests/testfail.com: testfail.o
+	mkdir -p tests
+	$(LD) $(DOS_LDFLAGS) -o $@ testfail.o
+
+testfail.o: ndbm.c ndbm.h
+
+test: keydb.cmd keydb.com tests/testdb.cmd tests/testdb.com tests/testfail.cmd tests/testfail.com
 	sh test.sh
 	python3 test-integrity.py
 

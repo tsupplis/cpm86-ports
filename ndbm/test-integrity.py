@@ -15,3 +15,8 @@ for ext in ('cmd','com'):
         pagefile=next(wd.glob('*.[pP][aA][gG]'))
         assert pagefile.stat().st_size>1024, 'multi-page case was not exercised'
         print(ext+': multi-page binary persistence, replacement, deletion, iteration, and failed writes PASS')
+        p=subprocess.run(['emu2',str(root/'tests'/('testfail.'+ext))],cwd=wd,
+                         stdin=subprocess.DEVNULL,capture_output=True,start_new_session=True,timeout=30)
+        text=(p.stdout+p.stderr).decode('latin1')
+        assert 'FAULT PASS' in text and 'FAIL:' not in text,text
+        print(ext+': '+text.strip())
