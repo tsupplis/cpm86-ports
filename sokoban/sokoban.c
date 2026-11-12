@@ -17,6 +17,8 @@
 #include <ctype.h>
 
 #include "config.h"
+#include "resource.h"
+#include "help.h"
 
 #if defined(USE_CONIO) || defined(USE_HTC) || defined(__AZTEC__)
 #include "conio.h"
@@ -456,6 +458,12 @@ int play()
 
         switch (c)
         {
+        case '?':
+            color_default();
+            bg_default();
+            showhelp();
+            showscreen();
+            break;
         case 'q': /* quit the game 					 */
             ret = E_ENDGAME;
             break;
@@ -702,9 +710,12 @@ void tmpreset()
     ppos.y = tmp_ppos.y;
 }
 
-int converted_getc(FILE *f)
+int converted_getc(sk_resource *f)
 {
-    int c = getc(f);
+    int c = sk_resource_getc(f);
+#if defined(__CPM86__) || defined(__MSDOS__)
+    while (c == '\r') c = sk_resource_getc(f);
+#endif
     if (c == EOF)
     {
         return c;
@@ -727,10 +738,10 @@ int converted_getc(FILE *f)
 
 int readscreen()
 {
-    FILE *screen;
+    sk_resource screen;
     int j, c, f, ret = 0;
 
-    if ((screen = fopen("soklevls.dat", "r")) == NULL)
+    if (!sk_resource_open(&screen, SK_LEVELS))
     {
         ret = E_FOPENSCREEN;
     }
@@ -740,15 +751,15 @@ int readscreen()
         {
             for (f = 1; f < level; f++)
             {
-                while ((c = converted_getc(screen)) != 12 && c != EOF)
+                while ((c = converted_getc(&screen)) != 12 && c != EOF)
                     ;
-                converted_getc(screen); /* get the \n after */
+                converted_getc(&screen); /* get the \n after */
             }
         }
         packets = savepack = rows = j = cols = 0;
         ppos.x = -1;
         ppos.y = -1;
-        while ((ret == 0) && ((c = converted_getc(screen)) != 12) && c != EOF)
+        while ((ret == 0) && ((c = converted_getc(&screen)) != 12) && c != EOF)
         {
             if (c == '\n')
             {
@@ -797,7 +808,7 @@ int readscreen()
                 sk_getchar();
             }
         }
-        fclose(screen);
+        sk_resource_close(&screen);
         if ((ret == 0) && (ppos.x == -1))
             ret = E_PLAYPOS2;
     }
@@ -831,7 +842,8 @@ void showscreen()
     dispsave();
     dispmoves();
     disppushes();
-    gotoxy(0, MAX_ROWS + 2);
+    helpmessage();
+    gotoxy(0, MAX_ROWS);
     refresh();
 }
 
@@ -912,15 +924,9 @@ void disppushes()
 
 void helpmessage()
 {
-    gotoxy(0, MAX_ROWS + 2);
-    /*sk_printf("Press ? for help.");*/
+    gotoxy(68, MAX_ROWS);
+    sk_printf("? Help");
     refresh();
-    gotoxy(0, MAX_ROWS + 2);
-    refresh();
-}
-
-void showhelp()
-{
 }
 
 static int optrestore = 0;

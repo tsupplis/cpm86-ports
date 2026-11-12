@@ -1,39 +1,38 @@
+                         S O K O B A N
 
-                           S O K O B A N
+Push every box onto a storage spot. You can push one box at a time;
+you cannot pull boxes or push them through a wall or another box.
 
-  The problem is to push packets to saving positions by moving around
-  and pushing only one packet at a time if possible.
+Movement:
+  h / j / k / l       Left / down / up / right
+  Arrow keys          Move in the indicated direction
+  H / J / K / L       Run and push in that direction
+  Ctrl-H/J/K/L        Run until an object blocks the way
 
+Undo and restart:
+  u                   Undo the last move/push
+  U                   Restart the current level
 
-  Available Commands are:
+Other commands:
+  ?                   Show this help
+  Ctrl-R              Redraw the board
+  q                   Quit the game
++= (PAGE BREAK)
+                     TEMPORARY CHECKPOINTS
 
-  h:  move/push left       H:  run/push left     ^H:  run left to object
-  l:  move/push right      L:  run/push right    ^L:  run right to object
-  j:  move/push down       J:  run/push down     ^J:  run down to object
-  k:  move/push up         K:  run/push up       ^K:  run up to object
+  c or s              Remember the current board
+  r or Ctrl-U         Return to that checkpoint
 
-  u:  undo last move/push  U:  undo all          
- 
-  c:  temporary save      ^U:  reset to temporary save
- 
- ^R: Refresh screen
+A checkpoint is kept only in memory. It is not a saved game on disk
+and is lost when you quit. Entering a level creates its first checkpoint.
 
-  q:  quit                 s:  save the game      ?:  this help screen
-+= (DO NOT CHANGE OR DELETE THIS LINE)
+Use a checkpoint when you are happy with your progress but want to try
+some uncertain moves. Restore it if you get stuck, or use U to start over.
 
-  Characters on screen are:
+The status line shows the level, boxes, boxes on storage spots, moves,
+and pushes. Completing a level automatically starts the next one.
 
-     @@  player                          ++      player on saving position
-     ..  saving position for packet      $$      packets
-     **  saved packet                    ##      wall
+Run SOKOBAN with a level number to start there, for example: SOKOBAN 5.
 
-
-  As you could see you can make a temporary save. This is useful if you think
-  that all the moves/pushes you have made are correct, but you don't know how
-  to go on. In this case you can temporary save (using the c command). If you
-  then get stucked you need not undo all (using U), you can reset to you
-  temporary save.
-
-  If you have restored a saved game, a temporary save is automatically made
-  at the start.
-== (DO NOT CHANGE THIS LINE)
+Help does not change the board, counters, checkpoint, or undo state.
+== (END)

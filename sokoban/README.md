@@ -11,8 +11,9 @@ unused variables have been removed.
 
 `sokoban.cmd` is the compiled CP/M-86 binary.
 
-To run it, the files `sokoban.cmd` and `soklevls.dat` are needed on the
-CP/M-86 disk. The help file, `sokoban.hlp`, is not used in this version.
+Only `sokoban.cmd` is needed on the CP/M-86 disk. Levels and help are
+embedded in the executable. Press `?` for paginated help; any key advances,
+and `Q` or Escape returns early to the unchanged game.
 
 ## Commands
 
@@ -22,10 +23,12 @@ CP/M-86 disk. The help file, `sokoban.hlp`, is not used in this version.
 | l     | move/push right     | L      | run/push right | ^L  | run right to object |
 | j     | move/push down      | J      | run/push down  | ^J  | run down to object  |
 | k     | move/push up        | K      | run/push up    | ^K  | run up to object    |
-| u     | undo last move/push | U      | undo all       | 5   | undo all            |
+| u     | undo last move/push | U      | undo all       | 5   | undo last move/push            |
 | c / s | temporary save      | ^U / r | reset to temporary save | | |
 
 | ^R | Refresh screen | q | quit |
+
+`?` displays help. Temporary saves (`c` / `s`) are in memory only, not on disk.
 
 The arrow keys also move the player. VT52 (`ESC A`..`ESC D`) and VT100
 (`ESC [ A`..`ESC [ D`) sequences are both accepted, as are the numeric keypad
@@ -54,8 +57,7 @@ to go on. In this case you can temporary save (using the c command). If you
 then get stuck you need not undo all (using U), you can reset to your
 temporary save.
 
-If you have restored a saved game, a temporary save is automatically made
-at the start.
+Entering a level automatically creates its initial temporary checkpoint.
 
 ## Compiling
 
@@ -85,3 +87,24 @@ The build uses local copies of `util.lib`, `conio.h` and `util.h` supplied from
 local conio implementation. `gameio.c` contains game-specific key translation
 and a coordinate adapter: Sokoban uses column,row while the shared `gotoxy`
 takes row,column.
+
+## Embedded resources and tests
+
+`cmdmod` installs `soklevls.dat` and `sokoban.hlp` in one EXTRA group. These
+remain editable build inputs; changing either rebuilds the CMD. The header
+is `SKR1` followed by two pairs of little-endian 16-bit offset/length values
+(levels, then help). Reads stop at those lengths, not CMD padding. Minimum
+and maximum group allocation match the packed size rounded to a paragraph.
+Help uses `+=` and `==` lines for page break and end, with automatic paging
+if a page grows beyond 22 lines.
+
+`resource.c` retains a file-backed alternative for DOS/non-CP/M builds,
+using the original filenames. The game still builds CMD only; this preserves
+the DOS resource path without introducing a complete DOS console port.
+
+`make test` includes the keyboard tests and Aztec/emu2 regressions for all
+50 levels, help navigation, board/undo/checkpoint preservation, resource
+bounds, invalid headers, and rebuilding after either resource changes.
+The file-backed reader is also compiled and executed as a DOS 1 COM program.
+Builds/tests use Python's standard library and the existing compiler,
+emulator, cmdmod and host C compiler.
