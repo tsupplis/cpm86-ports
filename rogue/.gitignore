@@ -1,3 +1,5 @@
 *.ovr
 *.cmd
 *.rsm
+terminal.cfg
+terminal.tmp

@@ -1,6 +1,35 @@
 # ROGUE(6)
 4
 
+## CP/M-86 terminal colors
+
+`make` builds the CP/M-86 VT52 console version. For a VT100/ANSI color
+terminal, use `make TERMINAL=VT100`; switch back with `make TERMINAL=VT52`.
+Switching recompiles the renderer and relinks the root and all three overlays.
+Keep `rogue.cmd`, `init.ovr`, `save.ovr`, and `score.ovr` from the same build.
+
+| Dungeon symbol | Color |
+| --- | --- |
+| Floor dots `.` | Dark blue |
+| Creatures `A`–`Z` | Bright red |
+| Hero `@` | Bright cyan |
+| Objects `? ! * : / ] ) = ,` | Bright green |
+| Walls and doors `- \| +` | Bright yellow |
+
+Messages, menus, status text and other terrain keep the normal foreground.
+Colors follow the displayed symbol, so disguised monsters retain their
+disguise. Reverse video remains independent of the foreground color.
+
+VT52 uses the CP/M-86 extension `ESC j ESC b <raw PC color byte> ESC k`.
+VT100/ANSI uses SGR foreground colors and bold for bright colors; original
+monochrome VT100 hardware cannot display colors. Refresh and exit restore
+normal foreground and reverse-video state.
+
+`make test` builds the game and overlays, then runs the real Aztec renderer
+under emu2 in both dialects. It verifies identical colored frames, neutral
+text, color-only updates, cursor replay, reverse video, full redraws,
+menu restoration, clears and exit cleanup.
+
 ## NAME
 
 rogue - Exploring The Dungeons of Doom 
@@ -46,4 +75,4 @@ Michael C. Toy and Kenneth C. R. C. Arnold, _A guide to the Dungeons of Doom_
 
 
 
-Probably infinite (although countably infinite). However, that Ice Monsters sometimes transfix you permanently is _not_ a bug. It's a feature. 
+Probably infinite (although countably infinite). However, that Ice Monsters sometimes transfix you permanently is _not_ a bug. It's a feature.

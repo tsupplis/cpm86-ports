@@ -45,6 +45,27 @@
 
 char terminal[DROWS][DCOLS];
 char buffer[DROWS][DCOLS];
+/* Store style with each cell: cursor-motion replay and full redraws must
+ * reproduce the same colors, including neutral text over dungeon cells. */
+static unsigned char terminal_color[DROWS][DCOLS];
+static unsigned char buffer_color[DROWS][DCOLS];
+static int text_output;
+static int term_color = -1;
+
+/* PC palette numbers, also used by the CP/M-86 VT52 extension. */
+#define NORMAL_COLOR 7
+
+static int glyph_color(int row, int ch)
+{
+    ch &= 0x7f;
+    if (text_output || row < MIN_ROW || row >= DROWS-1) return NORMAL_COLOR;
+    if (ch == rogue.fchar) return 11;           /* bright cyan hero */
+    if (ch >= 'A' && ch <= 'Z') return 12;      /* bright red creature */
+    if (ch == '.') return 1;                   /* dark blue floor */
+    if (ch == '-' || ch == '|' || ch == '+') return 14;
+    if (ch && strchr("?!*:/])=,", ch)) return 10; /* bright green objects */
+    return NORMAL_COLOR;
+}
 
 char cm_esc[16];
 char cm_sep[16];
@@ -78,6 +99,38 @@ char *SE = "";
 
 short cur_row;
 short cur_col;
+
+/* A complete ANSI style avoids losing color when reverse video is reset.
+ * VT52 uses the same save-cursor/color/restore-cursor sequence as conio.c. */
+static void put_style(int color, int reverse)
+{
+#ifdef VT52
+    static char sequence[7] = {ESC, 'j', ESC, 'b', 0, ESC, 'k'};
+#else
+#ifdef ANSI
+    static int ansi_colors[8] = {30, 34, 32, 36, 31, 35, 33, 37};
+#endif
+#endif
+    if (color == term_color && reverse == term_stand_out) return;
+#ifdef VT52
+    if (reverse != term_stand_out || term_color < 0)
+        printf("%s", reverse ? SO : SE);
+    if (color != term_color) {
+        /* Bright green is byte 10: printf/fputs would translate it to CR/LF. */
+        sequence[4] = color;
+        fwrite(sequence, 1, sizeof(sequence), stdout);
+    }
+#else
+#ifdef ANSI
+    printf("\033[0;%d;%d%sm", color >= 8 ? 1 : 0,
+           ansi_colors[color & 7], reverse ? ";7" : "");
+#else
+    if (reverse != term_stand_out) printf("%s", reverse ? SO : SE);
+#endif
+#endif
+    term_color = color;
+    term_stand_out = reverse;
+}
 
 #if !defined(ANSI) && !defined(VT52)
 #define BUFLEN 256
@@ -413,15 +466,19 @@ get_term_info()
 void
 initscr()
 {
-	clear();
 	get_term_info();
+    term_color = -1;
+	clear();
 	printf("%s%s", TI, VS);
 }
 
 void
 endwin()
 {
+    term_color = -1;
+    put_style(NORMAL_COLOR, 0);
 	printf("%s%s", TE, VE);
+    fflush(stdout);
 	md_cbreak_no_echo_nonl(0);
 }
 
@@ -447,9 +504,11 @@ void
 addstr(str)
         char *str;
 {
+    text_output = 1;
 	while (*str) {
 		addch((int) *str++);
 	}
+    text_output = 0;
 }
 
 void
@@ -465,6 +524,7 @@ addch(ch)
 		ch |= ST_MASK;
 	}
 	buffer[row][col] = (char) ch;
+    buffer_color[row][col] = glyph_color(row, ch);
 	lines_dirty[row] = 1;
 	screen_dirty = 1;
 }
@@ -478,20 +538,10 @@ mvaddch(row, col, ch)
 }
 
 static void
-put_st_char(ch)
-        register int ch;
+put_st_char(int ch, int color)
 {
-	if ((ch & ST_MASK) && (!term_stand_out)) {
-		ch &= ~ST_MASK;
-		printf("%s%c", SO, ch);
-		term_stand_out = 1;
-	} else if ((!(ch & ST_MASK)) && term_stand_out) {
-		printf("%s%c", SE, ch);
-		term_stand_out = 0;
-	} else {
-		ch &= ~ST_MASK;
-		putchar(ch);
-	}
+    put_style(color, (ch & ST_MASK) != 0);
+    putchar(ch & 0x7f);
 }
 
 static void
@@ -520,7 +570,8 @@ put_cursor(row, col)
 		for (i = 0; i < cdif; i++) {
 				ch = (col < cur_col) ? BS :
 						terminal[row][cur_col + i];
-				put_st_char((int) ch);
+                if (col < cur_col) putchar(BS);
+                else put_st_char(ch, terminal_color[row][cur_col + i]);
 			}
 			cur_row = row;
 			cur_col = col;
@@ -554,8 +605,9 @@ put_char_at(row, col, ch)
         register int row, col, ch;
 {
 	put_cursor(row, col);
-	put_st_char(ch);
+	put_st_char(ch, buffer_color[row][col]);
 	terminal[row][col] = (char) ch;
+    terminal_color[row][col] = buffer_color[row][col];
 	cur_col++;
 }
 
@@ -575,7 +627,8 @@ refresh()
 			line = (first_row + i) % DROWS;
 			if (lines_dirty[line]) {
 				for (j = 0; j < DCOLS; j++) {
-					if (buffer[line][j] != terminal[line][j]) {
+					if (buffer[line][j] != terminal[line][j] ||
+                        buffer_color[line][j] != terminal_color[line][j]) {
 						put_char_at(line, j, buffer[line][j]);
 					}
 				}
@@ -584,6 +637,7 @@ refresh()
 		}
 		put_cursor(old_row, old_col);
 		screen_dirty = 0;
+        put_style(NORMAL_COLOR, 0);
 		fflush(stdout);
 	}
 }
@@ -594,8 +648,12 @@ wrefresh(scr)
 {
 	int i, col;
 
+    put_style(NORMAL_COLOR, 0);
 	printf("%s", CL);
 	cur_row = cur_col = 0;
+    /* Cursor motion can replay cells even during a full redraw. */
+    memcpy(terminal, buffer, sizeof(terminal));
+    memcpy(terminal_color, buffer_color, sizeof(terminal_color));
 
 	for (i = 0; i < DROWS; i++) {
 		col = 0;
@@ -607,13 +665,16 @@ wrefresh(scr)
 				put_cursor(i, col);
 			}
 			while ((col < DCOLS) && (buffer[i][col] != ' ')) {
-				put_st_char((int) buffer[i][col]);
+				put_st_char((int) buffer[i][col], buffer_color[i][col]);
 				cur_col++;
 				col++;
 			}
 		}
 	}
+    memset(lines_dirty, 0, sizeof(lines_dirty));
+    screen_dirty = 0;
 	put_cursor(curscr->_cury, curscr->_curx);
+    put_style(NORMAL_COLOR, 0);
 	fflush(stdout);
 	scr = scr;		/* make lint happy */
 }
@@ -638,6 +699,7 @@ clear_buffers()
 		for (j = 0; j < DCOLS; j++) {
 			terminal[i][j] = ' ';
 			buffer[i][j] = ' ';
+            terminal_color[i][j] = buffer_color[i][j] = NORMAL_COLOR;
 		}
 	}
 }
@@ -645,6 +707,7 @@ clear_buffers()
 void
 clear()
 {
+    put_style(NORMAL_COLOR, 0);
 	printf("%s", CL);
 	fflush(stdout);
 	cur_row = cur_col = 0;
@@ -661,8 +724,10 @@ clrtoeol()
 
 	for (col = curscr->_curx; col < DCOLS; col++) {
 		buffer[row][col] = ' ';
+        buffer_color[row][col] = NORMAL_COLOR;
 	}
 	lines_dirty[row] = 1;
+    screen_dirty = 1;
 }
 
 void
