@@ -42,10 +42,15 @@ tests/testlu.cmd: testlu.c lu86.c fsave.h
 	mkdir -p tests
 	$(CC) $(CFLAGS) -o $@ testlu.c
 
-test: all tests/testlu.cmd
+tests/testsave.cmd: testsave.c fsave.h
+	mkdir -p tests
+	$(CC) $(CFLAGS) -o $@ testsave.c
+
+test: all tests/testlu.cmd tests/testsave.cmd
 	python3 test.py
+	python3 test-save.py
 
 .PHONY: all test clean
 
-# Shared portable file replacement implementation.
-lu86.o: ../util/fsave.h
+# Local file replacement implementation.
+lu86.o: fsave.h

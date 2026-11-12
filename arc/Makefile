@@ -27,15 +27,20 @@ marc86.cmd: $(MOBJS) util.lib
 %.o: %.c arc.h arcs.h proto.h util.h dirent.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-test: binaries
+tests/testsave.cmd: testsave.c fsave.h
+	mkdir -p tests
+	$(CC) $(CFLAGS) -o $@ testsave.c
+
+test: binaries tests/testsave.cmd
 	sh test.sh
 	python3 test-drive.py
-	$(MAKE) -C ../util test
+	python3 test-save.py
 
 clean:
 	$(RM) *.o *.h86 *.log *.sym *.prn *.lst *.obj $(BINARIES)
+	$(RM) tests/testsave.cmd
 
 .PHONY: all binaries test clean
 
-# Shared portable file replacement implementation.
-arcmisc.o: ../util/fsave.h
+# Local file replacement implementation.
+arcmisc.o: fsave.h

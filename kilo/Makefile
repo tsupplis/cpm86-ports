@@ -19,10 +19,15 @@ tests/testfile.cmd: testfile.c kilo.c fsave.h
 	mkdir -p tests
 	$(CC) $(CFLAGS) $(CPM_LDFLAGS) -o $@ testfile.c
 
-test: kilo.cmd tests/testfile.cmd
+tests/testsave.cmd: testsave.c fsave.h
+	mkdir -p tests
+	$(CC) $(CFLAGS) $(CPM_LDFLAGS) -o $@ testsave.c
+
+test: kilo.cmd tests/testfile.cmd tests/testsave.cmd
 	python3 test-file.py
+	python3 test-save.py
 
 .PHONY: all clean test
 
-# Shared portable file replacement implementation.
-kilo.o: ../util/fsave.h
+# Local file replacement implementation.
+kilo.o: fsave.h
