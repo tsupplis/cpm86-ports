@@ -15,6 +15,72 @@ make
 
 Produces `kermibm.cmd` (CP/M-86) via `cpm86_asm86` + `cpm86_gencmd`.
 
+## Using Kermit on CP/M-86 and CCP/M-86
+
+The same `KERMIBM.CMD` and commands work on both systems. Select the drive
+containing your files, then start Kermit:
+
+```text
+A>B:
+B>KERMIBM
+Kermit-86 B>SET BAUD 2400
+Kermit-86 B>SET FILE-TYPE BINARY
+```
+
+Use COM1 on both machines (the default), with matching baud rates and 8N1.
+For physical PCs, connect their serial ports with a null-modem cable.
+
+| Receiving machine — start first | Sending machine |
+|---|---|
+| `RECEIVE` | `SEND MYFILE.CMD` |
+
+Files arrive on the receiver's current drive. Wait for **both Kermit prompts**
+before starting another transfer or reversing direction. Use `BINARY` for
+programs and data; use `SET FILE-TYPE ASCII` on both sides for CP/M text files
+(CR/LF lines, Ctrl-Z end-of-file).
+
+`Ctrl-C` aborts a transfer; `EXIT` returns to the operating system. Type `?`
+for help. `CONNECT` opens a terminal session over the serial link; press
+`Ctrl-\` followed by `C` to return to Kermit. Optional setup commands can go in
+`KERMIT.INI` on the current drive; Kermit reads it automatically at startup.
+
+## Testing with two PCE machines
+
+```mermaid
+flowchart LR
+    A["PCE 1: CP/M-86<br/>Kermit · COM1"] <-->|"Raw TCP · virtual null modem"| B["PCE 2: CCP/M-86<br/>Kermit · COM1"]
+    DA["Private boot + data disks"] --- A
+    B --- DB["Private boot + data disks"]
+```
+
+Run this external integration test directly from this directory (`make test`
+is empty; it does not launch PCE):
+
+```sh
+make
+python3 testpce.py --work-dir /tmp/kermit-test
+```
+
+The harness starts a TCP listener in the first PCE and connects the second to
+it on localhost. Both emulate an 8250 at COM1 (`03F8h`, IRQ4); `telnet=0` keeps
+the link binary-safe and `usectl=0` disables PCE's modem-control protocol.
+The TCP port is selected automatically. Each machine gets its own disk copies;
+the original images are untouched.
+
+The test sends a 1 KiB binary containing every byte value and a text file
+**in both directions**, compares the received contents, and checks the transfer
+display, clean exit, interrupt-vector restoration and restart on both systems.
+It starts each receiver first and waits for both prompts between transfers.
+
+Requires Python 3 (no extra packages), `pce-ibmpc`, `cpmcp`, and the repository's
+OS images, base data image, configurations and ROMs. The output directory must
+be new; it retains disk images, serial logs and screen dumps. Omit `--work-dir`
+for temporary output. Add `--baud 9600` to test at 9600 instead of 2400 baud.
+
+Validated at **2400 baud on CP/M-86 and CCP/M-86** with all checks passing.
+Tests use a standard-speed 8088 and timers off, with a host-side deadline.
+Physical hardware, COM2 and other Kermit implementations are outside this test.
+
 ## Source modules
 
 | File | Description |
@@ -72,7 +138,7 @@ VT52 sequences: cursor position (`ESC Y row col`), clear screen (`ESC H ESC J`),
 | Terminal emulation (ANSI/VT100) | Yes |
 | Baud rate setting | Yes (300–9600) |
 | Port selection | Yes (COM1/COM2) |
-| XON/XOFF flow control | No (hardware handshake) |
+| XON/XOFF flow control | No (RTS/DTR asserted; CTS is not polled) |
 | Talk to Kermit server | Yes (SEND/GET/FIN/BYE) |
 | Act as server | No |
 | Transaction logging | No |
