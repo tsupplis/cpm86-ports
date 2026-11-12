@@ -122,6 +122,7 @@ Stephen Hemminger,  Mitre Corp. Bedford MA
 
 #include <stdio.h>
 #include <ctype.h>
+#include "fsave.h"
 
 #ifdef __AZTEC__
 #define fopenb	fopen	/* Aztec getc/putc/fread/fwrite are already binary */
@@ -431,8 +432,8 @@ putdir (f)
 FILE *f;
 {
 
-    rewind(f);
-    if (fwrite ((char *) ldir, DSIZE, nslots, f) != nslots)
+    if (fseek(f, 0L, 0) != 0 ||
+        fwrite ((char *) ldir, DSIZE, nslots, f) != nslots)
 	error ("Can't write directory - library may be botched");
 }
 
@@ -858,17 +859,10 @@ char  *name;
     register int i, j;
     static struct ludir odir[MAXFILES];
     char tmpname[SECTOR];
-    register char *cp, *dp;
-
-    /* same drive and name as the library, with a .$$$ type */
-    for (cp = tmpname, dp = name; *dp && *dp != '.';)
-	*cp++ = *dp++;
-    VOID strcpy(cp, ".$$$");
-
     if( (olib = fopenb(name,"r")) == 0)
 	cant(name);
 
-    if( (nlib = fopenb(tmpname, "w")) == 0)
+    if( (nlib = fs_create(tmpname, sizeof(tmpname), name)) == 0)
 	cant(tmpname);
 
     getdir(olib);
@@ -893,19 +887,18 @@ char  *name;
 	    copyentry( &odir[i], olib,  &ldir[j++], nlib);
         }
 
-    VOID fclose(olib);
+    if (fclose(olib) != 0)
+        errcnt++;
     putdir(nlib);
-    VOID fclose (nlib);
-
-    if(errcnt == 0) {
-	if ( unlink(name) < 0 || rename(tmpname, name) < 0) {
-	    VOID unlink(tmpname);
-	    cant(name);
-        }
+    if (fclose(nlib) != 0)
+        errcnt++;
+    if (errcnt != 0) {
+        fprintf(stderr, "Errors, library not updated; copy retained at %s\n",
+                tmpname);
+        exit(1);
     }
-    else
-	fprintf(stderr,"Errors, library not updated\n");
-    VOID unlink(tmpname);
+    if (!fs_commit(tmpname, name, (char *) 0))
+        cant(name);
 
 }
 
@@ -919,9 +912,11 @@ FILE *of, *nf;
     new->l_stat = ACTIVE;
     copymem(new->l_name, old->l_name, 8);
     copymem(new->l_ext, old->l_ext, 3);
-    VOID fseek(of, (long) wtoi(old->l_off)*SECTOR, 0);
+    if (fseek(of, (long) wtoi(old->l_off)*SECTOR, 0) != 0)
+        error("read seek error");
     secoffs = endsec;
-    VOID fseek(nf, (long) secoffs * SECTOR, 0);
+    if (fseek(nf, (long) secoffs * SECTOR, 0) != 0)
+        error("write seek error");
 
     itow (new->l_off, secoffs);
     numsecs = wtoi(old->l_len);

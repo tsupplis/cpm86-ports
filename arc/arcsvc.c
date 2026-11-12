@@ -57,7 +57,11 @@ openarc(chg)			/* open archive */
 	}
 #endif
 	if (chg) {		/* if opening for changes */
-		if (!(new = tmpopen(newname)))
+#if __CPM86__
+        if (!(new = archive_temp(newname, arcname)))
+#else
+        if (!(new = tmpopen(newname)))
+#endif
 			arcdie("Cannot create archive copy: %s", newname);
 
 	changing = chg;		/* note if open for changes */
@@ -76,7 +80,12 @@ closearc(chg)			/* close an archive */
 #endif
 	}
 	if (chg) {		/* if things have changed */
-		fclose(new);	/* close the new copy */
+		if (fclose(new) != 0)
+            arcdie("Cannot close archive copy: %s", newname);
+#if __CPM86__
+        if (!archive_commit(newname, arcname, keepbak ? bakname : NULL))
+            arcdie("Cannot replace archive: %s", arcname);
+#else
 		if (arc) {	/* if we had an original archive */
 #if      _MTS
                                 {
@@ -103,6 +112,7 @@ closearc(chg)			/* close an archive */
 		}
 		if (move(newname, arcname))
 			arcdie("Cannot move %s to %s", newname, arcname);
+#endif
 #if	!_MTS
 		setstamp(arcname, arcdate, arctime);
 #endif

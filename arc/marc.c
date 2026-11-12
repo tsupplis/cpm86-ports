@@ -152,7 +152,11 @@ char *arg[];			       /* pointers to arguments */
     arc = fopen(arcname,OPEN_R);	       /* open the archives */
     if(!(src=fopen(srcname,OPEN_R)))
 	 arcdie("Cannot read source archive %s",srcname);
+#if __CPM86__
+    if (!(new = archive_temp(newname, arcname)))
+#else
     if(!(new=tmpopen(newname)))
+#endif
 	 arcdie("Cannot create new archive %s",newname);
 
     if(!arc)
@@ -184,7 +188,13 @@ char *arg[];			       /* pointers to arguments */
 
     if(arc) fclose(arc);	       /* close the archives */
     fclose(src);
-    fclose(new);
+    if (fclose(new) != 0)
+        arcdie("Cannot close archive copy: %s", newname);
+
+#if __CPM86__
+    if (!archive_commit(newname, arcname, NULL))
+        arcdie("Cannot replace archive: %s", arcname);
+#else
 
     if(arc)			       /* make the switch */
 	 if(unlink(arcname))
@@ -192,6 +202,7 @@ char *arg[];			       /* pointers to arguments */
     if(move(newname,arcname))
 	 arcdie("Unable to rename %s to %s",newname,arcname);
 
+#endif
     setstamp(arcname,arcdate,arctime);     /* new arc matches newest file */
 
 #if	GEMDOS

@@ -11,3 +11,8 @@ VOID	upper PROTO ((char *string));
 int		move PROTO ((char *oldnam, char *newnam));
 int		crcbuf PROTO ((int, u_int, u_char *));
 FILE *	tmpopen PROTO ((char *path));
+
+#if __CPM86__
+FILE *archive_temp PROTO ((char *, const char *));
+int archive_commit PROTO ((const char *, const char *, const char *));
+#endif

@@ -1,5 +1,6 @@
 """Small LBR binary round-trip and update regression suite."""
 from pathlib import Path
+import os
 import subprocess
 import tempfile
 
@@ -52,3 +53,28 @@ with tempfile.TemporaryDirectory() as folder:
     assert "can't read directory" in text,text
     checks+=1
 print('LBR: %d binary round-trip, update/delete/reorganize, and short-directory checks passed'%checks)
+
+for mode in (0,1,2):
+    with tempfile.TemporaryDirectory() as folder:
+        wd=Path(folder)
+        (wd/'DATA.BIN').write_bytes(bytes(range(256)))
+        run(wd,'lu86','un16','TEST','DATA.BIN')
+        original=file(wd,'TEST.LBR').read_bytes()
+        drive=wd/'b'; drive.mkdir()
+        target=drive/'TEST.LBR'; target.write_bytes(original)
+        (drive/'FS0000.TMP').write_bytes(b'OCCUPIED')
+        p=subprocess.run(['emu2',str(root/'tests/testlu.cmd'),str(mode),'rn16','B:TEST'],
+                         cwd=wd,env=dict(os.environ,EMU2_DRIVE_B=str(drive)),
+                         stdin=subprocess.DEVNULL,capture_output=True,start_new_session=True,timeout=10)
+        text=(p.stdout+p.stderr).decode('latin1')
+        assert file(wd,'TEST.LBR').read_bytes()==original
+        assert (drive/'FS0000.TMP').read_bytes()==b'OCCUPIED'
+        if mode:
+            assert target.read_bytes()==original,(mode,text)
+            assert 'Errors' in text or 'Replacement retained' in text,text
+        else:
+            file(wd,'TEST.LBR').write_bytes(target.read_bytes())
+            file(wd,'DATA.BIN').unlink()
+            run(wd,'lu86','e','TEST')
+            assert file(wd,'DATA.BIN').read_bytes()==bytes(range(256)),text
+print('LBR: cross-drive reorganization and close/rename failure preserve original PASS')

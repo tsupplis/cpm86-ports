@@ -36,8 +36,16 @@ clean:
 	rm -rf *.h86 *.lst *.sym *.h86 *.cmd *.cmd *.log *.bin
 	rm -rf *.xxd *.map *.o
 	rm -rf cpmtest?.img
+	rm -rf tests
 
-test: all
+tests/testlu.cmd: testlu.c lu86.c fsave.h
+	mkdir -p tests
+	$(CC) $(CFLAGS) -o $@ testlu.c
+
+test: all tests/testlu.cmd
 	python3 test.py
 
 .PHONY: all test clean
+
+# Shared portable file replacement implementation.
+lu86.o: ../util/fsave.h

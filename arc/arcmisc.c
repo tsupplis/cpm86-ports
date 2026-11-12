@@ -110,6 +110,20 @@ envfind(name)
 }
 #endif
 
+#if __CPM86__
+#include "fsave.h"
+
+FILE *archive_temp(char *name, const char *destination)
+{
+    return fs_create(name, STRLEN, destination);
+}
+
+int archive_commit(const char *name, const char *destination, const char *keep)
+{
+    return fs_commit(name, destination, keep);
+}
+#endif
+
 /* Safe open for temp files */
 FILE *
 tmpopen(path)

@@ -29,8 +29,13 @@ marc86.cmd: $(MOBJS) util.lib
 
 test: binaries
 	sh test.sh
+	python3 test-drive.py
+	$(MAKE) -C ../util test
 
 clean:
 	$(RM) *.o *.h86 *.log *.sym *.prn *.lst *.obj $(BINARIES)
 
 .PHONY: all binaries test clean
+
+# Shared portable file replacement implementation.
+arcmisc.o: ../util/fsave.h
