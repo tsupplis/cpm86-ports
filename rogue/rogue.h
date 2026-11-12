@@ -480,6 +480,7 @@ extern char *nick_name;
 extern char *rest_file;
 extern char *press_space;
 extern char *save_file;
+extern short write_failed;
 extern char *you_can_move_again;
 extern char hit_message[];
 extern char hunger_str[];

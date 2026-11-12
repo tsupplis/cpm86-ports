@@ -9,7 +9,9 @@
 #include <string.h>
 #include "rogue.h"
 
-static short write_failed = 0;
+/* No data lives in this overlay (the overlay data area is not initialized
+ * at load time): write_failed is owned by the root, see save.c.
+ */
 
 static void
 r_write(fd, buf, n)

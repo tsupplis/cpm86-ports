@@ -9,6 +9,7 @@
 #include "rogue.h"
 
 char *save_file = (char *) 0;
+short write_failed = 0;		/* used by save overlay, reset on each save */
 
 void
 save_game()
