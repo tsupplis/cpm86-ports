@@ -13,7 +13,7 @@ all:
 
 # Only projects with runnable automated suites or build checks belong here.
 # Interactive PCE sessions are reserved for final-test.
-TEST_SUBDIRS=$(filter edlin lbr xsq uucp dc grep sed diff ndbm tr uniq sort tinybas xlisp vtl2 ratfor sokoban focal,$(SUBDIRS))
+TEST_SUBDIRS=$(filter edlin lbr xsq uucp dc grep sed diff ndbm tr uniq sort tinybas xlisp vtl2 ratfor sokoban focal arc kilo yacc rogue,$(SUBDIRS))
 
 test:
 	python3 tools/run-tests.py --make "$(MAKE)" $(TEST_SUBDIRS)
@@ -34,9 +34,6 @@ ports.zip: clean all
 	done; \
 	cp vtl2/*.vtl tmp-dist; \
 	cp tinybas/*.bas tmp-dist; \
-	cp sokoban/*.hlp tmp-dist; \
-	cp sokoban/*.dat tmp-dist; \
-    cp advent/advent.msg tmp-dist; \
     cp advent/advent.dat tmp-dist; \
     cp rogue/*.ovr tmp-dist; \
 	cp xlisp/*.lsp tmp-dist; \
@@ -82,8 +79,7 @@ cpmtest2.img: all
 	done
 	set -e; for i in vtl2/*.vtl tinybas/*.bas; do cpmcp -f cpm86-320 tmp.img $$i 0:; done
 	cpmcp -f cpm86-320 tmp.img xlisp/*.lsp 0:
-	cpmcp -f cpm86-320 tmp.img sokoban/*.hlp 0:
-	cpmcp -f cpm86-320 tmp.img sokoban/*.dat 0:
+	cpmcp -f cpm86-320 tmp.img advent/*.dat 0:
 	cpmcp -f cpm86-320 tmp.img cpu/samples/ver.com 0:
 	cpmls -F -f cpm86-320 tmp.img
 	python3 tools/cpm86twist.py twist tmp.img $@
