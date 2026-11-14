@@ -317,12 +317,23 @@ FRESTOR:MOV	CL,INQDISK		;determine current drive
 	INT	224
 	MOV	AL,BL			;get version #
 	CMP	AL,30H			; 3.x?
-	JB	FREE20			;use old method if not
+	JNB	FREE3
+	JMP	FREE20			;use allocation bitmap on 2.x
+FREE3:
+; Function 46 writes at the current DMA; our result reader uses TBUF.
+	MOV	DX,TBUF
+	MOV	CL,SETDMA
+	INT	224
 	MOV	AL,Byte Ptr .FCB	;get drive #
 	DEC	AL
 	MOV	DL,AL			;use new compute free space bdos call
 	MOV	CL,FRESPC
 	INT	224
+; An error/unsupported call leaves no usable free-space result.
+	CMP	AL,0FFH
+	JNE	FRE3OK
+	JMP	FREBAD
+FRE3OK:
 	MOV	CL,3			;answer is a 24-bit integer
 FRE3L1:	MOV	BX,CPM@BASE+82H		;answer is in 1st 3 bytes of 'dma' address
 	MOV	CH,3			;convert from sectors to kilobytes..
@@ -337,8 +348,13 @@ FRE3L2:	MOV	AL,M
 	JNZ	FRE3L2			;loop for 3 bytes
 	DEC	CL
 	JNZ	FRE3L1			;shift 3 times
+; The decimal printer accepts only 16 bits: never silently truncate.
+	CMP	Byte Ptr .CPM@BASE+82H,0
+	JE	FRE3FIT
+	JMP	FREBIG
+FRE3FIT:
 	MOV	BX,Word Ptr .CPM@BASE+80H	;now get result in k
-	JMPS	PRT@FRE			;go store it
+	JMP	PRT@FRE			;go store it
 FREE20:	MOV	CL,INQALC		;address of cp/m allocation vector
 	INT	224			;CP/M-86: returned in ES:BX
 	XCHG	BX,DX			;get its length
@@ -352,6 +368,9 @@ GSPBYT:	PUSH	DX			;save allocation address
 GSPLUP:	RCL	AL,1			;test bit
 	JB	NOT@FRE
 	INC	CX
+	JNZ	NOT@FRE
+	POP	DX			;balance allocation-pointer save
+	JMP	FREBIG			;65536 free blocks cannot fit
 NOT@FRE:MOV	DH,AL			;save bits
 	DEC	BX
 	MOV	AL,BL
@@ -370,11 +389,20 @@ END@ALC:POP	DX			;clear alloc vector pointer from stack
 	SUB	AL,3			;convert from sectors to thousands (k)
 	JZ	PRT@FRE			;skip shifts if 1k blocks
 FREK@LP:SHL	BX,1			;multiply blocks by k-bytes per block
+	JC	FREBIG			;report the display limit, not wraparound
 	DEC	AL			;multiply by 2, 4, 8, or 16.
 	JNZ	FREK@LP
+	JMP	PRT@FRE
+FREBAD:	CALL	ILPRT
+	DB	'Free space unavailable on DIRectory ',0
+	JMP	FRETAIL
+FREBIG:	CALL	ILPRT
+	DB	'>65535',0
+	JMP	FRETEXT
 PRT@FRE:CALL	DECOUT			; # of free k-bytes in hl-pair
-	CALL	ILPRT
-	DB	'k bytes free on DIRectory '
+FRETEXT:CALL	ILPRT
+	DB	'k bytes free on DIRectory ',0
+FRETAIL:CALL	ILPRT
 DRNAME	DB	' :',CR,LF,'   ',0
 	RET
 ; HIDDEN is an in-memory flag, never a CP/M filename attribute.

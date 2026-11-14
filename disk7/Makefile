@@ -8,7 +8,8 @@ MODULES=d7dir.inc d7browse.inc d7file.inc d7copy.inc d7util.inc
 all: disk7.cmd
 
 test: all
-	$(PYTHON) ../tools/test-directory-bounds.py disk7
+	EMU2_CPM_VER=2.2 $(PYTHON) ../tools/test-directory-bounds.py disk7
+	$(PYTHON) ../tools/test-disk-free.py
 
 .PHONY: all clean test
 

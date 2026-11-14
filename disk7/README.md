@@ -124,3 +124,23 @@ python3 tools/hidden_browser_check.py disk7 --boot BOOT.img --config PCE.cfg
 
 It uses disposable images and one emulator, checking normal/all/empty lists,
 rename/delete, attribute retention and untouched labels/directories.
+
+
+## Free-space reporting
+
+The version check retains the original split: below 3.0, count free allocation
+bitmap blocks; at 3.0 or later, call BDOS 46 for a 24-bit record count. Before
+46, DISK7 explicitly sets DMA to the default buffer it reads. An FFh error
+(including an unsupported-call response) prints `Free space unavailable` and
+allows browsing to continue. This does not change the OS-version selection.
+
+The decimal display remains 16-bit. Counts above 65,535 KiB print `>65535k`
+instead of wrapping, on both paths. The bitmap path also detects a full
+16-bit free-block counter overflow and balances its temporary stack save.
+
+`make test` runs allocation/copy checks explicitly with CP/M version 2.2,
+then free-space boundary checks using test-only BDOS responses. Those tests
+exercise nondefault initial DMA, zero/fractional KiB, the display boundary,
+24-bit maximum, failures and bitmap counter/shift overflow. They do not add
+function 46 to emu2 or claim native function-46 success validation. A separate
+unmodified-program check verifies the current emulator's unsupported response.
