@@ -47,6 +47,7 @@ END;
 
 PROCEDURE MainMenu;
 VAR
+  menuClock : ClockState;
   ch : CHAR;
   insult : BOOLEAN;
   i, msecs : INTEGER;
@@ -66,14 +67,17 @@ BEGIN
     WriteLN('(c) 1982, 1983 Yahoo Software          Terminal: ', dataFileContents.TerminalName);
     WriteLN('10970 Ashton Ave.  Suite 312           Play speed: ', playSpeed);
     Write(  'Los Angeles, Ca  90024                 ');
-    WriteLN('Up = ', upKey, '  Down = ',downKey ,'  Left = ', leftKey, '  Right = ', rightKey);
+    Write('Up = '); DrawGlyph(upKey, ChoiceColor);
+    Write('  Down = '); DrawGlyph(downKey, ChoiceColor);
+    Write('  Left = '); DrawGlyph(leftKey, ChoiceColor);
+    Write('  Right = '); DrawGlyph(rightKey, ChoiceColor); WriteLN;
     WriteLN('                                       Jump = Space   Stop = Other');
     WriteLN;
-    WriteLN('P = Play game                          High Scores');
-    WriteLN('L = Change level of difficulty');
-    WriteLN('C = Configure Ladder');
-    WriteLN('I = Instructions');
-    WriteLN('E = Exit Ladder');
+    DrawGlyph('P', ChoiceColor); WriteLN(' = Play game                          High Scores');
+    DrawGlyph('L', ChoiceColor); WriteLN(' = Change level of difficulty');
+    DrawGlyph('C', ChoiceColor); WriteLN(' = Configure Ladder');
+    DrawGlyph('I', ChoiceColor); WriteLN(' = Instructions');
+    DrawGlyph('E', ChoiceColor); WriteLN(' = Exit Ladder');
     WriteLN;
     WriteLN;
     Write('Enter one of the above: ');
@@ -93,9 +97,10 @@ BEGIN
     { randomly prompt the user to get a move on }
     insult := FALSE;
     msecs := 0;
+    ClockReset(menuClock);
     REPEAT
-      Delay(1);
-      msecs := Succ(msecs);
+      ClockIdle;
+      msecs := msecs + ClockMillis(menuClock);
       IF msecs >= 1000 THEN BEGIN
         msecs := 0;
         IF insults THEN BEGIN
@@ -238,8 +243,8 @@ VAR
 BEGIN
   FOR i := 1 TO NumSymbols DO BEGIN
     Beep;
-    GotoXY(lad.X, lad.Y); Write(symbols[i]);
-    Delay(150);
+    GotoXY(lad.X, lad.Y); DrawGlyph(symbols[i], HeroColor);
+    ClockDelay(150);
   END;
   m.LadsRemaining := Pred(m.LadsRemaining);
   GotoXY(8, 21); Write(m.ladsRemaining : 2);
@@ -292,10 +297,10 @@ BEGIN
   FOR y := 1 TO LevelRows DO BEGIN
     GotoXY(1, y);
     FOR x := 1 TO LevelCols DO
-      Write(m.Field[y][x]);
+      DrawCell(m.Field[y][x]);
   END;
   { Draw the lad at rest }
-  GotoXY(lad.X, lad.Y); Write('g');
+  GotoXY(lad.X, lad.Y); DrawGlyph('g', HeroColor);
   { Initialize the entire status line }
   GotoXY(1, 21);
   Write('Lads   ',m.LadsRemaining : 2,
@@ -303,7 +308,7 @@ BEGIN
         '     Score ', m.Score : 5, '00',
         '                 Bonus time    ', m.RemainingBonusTime : 2, '00');
   GotoXY(1, 23); Write('Get ready!');
-  Delay(1000);
+  ClockDelay(1000);
   WHILE KeyPressed DO
     Read(Kbd, ch);
   GotoXY(1, 23); Write('          ');
@@ -330,8 +335,8 @@ BEGIN
 
     ScoreMoney: BEGIN
       WHILE m.RemainingBonusTime > 0 DO BEGIN
-        GotoXY(1, 23); Write('Hooka!'); Beep; Delay(100);
-        GotoXY(1, 23); Write('      '); Delay(100);
+        GotoXY(1, 23); Write('Hooka!'); Beep; ClockDelay(100);
+        GotoXY(1, 23); Write('      '); ClockDelay(100);
         m.Score := Succ(m.Score);
         m.RemainingBonusTime := Pred(m.RemainingBonusTime);
         GotoXY(36, 21); Write(m.Score : 5);

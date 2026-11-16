@@ -3,6 +3,8 @@
 }
 VAR
   msecs, bonusTimeTicks, moveInterval, x, y : INTEGER;
+  elapsed : INTEGER;
+  gameClock : ClockState;
   ch : CHAR;
   rockPtr : RockPointerType;
 
@@ -14,6 +16,7 @@ BEGIN { MAIN }
   m.Rocks := NIL;           { and rocks }
   lastScore := -1;
   playSpeed := 1;
+  ClockInit;
   ReadDataFile;
 
 restartGame:
@@ -46,28 +49,27 @@ restartLevel:
   DrawMap;
   msecs := 0;
   bonusTimeTicks := 0;
+  ClockReset(gameClock);
 
   WHILE TRUE DO BEGIN
 
-    Delay(1);
-    msecs := Succ(msecs);
-    IF msecs >= moveInterval THEN BEGIN
-      { move the Lad and rocks every X milliseconds }
-      msecs := 0;
-      bonusTimeTicks := bonusTimeTicks + moveInterval;
-      IF bonusTimeticks >= BonusTimeDecInterval THEN BEGIN
-        { every 3 seconds, decrement the bonus time/time remaining value }
-        bonusTimeTicks := bonusTimeTicks - BonusTimeDecInterval;;
-        m.RemainingBonusTime := Pred(m.RemainingBonusTime);
-        GotoXY(74, 21);
-        Write(m.RemainingBonusTime : 2);
-        IF m.RemainingBonusTime <=0 THEN BEGIN
-          { died: do the animation and check if we still have lives left }
-          IF LadDeath THEN
-            GOTO restartLevel;
-          GOTO restartGame;
-        END;
+    elapsed := ClockMillis(gameClock);
+    msecs := msecs + elapsed;
+    { At most eight moves catch up after a slow screen update. }
+    IF msecs > 8 * moveInterval THEN msecs := 8 * moveInterval;
+    bonusTimeTicks := bonusTimeTicks + elapsed;
+    WHILE bonusTimeTicks >= BonusTimeDecInterval DO BEGIN
+      bonusTimeTicks := bonusTimeTicks - BonusTimeDecInterval;
+      m.RemainingBonusTime := Pred(m.RemainingBonusTime);
+      GotoXY(74, 21);
+      Write(m.RemainingBonusTime : 2);
+      IF m.RemainingBonusTime <= 0 THEN BEGIN
+        IF LadDeath THEN GOTO restartLevel;
+        GOTO restartGame;
       END;
+    END;
+    IF msecs >= moveInterval THEN BEGIN
+      msecs := msecs - moveInterval;
 
       IF m.AnyRocksPending THEN BEGIN
         { pending rocks? see if it's time to start moving }
@@ -86,9 +88,9 @@ restartLevel:
       { Move the lad according to players wishes }
       IF (lad.Dir <> STOPPED) OR (lad.DirRequest <> NONE) THEN BEGIN
         x := lad.X; y := lad.Y;
-        GotoXY(x, y); Write(m.Field[y][x]);
+        GotoXY(x, y); DrawCell(m.Field[y][x]);
         MoveActor(lad);
-        GotoXY(lad.X, lad.Y); Write(lad.Ch);
+        GotoXY(lad.X, lad.Y); DrawGlyph(lad.Ch, HeroColor);
         IF (x <> lad.X) AND (y = lad.Y) THEN BEGIN
           { get rid of disappearing flooring }
           IF m.Field[y + 1][x] = '-' THEN BEGIN
@@ -169,7 +171,7 @@ restartLevel:
           x := rockPtr^.X;
           y := rockPtr^.Y;
           GotoXY(x, y);
-          Write(m.Field[y][x]);
+          DrawCell(m.Field[y][x]);
         END;
         MoveActor(rockPtr^);
         { Don't draw the rock if it's pending }
@@ -180,7 +182,7 @@ restartLevel:
             ELSE
               GOTO restartGame;
           GotoXY(rockPtr^.X, rockPtr^.Y);
-          Write(rockPtr^.Ch);
+          DrawGlyph(rockPtr^.Ch, RockColor);
         END;
         rockPtr := rockPtr^.Next;
       END; { of rock movement handler ------------------------- }
@@ -203,19 +205,22 @@ restartLevel:
         CursOn;
         GotoXY(1, 23); Write('Type RETURN to continue: ');
         REPEAT
-          WHILE NOT KeyPressed DO;
+          WHILE NOT KeyPressed DO ClockIdle;
           Read(Kbd, ch);
         UNTIL ch IN [#$0D, #$03];
         IF ch = #$03 THEN  { ^C goes back to main menu }
           GOTO restartGame;
         GotoXY(1, 23); ClrEOL;
         CursOff;
+        ClockReset(gameClock);
+        msecs := 0;
       END ELSE IF ch = #$03 THEN BEGIN
         GOTO restartGame
       END ELSE BEGIN
         lad.DirRequest := STOPPED
       END;
     END; { of keypress handler ================================ }
+    IF msecs < moveInterval THEN ClockIdle;
   END;
 END.
 

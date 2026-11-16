@@ -20,24 +20,48 @@ memories of playing the original game on a Kaypro, and Stephen
 Ostermiller's and Mats Engstrom's code, I was able to come up 
 with this version.
 
-This version will use the original LADCONF.COM configuration program 
-and LADDER.DAT configuration file. Since this version is a Turbo 
-Pascal program, the terminal configuration portion of LADCONF 
-isn't used, though it still does set up the movement keys, sound 
-and back chatter options.
+## Build and run
 
-## Compiling the game
+Run `make` in this directory with the cross-development tools on your path.
+The build uses `cpm86_tp3` and produces `ladder.cmd` for IBM PC CP/M-86 and
+CCP/M-86. Copy `LADDER.CMD` and the supplied `LADDER.DAT` into the same drive
+and user area, then run `LADDER` there. Keep `LADDER.DAT` writable to save
+high scores.
 
-You'd need Turbo Pascal, of course. You'll also need to edit 
-LADCONST.PAS to set the cursor on and off sequences for your 
-terminal. LADDER.PAS is the main part of the program. I've 
-successfully compiled this on a 58K CP/M system, so available RAM 
-isn't a particularly critical limitation.
+The hero is bright cyan and the opposing rocks are bright red. Ladders,
+platforms and walls are bright yellow, as are the menu selection letters
+and movement keys.
 
-Once you've compiled LADDER.COM, copy LADCONF.COM to the same user area.
-If you don't have a LADDER.DAT file, when you run LADDER the first time
-it'll automatically load LADCONF to set up the movement keys and
-options, then transfer you back to LADDER.
+Press **P** to play, **L** to cycle through the five speeds, or **E** to exit.
+The supplied movement keys are **K** left, **L** right, **A** up and **S** down;
+**Space** jumps, **Esc** pauses, and **Return** resumes. **Ctrl-C** returns to
+the main menu during play.
+
+## Configuration file
+
+`LADDER.DAT` is the original 512-byte binary configuration and high-score
+file. This port reads the terminal name for display, movement keys, sound
+and insult flags, and high scores. The supplied file names the terminal
+`IBM PC`, disables sound and insults, and starts with empty high scores.
+
+Terminal escape sequences stored in the file are ignored: Turbo Pascal
+handles screen positioning and clearing, and `ladutils.pas` selects the
+native cursor visibility sequences for CP/M-86 or CCP/M-86 automatically.
+Playing speed is defined in `ladicons.pas`, not read from `LADDER.DAT`.
+
+To change the supplied settings with a binary editor, preserve the file's
+512-byte layout:
+
+| Offset (hex) | Setting | Values |
+| --- | --- | --- |
+| `C0` | Sound | ASCII `Y` or `N` |
+| `C1` | Insults | ASCII `Y` or `N` |
+| `E0`–`E3` | Down, left, right, up | Four uppercase ASCII keys; default `SKLA` |
+
+The bundled `LADCONF.COM` is the legacy CP/M-80 configuration program;
+this build does not provide a native CP/M-86 configurator. The **C** menu
+option and missing-file path still attempt to launch it, so use the supplied
+`LADDER.DAT` rather than relying on automatic configuration on CP/M-86.
 
 ## Limitations
 
@@ -48,16 +72,20 @@ level. If anyone knows what the original program actually did (I never
 managed to get anywhere near to completing the original game), let me 
 know and I'll see what I can do.
 
-The Delay(ms) call in Turbo Pascal only works for a Z80 running
-at up to 32MHz (and TINST will only allow you to specify a value of up
-to 20MHZ if I recall correctly). So if you're trying to run this on a
-system with an effective clock speed of greater than 32MHz, you're going
-to have to come up with another mechanism. That's not an insurmountable
-roadblock though; on my 144MHz-Z80-equivalent RunCPM box running on a
-Teensy 4.0, I patched the Turbo Pascal runtime to make a call to a BDOS
-extension I created to call the Arduino's delay() function. Works like
-a charm. If your system includes any kind of millisecond counter you can
-read, that's a good spot to start looking.
+Timing uses the IBM PC BIOS clock through inline assembly in `ladtime.pas`,
+independent of Turbo Pascal's CPU-calibrated `Delay`. CP/M-86 waits with
+`HLT`; CCP/M-86 yields through BDOS 141. No timer interrupt is replaced.
+The bonus countdown advances every three elapsed seconds and freezes while
+paused. The five playing speeds use movement intervals of 180, 90, 45, 24 and 13 ms; the approximately 55 ms BIOS
+resolution makes faster speeds advance in small batches (at most eight moves
+after a stall). Animation delays also use the BIOS clock. Cursor visibility uses the native
+CP/M-86 or CCP/M-86 console sequences, selected automatically.
+
+A standalone timing regression is included as `tsttime.pas`. Compile with
+`cpm86_tp3 tsttime.pas`, then run `TSTTIME` under CP/M-86 or CCP/M-86 on an
+IBM PC (or PCE). It checks tick conversion, signed/word rollover, midnight,
+and a one-second wait; success ends with `Timing PASS`. Repeat at different
+emulated CPU speeds to check that timing remains independent of CPU speed.
 
 ## References
 

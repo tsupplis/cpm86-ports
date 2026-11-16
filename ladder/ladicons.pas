@@ -240,5 +240,5 @@ CONST
     (x: 0; y: 0)  { JUMPLEFT }
   );
   
-  ReadmsWait : ARRAY [1..NumPlaySpeeds] OF INTEGER = (100, 50, 25, 13, 7);
+  ReadmsWait : ARRAY [1..NumPlaySpeeds] OF INTEGER = (180, 90, 45, 24, 13);
 
