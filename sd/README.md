@@ -78,16 +78,20 @@ python3 testpce.py --work-dir /tmp/sd-pce
 
 The local suite runs the production CMD through emu2 with private files, plus
 source-derived diagnostic builds for capacity, arithmetic overflow, search and
-close errors, FAT detection and drive/user restoration. Each run has a ten-second
+close errors, FAT detection, drive/user restoration, user 15 and drive P. Each run has a ten-second
 timeout. Diagnostic BDOS fixtures are not real OS compatibility tests.
 
 The standalone PCE test boots private CP/M-86, CCP/M-86 and CDOS 4.1 images,
-exercises both bracket forms, then extracts `SD.DIR` and checks that two appends
+uses a CP/M-formatted data disk, exercises both bracket forms, then extracts `SD.DIR` and checks that two appends
 preserve its original 16,383-byte prefix. PCE is deliberately outside the
 Makefile. The work directory must be new; images and logs remain there.
 
 Existing-file append is tested in PCE: emu2's file-open delegation uses the DOS
 FCB layout and does not provide the CP/M record count required by this algorithm.
 No emulator modifications or application workarounds are included.
+
+Validated: 36 production cases, 24 diagnostic cases, and PCE append/option tests
+on CP/M-86 1.1, CCP/M-86 3.1 and CDOS 4.1. FAT-header detection has diagnostic
+coverage; this PCE suite does not exercise a DOS-formatted data disk.
 
 See [LICENSE.md](LICENSE.md) for the available licensing evidence.
