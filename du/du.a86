@@ -1,0 +1,3186 @@
+;	29-Mar-85 relaxed for CCP/M ver 4.1 and up changed to -D ver
+;	8-11-84 revsed for PC_MODE support renamed DU-V75C.A86
+;	04/15/84 revised to correct minor bugs - renamed DU-V75B.A86
+;
+;	  DU.ASM  V7.5	Revised 1/23/81 ( CP/M-80 version )
+;	DISK UTILITY - By Ward Christensen
+;
+;	DU-75A.A86 is a CP/M-86 translation of the CP/M-80 version.
+;
+;	The original translation came from the SLICER USER GROUP
+;	disk #2, via Micro Cornucopia, PO Box 223, Bend, OR
+;	It did not indicate the name of the translator who should
+;	be thanked for his work.  That version appeared as DU-75.A86
+;
+;	See DU77.DOC for description and detailed instructions.
+;	See original issue ver 7.5 for history of changes and authors
+;	NOTE: see below for change in multiple cmd symbol.
+;
+;	03/05/84 by:
+;	H.M. Van Tassell, 120 Hill Hollow  Road, Watchung, NJ 07060
+;
+;	Added direct BIOS disk routines for CP/M-86 Plus ver 3.1
+;	and CCP/M-86 ver 3.1, with minimum changes to get it to work.
+;	There is now a check for version number with exit if unknown.
+;
+;	Fixed a bug with Map when using directory initialized for time
+;	stamping, added user&drive to prompt, and changed the multiple
+;	command symbol from ';' to '!'. *** THIS IS CP/M CONVENTION ***
+;
+;	Changed LISTOUT to use BDOS rather than BIOS call since under
+;	CCP/M-86, a BIOS call to LIST must have it's device number in
+;	register DL. The BDOS call uses the default list device and DU
+;	will "own" the printer once it is called using L_WRITE.
+;
+;	to generate: ASM86 DU ! GENCMD DU 8080 CODE[MF00]
+;
+;		----------------
+;
+
+L_WRITE	EQU	5			;write to default list device
+S_BIOS	EQU	50			;direct bios call
+DRV_DPB	EQU	31			;get drive dpb, returns sysdat in es
+
+
+; bios disk call data structure
+;
+SELECT_DISK EQU	WORD PTR 0[BX]
+SET_TRACK EQU	WORD PTR 2[BX]
+SET_DMASEG EQU	WORD PTR 4[BX]
+SET_DMAOFF EQU	WORD PTR 6[BX]
+SET_SECTOR EQU	WORD PTR 8[BX]
+READ_SECTOR EQU	WORD PTR 10[BX]
+WRITE_SECTOR EQU WORD PTR 12[BX]
+SECTOR_XLAT EQU	WORD PTR 14[BX]
+HOME_DISK EQU	WORD PTR 16[BX]
+
+
+BIO_SELDSK EQU	9			;bios function number
+BIO_READ EQU	10			;bios function number
+BIO_WRITE EQU	11			;bios function number
+
+; partial data structure of Disk Parameter Header (DPH)
+;
+DPH_XLATE EQU	WORD PTR 0		;offset to xlate table
+LOG_SEQN EQU	BYTE PTR 6		;to force reset of permanent media
+DPB_PTR31 EQU	WORD PTR 8		;offset of dpb pointer in dph (v3.1)
+DPB_PTR11 EQU	WORD PTR 10		;offset in version 1.1
+DPB_SIZE EQU	17			;size of disk parameter block
+
+
+;------- for CP/M ver 3.1 & CCP/M ver 3.1 ----
+BIOS_ENTRY EQU	DWORD PTR .28H		;loc of bios entry in system data
+
+;------------ for CP/M ver 3.1 --------------
+UDA_SEG	EQU	WORD PTR .4EH		;loc of uda seg in system data area
+
+;------------- for CCP/M ver 3.1 -------------
+S_SYSDAT EQU	154			;get system data area addr
+P_PDADR	EQU	156			;get pda address
+
+CCPM_31	EQU	1431H			;ccp/m-86 version number
+
+P_UDA	EQU	WORD PTR 10H		;loc of uda seg in user data area
+;-------------------------------------------------------------------------
+;
+;System equates
+;
+BASE	EQU	0
+;
+	ORG	BASE +5CH
+FCB	DB	0
+;
+PRINT	EQU	9
+RESETDK	EQU	13
+SELDK	EQU	14
+SRCHF	EQU	17			;search first
+SUSER	EQU	32
+GETDSK	EQU	25
+GETDPB	EQU	31
+;
+;	BIOS
+;
+CONSTF	EQU	2
+CONINF	EQU	3
+CONOUTF	EQU	4
+LISTF	EQU	5
+;
+S2OFF	EQU	14			;offset into fcb for s2 byte
+S2MASK	EQU	0FH			;mask for extended rc bits of s2
+DPBLEN	EQU	15			;size of cp/m 2.x disk parm block
+;
+;
+;Define ASCII characters
+;
+CR	EQU	0DH			;carriage return
+LF	EQU	0AH			;line feed
+TAB	EQU	09H			;tab
+BS	EQU	08H			;backspace
+;
+	CSEG
+	ORG	100H
+;
+	JMP	PASTCK			;jump over clock byte and i.d.
+;
+BCONST:
+	MOV	AL,CONSTF
+	JMP	BIOS
+;
+BCONIN:
+	MOV	AL,CONINF
+	JMP	BIOS
+;
+BCONOUT:
+	MOV	AL,CONOUTF
+	JMP	BIOS
+;
+BLIST:
+	MOV	AL,LISTF
+	JMP	BIOS
+;------------------------------------------------------------------------
+BHOME:
+	MOV	BX,BIOS_CALL_TBL
+	JMP	HOME_DISK
+;
+SEL:
+	MOV	BX,BIOS_CALL_TBL
+	JMP	SELECT_DISK
+;
+TRK:
+	MOV	BX,BIOS_CALL_TBL
+	JMP	SET_TRACK
+;
+SEC:
+	MOV	BX,BIOS_CALL_TBL
+	JMP	SET_SECTOR
+;
+DMA:
+	MOV	BX,BIOS_CALL_TBL
+	JMP	SET_DMAOFF
+;
+DSKREAD:
+	MOV	BX,BIOS_CALL_TBL
+	JMP	READ_SECTOR
+;
+DSKWRITE:
+	MOV	BX,BIOS_CALL_TBL
+	JMP	WRITE_SECTOR
+;
+BSECTTRAN:
+	MOV	BX,BIOS_CALL_TBL
+	JMP	SECTOR_XLAT
+;
+SETDMAB:
+	MOV	BX,BIOS_CALL_TBL
+	JMP	SET_DMASEG
+;
+
+
+; checks cpm version and initializes things
+CPMCHK:
+	MOV	CL,12			;get version number
+	INT	224
+	MOV	CPM_VERSION,AX		;and save it
+	TEST	AH,01H			;is it mp/m ?
+	JNZ	IS_MPM
+	CMP	AX,0022H		;CP/M-86 1.1 IBM PC BIOS
+	JE	VER_11
+	CMP	AX,1022H		;CP/M-86 1.1
+	JE	VER_11
+	CMP	AX,1031H		;CP/M-86 Plus
+	JE	VER_31
+	CMP	AX,1431H		;Concurrent CP/M-86
+	JE	VER_31
+	CMP	AX,1441H		;Concurrent DOS 4.1
+	JE	VER_31
+UNK_VER:				;say unknown and exit
+	MOV	DX,OFFSET WVMSG
+	MOV	CL,9
+	INT	224
+	JMP	EXIT
+IS_MPM:					;mp/m is not supported
+	MOV	DX,OFFSET MPMSG		;say it and exit
+	MOV	CL,9
+	INT	224
+	JMP	EXIT
+
+VER_11:
+	MOV	BIOS_CALL_TBL,OFFSET TABLE11
+	JMPS	VER_OK
+VER_31:
+	MOV	BIOS_CALL_TBL,OFFSET TABLE31
+VER_OK:
+	MOV	AX,DS			;setup our dseg for
+	MOV	IDMASEG,AX		;sector buffer read/write
+	MOV	DMASEG,AX
+	MOV	DMAOFF,80H		;and default buffer
+	RET
+
+
+; direct bios call for cp/m-86 version 1.1
+;
+SELECT_DISK11:
+	MOV	AL,9			;bios fucn 9
+	JMPS	BIOS			;returns dph addr in es:bx
+SET_TRACK11:
+	MOV	AL,10
+	JMPS	BIOS
+SET_DMASEG11:
+	MOV	AL,17
+	JMPS	BIOS
+SET_DMAOFF11:
+	MOV	AL,12
+	JMPS	BIOS
+SET_SECTOR11:
+	MOV	AL,11
+	JMPS	BIOS
+READ_SECTOR11:
+	MOV	AL,13
+	JMPS	BIOS
+WRITE_SECTOR11:
+	MOV	AL,14
+	JMPS	BIOS
+SECTOR_XLAT11:
+	MOV	AL,16
+	JMPS	BIOS
+HOME_DISK11:
+	MOV	AL,8
+	JMPS	BIOS
+
+;
+BIOS:
+	MOV	BPB_FUNC,AL		;bios function number
+	MOV	BPB_CX,CX
+	MOV	BPB_DX,DX
+	MOV	DX,OFFSET BPB
+	MOV	CL,S_BIOS		;direct bios function call = 50
+	
+BDOS:	INT	224			;fall thru
+	RET
+
+;
+; direct bios disk calls for CP/M-86 version 3.1
+;
+SET_SECTOR31:
+	CALL	LOGI_2_PHY		;convert logical record number to
+	MOV	ISECTOR,CX		;physical sector number
+	RET
+
+SET_TRACK31:
+	MOV	ITRACK,CX
+	RET
+
+SECTOR_XLAT31:
+	CALL	PSEUDO_XLAT		;translate logical records
+	RET				;bx = pseudo xlate record number
+
+SET_DMASEG31:
+	MOV	DMASEG,CX		;user dma segment
+	RET
+
+SET_DMAOFF31:
+	MOV	DMAOFF,CX		;user dma offset
+	RET
+
+HOME_DISK31:				;do nothing, there aint no home
+	XOR	AX,AX			;but make sure al=0
+	RET
+
+PSEUDO_XLAT:
+;---------
+;	ENTRY:	CX = logical record number (relative 1)
+;	EXIT:	BX = pseudo logical sector number
+;		     (gives same result as if disk had same number of
+;		      physical sectors as there are 128 byte records)
+
+	MOV	BX,CX			;just in case there is no xlate
+	CMP	SEC_XLAT_TBL,0 ! JZ NO_XLAT ;is there an xlate table?
+	INC	CX			;do this only for du-v75
+	CALL	LOGI_2_PHY		;returns ax = physical sector
+	MOV	BX,SEC_XLAT_TBL		;point to disk xlate table
+	PUSH	DS ! MOV DS,SYSADDR	;in the system data area
+	XLAT	SEC_XLAT_TBL		;al = translated phy sector number
+	POP	DS
+	MOV	CL,PHYSHF		;get physical shift factor
+	SHL	AX,CL
+	ADD	AX,REC_OFFSET		;add in the record offset into sector
+	INC	AX			;make it relative to 1
+	MOV	BX,AX			;move to bx
+NO_XLAT:
+	RET
+	
+LOGI_2_PHY:
+;----------
+;	ENTRY:	CX = logical record number (relative to 1)
+;	EXIT:	CX=AX = physical sector number (relative to 0)
+;		rec_offset contains record offset into phy sector
+;
+	DEC	CX			;now relative to zero
+	MOV	AX,CX			;move logical record number
+	XOR	BH,BH			;clear high byte
+	MOV	BL,PHYMSK		;get physical mask
+	AND	CX,BX			;cx = logical record offset into
+	MOV	REC_OFFSET,CX		;physical sector
+	MOV	CL,PHYSHF		;get physical shift factor
+	SHR	AX,CL
+	MOV	CX,AX			;cx=ax = physical sector number
+	RET
+
+
+;++++++++++++++++++++++++++++++++++++++
+SELECT_DISK31:				;selects a drive
+;-------------
+; resets login sequence number of drive to 0, to force
+; permanent media to be logged in again on disk reset
+;	Entry:	CL = drive to select
+;		DL = 0 if initial select, else 1
+
+	MOV	TRK_SECT,0FFFFH		;indicate not in memory
+	MOV	IDRIVE,CL		;put drive in table
+	PUSH	ES ! PUSH DS		;save context
+	PUSH	CX			;save drive
+	CALL	GETSU			;set up ds and es
+	POP	CX			;restore drive
+	MOV	AX,BIO_SELDSK		;do the bios seldsk call
+	CALLF	BIOS_ENTRY		;call the bios thru entry point
+	CMP	BX,0 ! JZ SEL_ERROR	;bx = 0 is an illegal drive
+
+	MOV	CX,DPH_XLATE[BX]	;get xlate table offset in sysdat
+					;copy dpb to local storage
+	POP	ES ! PUSH ES		;get our dseg into es
+	MOV	ES:SEC_XLAT_TBL,CX	;save xlate table address
+	MOV	DI,OFFSET DPB		;setup dest of dpb
+	MOV	SI,DPB_PTR31[BX]	;get the info from dph (ver 31)
+
+	CMP	WORD PTR[SI],0FFFFH	;is this a pc_mode dpb?
+	JNE	NOT_PC_DPB
+	POP	DS
+	POP	ES
+	MOV	DX,OFFSET FATMSG
+	MOV	CL,9
+	INT	224
+	JMP	EXIT
+NOT_PC_DPB:
+	MOV	LOG_SEQN[BX],0		;to force a disk reset set the
+					;login sequence no. to zero
+
+	MOV	CX,DPB_SIZE
+	REP	MOVSB			;copy dpb into local storage
+SEL_ERROR:
+	POP	DS ! POP ES		;restore context
+	MOV	CL,PHYSHF		;this is a dirty trick
+	SHL	SPT,CL			;to get a spt for du
+	
+	CMP	PHYSHF,4		;make sure sector_buf is ok
+	JBE	BUF_OK			;>>> physhf table <<<
+	MOV	DX,OFFSET TOOBIG	;128 = 0       1024 = 3
+	MOV	CL,9			;256 = 1       2048 = 4
+	INT	224			;512 = 2       4096 = 5
+	JMP	EXIT
+BUF_OK:
+	RET
+
+SECT_TO_MEM:
+; Cache identity is valid only after a successful physical read.
+	MOV	AX,ITRACK
+	CMP	AX,TRK_SECT
+	JNE	FETCH_SECT
+	MOV	AX,ISECTOR
+	CMP	AX,TRK_SECT+2
+	JNE	FETCH_SECT
+	XOR	AX,AX
+	XOR	BX,BX
+	RET
+FETCH_SECT:
+	MOV	TRK_SECT,0FFFFH
+	MOV	BX,BIO_READ
+	CALL	BIOSIOPB
+	OR	AL,AL
+	JNZ	SECT_DONE
+	PUSH	AX
+	MOV	AX,ITRACK
+	MOV	TRK_SECT,AX
+	MOV	AX,ISECTOR
+	MOV	TRK_SECT+2,AX
+	POP	AX
+SECT_DONE:
+	RET
+
+READ_SECTOR31:				;reads a logical record from disk to buffer
+;-------------
+;
+	CALL	SECT_TO_MEM		;get sector
+	OR	AL,AL
+	JZ	COPY_READ
+	RET
+COPY_READ:
+	PUSH	SI ! PUSH DI ! PUSH ES
+	CLD	! MOV ES,DMASEG		;setup user dma segment
+	MOV	DI,DMAOFF		;where to copy 128 byte record
+	MOV	SI,REC_OFFSET		;record offset into sector buffer
+	MOV	CL,7 ! SHL SI,CL	;times 128
+	ADD	SI,OFFSET SECTOR_BUF	;points to start of record
+	MOV	CX,128/2		;move 128 bytes
+	REP	MOVSW			;so do the move
+	POP	ES ! POP DI ! POP SI
+	RET
+	
+
+WRITE_SECTOR31:				;writes a physical sector
+;--------------
+;
+	CALL	SECT_TO_MEM
+	OR	AL,AL
+	JZ	COPY_WRITE
+	RET
+COPY_WRITE:
+	PUSH	SI ! PUSH DI ! PUSH ES ! PUSH DS
+	MOV	DS,DMASEG		;source of user data to copy
+	MOV	SI,DMAOFF		;into sector buffer
+	CLD	! MOV ES,IDMASEG	;setup for sector buffer dma segment
+	MOV	DI,REC_OFFSET		;record offset into sector buffer
+	MOV	CL,7 ! SHL DI,CL	;times 128
+	ADD	DI,OFFSET SECTOR_BUF	;points to start of record
+	MOV	CX,128/2		;move 128 bytes
+	REP	MOVSW			;so do the move
+	POP	DS ! POP ES ! POP DI ! POP SI
+	MOV	BX,BIO_WRITE		;signal a write
+					;fall thru to write sector to disk
+BIOSIOPB:				;put the iopb on the stack, call bios
+	PUSH	DS			;ds will contain sysdat seg
+	PUSH	ES			;es will contain uda seg
+					;push iopb onto stack
+	MOV	AH,IMCNT
+	MOV	AL,IDRIVE
+	PUSH	AX			;drive and multi-sector count
+	PUSH	ITRACK			;track #
+	PUSH	ISECTOR			;sector # = 0
+	PUSH	IDMASEG			;sector buffer dma segment
+	PUSH	IDMAOFF			;sector buffer dma offset
+
+	CALL	GETSU			;set up ds-sysdat and es-uda
+	MOV	AX,BX			;set i/o function into ax
+	CALLF	BIOS_ENTRY		;call indirect the bios
+					;al,bl = return status
+	ADD	SP,10			;restore stack
+	POP	ES			;restore original es
+	POP	DS			;ditto for ds
+	RET
+
+;======
+GETSU:
+;======
+;	entry:	DS = local data seg
+;	exit:	DS = SYSDAT seg, ES=UDA seg (for call to XIOS)
+
+	MOV	AX,UDAADDR		;get the saved value
+	OR	AX,AX			;set flags
+	JZ	GET_DS_ES		;uninitialized, go get ds and es
+	MOV	ES,AX			;we've been here before, so load regs
+	MOV	DS,SYSADDR
+	RET
+
+GET_DS_ES:				;this is the initial call
+;---------
+
+	CMP	CPM_VERSION,CCPM_31	;is it ccp/m-86 version 1431+?
+	JB	GET_DS_ES10		;or version 1031
+
+GET_DS_ES14:				;use this for ccp/m-86 version 1431
+;----------
+	MOV	CL,P_PDADR		;will return process desc addr in bx
+	INT	224			;and system data seg in es
+	MOV	AX,ES:P_UDA[BX]		;grab uda_seg
+	JMPS	COM_SU			;jmp to common
+	
+GET_DS_ES10:				;use this with cp/m-86 version 1031
+;----------
+	MOV	CL,DRV_DPB		;will return system data seg in es
+	INT	224
+	MOV	AX,ES:UDA_SEG		;grab uda_seg
+					;fall thru to common
+COM_SU:					;this is common to both versions
+
+	MOV	SYSADDR,ES		;save system data segment (sysdat)
+	PUSH	ES
+	MOV	UDAADDR,AX		;save for uds_seg for future calls
+	MOV	ES,AX			;get uda_seg into es
+	POP	DS			;get sysdat into ds
+	RET
+
+;-----------------------------------------------------------------------
+;
+CLOCK	DB	1			;<---put non-zero here for 4 mhz clock
+;
+PASTCK:
+	MOV	AX,CS
+	MOV	DS,AX
+	MOV	SS,AX
+	MOV	ES,AX
+	MOV	SP,OFFSET STACK
+	
+	CALL	CPMCHK			;make sure right version, do setup
+;
+HELLO:	CALL	ILPRT
+	DB	CR,LF,'DISK UTILITY ver 7.5-D',CR,LF
+	DB	'For CP/M-86 & CCP/M-86 ver 3.1-4.1',CR,LF
+	DB	CR,LF
+	DB	'Type ? for help, X or ESC Quits'
+	DB	CR,LF,0
+
+	CALL	GETSTP			;set up parameters
+	MOV	BX,OFFSET BASE +80H	;to input buff
+	MOV	AL,BYTE	PTR [BX]
+	OR	AL,AL
+	JZ	PRMPTR			;no command
+;
+;Got initial command, set it up
+	MOV	CH,AL			;save length
+	DEC	CH
+	JZ	PRMPTR
+	MOV	DX,OFFSET INBUF
+	INC	BX			;skip len
+	INC	BX			;skip ' '
+	CALL	MOVE
+	MOV	AL,CR
+	XCHG	BX,DX
+	MOV	[BX],AL
+	XCHG	BX,DX
+	MOV	BX,OFFSET INBUF
+	JMP	PRMPTI
+;
+PRMPTR:	XOR	AL,AL
+	MOV	QFLAG,AL
+	CALL	RDBUF
+;
+PRMPTI:	MOV	AL,255
+	MOV	BYTE PTR TOGO,AL	;loop count for "/"
+	MOV	BYTE PTR TOGO+1,AL
+;
+PROMPT	EQU	$
+SETSTK:
+	MOV	SP, OFFSET STACK
+	XOR	AL,AL			;zero 2-up print
+	MOV	TWOUP,AL		;switch
+	MOV	AL,1
+	MOV	FTSW,AL			;tell search not to incr
+	PUSH	BX
+	MOV	BX,OFFSET BASE +100H
+	MOV	BUFAD,BX		;for rdbyte
+	POP	BX
+	CALL	CTLCS			;abort?
+	JZ	PRMPTR			;yes, read buffer
+;
+;Do we have to position in directory after find?
+	MOV	AL,FINDFL
+	OR	AL,AL
+	JZ	L@00005
+	JMP	POSDIR			;position in directory
+L@00005:
+	MOV	AL,BYTE	PTR [BX]
+	CMP	AL,CR
+	JZ	PRMPTR
+	CMP	AL,'!'			;logical cr?
+	PUSHF
+	INC	BX
+	POPF
+	JZ	PROMPT
+	CALL	UPCASE
+	MOV	DUMTYP,AL		;type of dump (a,d,h)
+;
+;Command dispatcher
+;
+	CMP	AL,'+'
+	JNZ	L@00008
+	JMP	PLUS
+L@00008:
+;
+	CMP	AL,'-'
+	JNZ	L@00009
+	JMP	MINUS
+L@00009:
+;
+	CMP	AL,'='
+	JNZ	L@00010
+	JMP	SEARCH
+L@00010:
+;
+	CMP	AL,'<'
+	JNZ	L@00011
+	JMP	SAVE
+L@00011:
+;
+	CMP	AL,'>'
+	JNZ	L@00012
+	JMP	RESTOR
+L@00012:
+;
+	CMP	AL,'#'
+	JNZ	L@00013
+	JMP	STATS
+L@00013:
+;
+	CMP	AL,'?'
+	JNZ	L@00014
+	JMP	HELP
+L@00014:
+;
+	CMP	AL,'A'
+	JNZ	L@00015
+	JMP	DUMP
+L@00015:
+;
+	CMP	AL,'C'
+	JNZ	L@00016
+	JMP	CHG
+L@00016:
+;
+	CMP	AL,'D'
+	JNZ	L@00017
+	JMP	DUMP
+L@00017:
+;
+	CMP	AL,'F'
+	JNZ	L@00018
+	JMP	POSFIL
+L@00018:
+;
+	CMP	AL,'G'
+	JNZ	L@00019
+	JMP	POS
+L@00019:
+;
+	CMP	AL,'H'
+	JNZ	L@00020
+	JMP	DUMP
+L@00020:
+;
+	CMP	AL,'L'
+	JNZ	L@00021
+	JMP	LOGIN
+L@00021:
+;
+	CMP	AL,'M'
+	JNZ	L@00022
+	JMP	MAP
+L@00022:
+;
+	CMP	AL,'N'
+	JNZ	L@00023
+	JMP	NEWDSK
+L@00023:
+;
+	CMP	AL,'P'
+	JNZ	L@00024
+	JMP	PRNTFF
+L@00024:
+;
+	CMP	AL,'Q'
+	JNZ	L@00025
+	JMP	QUIET
+L@00025:
+;
+	CMP	AL,'R'
+	JNZ	L@00026
+	JMP	DOREAD
+L@00026:
+;
+	CMP	AL,'S'
+	JNZ	L@00027
+	JMP	POS
+L@00027:
+;
+	CMP	AL,'T'
+	JNZ	L@00028
+	JMP	POS
+L@00028:
+;
+	CMP	AL,'U'			;******cp/m 2.x only******
+	JNZ	L@00029
+	JMP	USER
+L@00029:
+;
+	CMP	AL,'V'
+	JNZ	L@00030
+	JMP	VIEW
+L@00030:
+;
+	CMP	AL,'W'
+	JNZ	L@00031
+	JMP	DORITE
+L@00031:
+;
+	CMP	AL,'X'
+	JNZ	L@00032
+QUIT:
+	CALL	ILPRT
+	DB	'Confirm quiting (Y/N)? ',0
+	CALL	CONIN
+	CALL	UPCASE
+	CMP	AL,'Y'
+	JE	EXIT
+	CALL	CRLF
+	JMP	PRMPTR
+;
+EXIT:
+	MOV	CL,0
+	MOV	DL,0
+	JMP	BDOS			;return to cp/m 86
+	
+L@00032:
+;
+	CMP	AL,'Z'
+	JNZ	L@00033
+	JMP	SLEEP
+L@00033:
+;
+	CMP	AL,'/'
+	JNZ	L@00034
+	JMP	REPEAT
+L@00034:
+;
+WHAT:	XOR	AL,AL
+	MOV	QFLAG,AL
+	CALL	ILPRT
+	DB	'?',0
+	JMP	PRMPTR
+;
+;Memory full error
+;
+MEMFUL:	XOR	AL,AL
+	MOV	QFLAG,AL
+	CALL	ILPRT
+	DB	'+++ Out of memory +++'
+	DB	CR,LF,0
+	JMP	PRMPTR
+;
+;Print disk statistics
+;
+STATS:	PUSH	BX
+	CALL	ILPRT
+	DB	'Disk Information:',CR,LF
+	DB	'Tracks:',9,9,0
+	MOV	BX,MAXTRK
+	INC	BX
+	CALL	DEC
+	CALL	ILPRT
+	DB	CR,LF,'Sec/trk:',9,0
+	MOV	BX,SPT
+	CALL	DEC
+	CALL	ILPRT
+	DB	CR,LF,'Grpsize:',9,0
+	MOV	AL,BLM
+	INC	AL
+	MOV	BL,AL
+	MOV	BH,0
+	CALL	DEC
+	CALL	ILPRT
+	DB	' (sectors per group)',CR,LF
+	DB	'Tot grps:',9,0
+	MOV	BX,DSM
+	CALL	DEC
+	CALL	ILPRT
+	DB	CR,LF,'Dir entries:',9,0
+	MOV	BX,DRM
+	INC	BX
+	CALL	DEC
+	CALL	ILPRT
+	DB	CR,LF,'Sys tracks:',9,0
+	MOV	BX,SYSTRK
+	CALL	DEC
+	CALL	CRLF
+	POP	BX
+	JMP	PROMPT
+;
+;The following command resets the disk
+;system thru CP/M, and may be usable for
+;changing the disk density or format.
+;This can only be done if your BIOS resets
+;the auto-density select parameters at
+;every track-zero access.
+;
+NEWDSK:	PUSH	BX
+	MOV	CL,RESETDK
+	CALL	BDOS
+	MOV	AL,DRIVE
+	MOV	CL,AL
+	POP	BX
+	CALL	SELECT
+	JMP	PROMPT
+;
+;Quite mode
+;
+QUIET:	MOV	QFLAG,AL		;now quiet
+	JMP	PROMPT
+;
+;Repeat buffer contents
+;
+REPEAT:	CALL	DECIN			;nn specified?
+	MOV	AL,DH
+	OR	AL,DL
+	JZ	NNN			;no.
+	MOV	BX,TOGO
+	INC	BX			;test for first time
+	MOV	AL,BH
+	OR	AL,BL			;was it 0ffffh?
+	JNZ	NNN			;no: counting
+	XCHG	BX,DX			;get count
+	MOV	TOGO,BX			;set count
+;
+NNN:	MOV	BX,TOGO
+	XCHG	BX,DX
+	MOV	BX,OFFSET INBUF		;ready to repeat
+	INC	DX			;test for 0ffffh
+	MOV	AL,DH
+	OR	AL,DL
+	JNZ	L@00037
+	JMP	PROMPT			;continous
+L@00037:
+	DEC	DX			;count down
+	DEC	DX			;make up for prev inx d
+	XCHG	BX,DX
+	MOV	TOGO,BX
+	MOV	AL,BH			;all done?
+	OR	AL,BL
+	XCHG	BX,DX			;get back inbuf ptr
+	JZ	L@00038
+	JMP	PROMPT			;no, keep going
+L@00038:
+	JMP	PRMPTR			;all done
+;
+;Set CP/M 2.x user number
+;
+USER:
+	CALL	DECIN			;get requested user no.
+	MOV	AL,DL
+	CMP	AL,32			;valid?
+	JNAE	L@00040
+	JMP	WHAT
+L@00040:
+	MOV	AL,DH
+	OR	AL,AL
+	JZ	L@00041
+	JMP	WHAT
+L@00041:
+	MOV	UNUM,DL			;save it
+	MOV	CL,SUSER
+	PUSH	BX			;save char pointer
+	CALL	BDOS			;set user no.
+	POP	BX
+	JMP	PROMPT
+;
+;Toggle print flag
+;
+PRNTFF:	MOV	AL,PFLAG
+	XOR	AL,1
+	MOV	PFLAG,AL
+	JMP	PROMPT
+;
+;Sleep routine, in tenths of a sec
+;
+SLEEP:	CALL	HEXIN			;get count if any
+	MOV	AL,DL			;any?
+	OR	AL,AL
+	JNZ	SLEPLP
+	MOV	DL,10
+;
+SLEPLP:	MOV	CX,OFFSET 10000
+	MOV	AL,CLOCK
+	OR	AL,AL
+	JZ	SLEEP2
+	MOV	CX,OFFSET 32000
+;
+SLEEP2:
+	DEC	CX
+	MOV	AL,CH
+	OR	AL,CL
+	JNZ	SLEEP2
+	PUSH	DX
+	CALL	CTLCS
+	POP	DX
+	JNZ	L@00045
+	JMP	PRMPTR
+L@00045:
+	DEC	DL
+	JNZ	SLEPLP
+	JMP	PROMPT
+;
+;Check for control-C or S
+;
+CTLCS:	CALL	CONST
+	OR	AL,AL
+	JNZ	GETC
+	OR	AL,1			;no char, retn nz
+	RET
+;
+GETC:	CALL	CONIN
+	AND	AL,5FH
+	CMP	AL,'Q'			;a q will quit
+	JZ	QUIT_RET
+	AND	AL,1FH			;allow ascii
+	CMP	AL,'S'-40H
+	JNZ	L@00048
+	CALL	CONIN
+L@00048:
+	CMP	AL,'['-40H		;an escape will quit
+	JZ	QUIT_RET
+	CMP	AL,'C'-40H		;and so will ^c
+
+QUIT_RET:
+	RET				;0 set if ctl-c,esc
+;
+;Find our way at initialization
+;
+GETSTP:
+	MOV	CL,SUSER		;get user number
+	MOV	DL,0FFH			;get user
+	CALL	BDOS
+	MOV	UNUM,AL			;set user number
+
+	MOV	CL,GETDSK
+	CALL	BDOS			;get curnt dsk
+	MOV	CL,AL			;we have to select
+	JMP	SELECT			;to get the dph
+;
+LOGIN:	CALL	DOLOG
+	JMP	PROMPT
+;
+DOLOG:	MOV	AL,BYTE	PTR [BX]	;disk req?
+	MOV	DX,OFFSET 0
+	CMP	AL,CR
+	JNZ	L@00049
+	JMP	LGNODK
+L@00049:
+	CMP	AL,'!'
+	JNZ	L@00050
+	JMP	LGNODK
+L@00050:
+	CALL	UPCASE
+	INC	BX
+	SUB	AL,'A'
+	MOV	CL,AL
+;
+SELECT:	PUSH	BX
+	MOV	AL,CL			;put drive in al
+	PUSH	CX			;save drive
+	MOV	DL,0			;indicate first select
+	CALL	SEL			;select disk thru bios
+	MOV	AL,BH
+	OR	AL,BL
+	POP	CX
+	JNZ	L@00052
+	JMP	WHAT			;select error
+L@00052:
+	MOV	DRIVE,CL		;remember later where we are
+;
+	MOV	AX,ES:[BX]		;get the sector table ptr
+	MOV	SECTBL,AX
+	MOV	AX,8			;in ver 31 offset is 8
+	CMP	BYTE PTR CPM_VERSION,31H
+	JAE	AX8
+	MOV	AX,10			;but in ver 11 it is 10 bytes
+AX8:	ADD	BX,AX
+	MOV	BX,ES:[BX]		;get dpb ptr
+;
+SELSKP:	CALL	LOGIT
+	MOV	BX,SYSTRK		;reset track and sector
+	XCHG	BX,DX			;to directory
+	CALL	SETTRK			;on every
+	MOV	DX,OFFSET 1		;login
+	CALL	SETSEC			;change
+	MOV	BX,PHYSEC		;this logic will tell
+	MOV	AL,BH			;if first sec
+	OR	AL,BL			;is physical 0
+	MOV	FIRST0,AL
+	CMP	BYTE PTR CPM_VERSION,31H ;if ver 31 then
+	JB	NO_SET_0		;use first sector=1
+	MOV	FIRST0,1
+NO_SET_0:
+	CALL	CLCSUB
+	POP	BX
+;
+LGNODK:	CALL	NORITE
+	RET
+;
+;Read in the disk directory
+;
+REDDIR:	PUSH	BX
+	CALL	NORITE			;positioning lost
+	MOV	BX,SYSTRK
+	MOV	CURTRK,BX
+	MOV	BX,OFFSET 1
+	MOV	CURSEC,BX
+	MOV	BX,DRM			;get dir size from dpb
+	INC	BX			;make 1-relative
+	CALL	ROTRHL
+	CALL	ROTRHL			;divide by 4 (4 names/sector)
+	MOV	CX,BX
+	MOV	DX,OFFSET DIRECT	;dma addr
+;
+RDIRLP:	PUSH	CX
+	PUSH	DX
+	MOV	CX,DX
+	MOV	AL,0F0H			;force memory
+	CMP	AL,DH
+	JAE	L@00053
+	JMP	MEMFUL
+L@00053:
+	CALL	SETDMA
+	MOV	BX,CURTRK
+	XCHG	BX,DX
+	CALL	SETTRK
+	MOV	BX,CURSEC
+	XCHG	BX,DX
+	CALL	SETSEC
+	CALL	READ
+	CALL	NXTSEC
+	POP	DX
+	POP	CX
+	MOV	BX,OFFSET 80H
+	ADD	BX,DX
+	XCHG	BX,DX
+	DEC	CX
+	MOV	AL,CH
+	OR	AL,CL
+	JNZ	RDIRLP
+	MOV	CX,OFFSET BASE +80H
+	CALL	SETDMA
+	POP	BX
+	RET
+;
+;Map the directory
+;
+MAP:	CALL	REDDIR			;read in directory
+	MOV	CL,0			;init start grp #
+	MOV	AL,AL0			;read dir grp bits
+	CALL	COLECT			;collect count of dir grps..
+	MOV	AL,AL1			;in register c
+	CALL	COLECT
+	MOV	CH,0			;bc now has a default start grp #
+	CALL	HEXIN
+	PUSH	BX			;save inbuf ptr
+	MOV	AL,DL			;get start
+	OR	AL,DH			;nothing?
+	JZ	MAPDF			;yes, dflt
+	MOV	CX,DX
+;
+MAPDF:	CALL	HEXB
+	MOV	AL,'-'
+	CALL	TYPEOUT
+	CALL	GETGRP			;get grp(c) to hl
+;
+MAPCNT:
+	INC	CX			;next grp #
+	PUSH	BX
+	MOV	BX,DSM			;get highest grp #
+	INC	BX			;plus 1 for comparison
+	MOV	AL,BL			;when bc reaches dsm+1..
+	CMP	AL,CL			;then we have exceeded..
+	JNZ	MAPC1			;the disk capacity..
+	MOV	AL,BH
+	CMP	AL,CH
+;
+MAPC1:	POP	BX
+	JZ	MAPEND			;and we are done
+	PUSH	BX
+	CALL	GETGRP			;get another
+	POP	DX			;see if same
+	CALL	CTLCS
+	JZ	MAPND2
+	MOV	AL,DH
+	CMP	AL,BH
+	JNZ	MAPDIF
+	MOV	AL,DL
+	CMP	AL,BL
+	JZ	MAPCNT			;same, continue
+;
+;Different file encountered
+MAPDIF:
+	DEC	CX
+	CALL	HEXB
+	INC	CX
+	XCHG	BX,DX
+	CALL	MAPNAM
+	JMP	MAPDF
+;
+;End of map
+;
+MAPEND:
+	DEC	CX			;get last
+	CALL	HEXB
+	CALL	MAPNAM
+	POP	BX
+	CALL	CRLF
+;
+;End of map - reposition to previous group
+;
+MAPND2:	PUSH	BX
+	MOV	BX,GROUP
+	XCHG	BX,DX
+	JMP	POSGP2
+;
+;Print file name pointed to by HL
+;
+MAPNAM:	CALL	SPACE
+	MOV	AL,BH
+	OR	AL,BL			;none?
+	JZ	NONAME
+	MOV	AL,BYTE	PTR [BX]	;see if alloc
+;	cmp al,20h ! je noname
+;	cmp al,21h ! je noname
+	CMP	AL,0E5H			;free?
+	MOV	AL,' '
+	JNZ	MPNSP1
+	MOV	AL,'['
+;
+MPNSP1:	CALL	TYPEOUT
+	PUSH	BX			;save pointer
+	MOV	AL,BYTE	PTR [BX]
+	CALL	HEX			;show user number
+	CALL	SPACE
+	INC	BX			;skip user byte
+	PUSH	CX
+	MOV	CH,8
+	CALL	MAPN2
+	MOV	AL,'.'
+	CALL	TYPEOUT
+	MOV	CH,3
+	CALL	MAPN2
+	POP	CX
+	CALL	SPACE
+	MOV	AL,BYTE	PTR [BX]	;get ext
+	CALL	HEX
+	POP	BX
+	MOV	AL,BYTE	PTR [BX]
+	CMP	AL,0E5H
+	MOV	AL,' '
+	JNZ	MPNSP2
+	MOV	AL,']'
+;
+MPNSP2:	CALL	TYPEOUT			;")" if erased file
+	JMP	FLIP
+;
+NONAME:	CALL	ILPRT
+	DB	'    ++FREE++        ',0
+;
+FLIP:	MOV	AL,TWOUP
+	XOR	AL,1
+	MOV	TWOUP,AL
+	JNZ	L@00064
+	JMP	CRLF
+L@00064:
+;
+DELIM:	MOV	AL,':'
+	CALL	TYPEOUT
+	JMP	SPACE
+;
+;Print name, length in B
+;
+MAPN2:	MOV	AL,BYTE	PTR [BX]
+	AND	AL,7FH			;strip possible 2.x attribute bit
+	INC	BX
+	CMP	AL,' '			;printable?
+	JNAE	MAPN2H			;no, in hex
+	CMP	AL,7EH			;7e is leadin on some crts
+	JNAE	MAPN2A
+;
+MAPN2H:	CALL	BHEX
+	JMP	MAPN2Z
+;
+MAPN2A:	CALL	TYPEOUT
+;
+MAPN2Z:	DEC	CH
+	JNZ	MAPN2
+	RET
+;
+;Find which file group (BC) belongs to
+;
+GETGRP:	MOV	BX,DRM			;max dir entry #
+	INC	BX			;make 1-relative
+	MOV	FILECT,BX
+	MOV	BX,OFFSET DIRECT
+;
+GETGLP:	PUSH	BX			;save pointer to name
+	MOV	AL,BYTE	PTR [BX]	;pick up user number
+	CMP	AL,20H ! JE GETGNF	;user must be <20h
+	CMP	AL,21H ! JE GETGNF	;
+	MOV	DX,OFFSET 14		;now get record count
+	ADD	BX,DX			;s2 portion ..
+	MOV	AL,BYTE	PTR [BX]	;is 0 in cp/m 1.4
+	CMP	AL,0E5H
+	JZ	GETGNF
+	AND	AL,0FH
+	MOV	DL,AL
+	INC	BX
+	MOV	AL,BYTE	PTR [BX]
+	OR	AL,DL
+	JZ	GETGNF
+	MOV	DL,16			;first set for 8-bit grps
+	MOV	AL,BYTE	PTR DSM+1
+	OR	AL,AL
+	JZ	SMALGP
+	MOV	DL,8			;nope, big groups
+;
+SMALGP:	MOV	DH,AL			;save grp size indicator
+;
+GETGL2:
+	INC	BX			;pointing into dm field
+	CALL	GRPCMP			;compare bc gp # against 1 dm fld
+	JZ	GETGOT			;jump if found one
+	DEC	DL			;else count down
+	JNZ	GETGL2			;go test some more
+;
+GETGNF:	POP	BX			;not this one
+	
+	MOV	DX,OFFSET 32		;so go to next
+	ADD	BX,DX
+	XCHG	BX,DX
+	MOV	BX,FILECT		;there is limit to everything
+	DEC	BX
+	MOV	FILECT,BX
+	MOV	AL,BH
+	OR	AL,BL
+	XCHG	BX,DX			;re-align
+	JNZ	GETGLP
+;
+;Group is not allocated to any file
+	MOV	BX,OFFSET 0		;say so
+	RET
+;
+;Found the file
+;
+GETGOT:	POP	BX
+	RET
+;
+;Save the current sector
+;
+SAVE:	MOV	AL,WRFLG
+	OR	AL,AL
+	JNZ	L@00074
+	JMP	BADW			;none to save
+L@00074:
+	PUSH	BX
+	MOV	BX,OFFSET BASE +80H
+	MOV	DX,OFFSET SAVBUF
+	MOV	CH,128
+	CALL	MOVE
+	MOV	AL,1			;show
+	MOV	SAVEFL,AL		;saved exists
+	POP	BX
+	JMP	PROMPT
+;
+;Restore the current sector
+;
+RESTOR:	MOV	AL,SAVEFL
+	OR	AL,AL
+	JZ	NOSAVE			;none to save
+	PUSH	BX
+	MOV	BX,OFFSET SAVBUF
+	MOV	DX,OFFSET BASE +80H
+	MOV	CH,128
+	CALL	MOVE
+	POP	BX
+	JMP	PROMPT
+;
+NOSAVE:	XOR	AL,AL
+	MOV	QFLAG,AL
+	CALL	ILPRT
+	DB	'++NO "<" SAVE COMMAND ISSUED'
+	DB	CR,LF,0
+	JMP	PRMPTR
+;
+;Move (HL) to (DE) length in B
+;
+MOVE:	MOV	AL,BYTE	PTR [BX]
+	XCHG	BX,DX
+	MOV	[BX],AL
+	XCHG	BX,DX
+	INC	BX
+	INC	DX
+	DEC	CH
+	JNZ	MOVE
+	RET
+;
+MOVEFROMBIOS:
+	MOV	AL,ES:BYTE PTR [BX]
+	XCHG	BX,DX
+	MOV	[BX],AL
+	XCHG	BX,DX
+	INC	BX
+	INC	DX
+	DEC	CH
+	JNZ	MOVEFROMBIOS
+	RET
+;
+NORITE:	XOR	AL,AL			;get 0
+	MOV	WRFLG,AL		;can't write now
+	RET
+;
+;No match in search, try next char
+;
+SRNOMT:	POP	BX
+	CALL	CTLCS			;abort?
+	JNZ	SEARCH			;yes
+	MOV	BX,OFFSET INBUF
+	MOV	BYTE PTR [BX],CR
+	JMP	CLCGRP			;show where stopped
+;
+;Search for character string
+;
+SEARCH:	PUSH	BX			;save string pointer
+;
+SRCHL:	CALL	RDBYTE			;get a byte
+	MOV	CH,AL			;save it
+	MOV	AL,BYTE	PTR [BX]	;check next match char.
+	CMP	AL,'<'			;will it be hex?
+	MOV	AL,CH			;restore disk char
+	JZ	SRCHL1
+	AND	AL,7FH			;next char is ascii...strip bit 7
+;
+SRCHL1:	LAHF
+	XCHG	AL,AH
+	PUSH	AX
+	XCHG	AL,AH
+	CALL	GETVAL			;get search value
+	MOV	CH,AL
+	POP	AX
+	XCHG	AL,AH
+	SAHF
+	CMP	AL,CH			;match?
+	JNZ	SRNOMT			;no match
+	INC	BX
+	MOV	AL,BYTE	PTR [BX]	;done?
+	CMP	AL,CR
+	JZ	SREQU
+	CMP	AL,'!'
+	JNZ	SRCHL
+;
+;Got match
+SREQU:	XOR	AL,AL
+	MOV	QFLAG,AL
+	CALL	ILPRT
+	DB	'= AT ',0
+	MOV	AL,BYTE	PTR BUFAD
+	AND	AL,7FH
+	CALL	HEX
+	CALL	CRLF
+	JMP	CLCGRP
+;
+;Get value from input buffer
+;
+GETVAL:	MOV	AL,BYTE	PTR [BX]
+	CMP	AL,'<'			;hex escape?
+	JZ	L@00082
+	RET				;no, return
+L@00082:
+;"<<" means one "<"
+	INC	BX
+	MOV	AL,BYTE	PTR [BX]
+	CMP	AL,'<'
+	JNZ	L@00083
+	RET
+L@00083:
+;Got hex
+	PUSH	DX
+	CALL	HEXIN			;get value
+	CMP	AL,'>'			;proper delim?
+	MOV	AL,DL			;get value
+	POP	DX
+	JZ	L@00084
+	JMP	WHAT			;error
+L@00084:
+	RET
+;
+;Read a byte at a time
+;
+RDBYTE:	PUSH	BX
+	MOV	AL,FTSW			;first read?
+	OR	AL,AL
+	JNZ	READ1
+	MOV	BX,BUFAD
+	MOV	AL,BL
+	OR	AL,AL			;in buffer?
+	JS	NORD			;yes, skip read
+;
+;Have to read
+	CALL	NXTSEC
+;
+READ1:	XOR	AL,AL
+	MOV	FTSW,AL			;not first read
+	MOV	BX,CURSEC
+	XCHG	BX,DX
+	CALL	SETSEC
+	MOV	BX,CURTRK
+	XCHG	BX,DX
+	CALL	SETTRK
+	CALL	READ
+	CALL	CLCSUB
+	MOV	BX,OFFSET BASE +80H
+;
+NORD:	MOV	AL,BYTE	PTR [BX]
+	INC	BX
+	MOV	BUFAD,BX
+	POP	BX
+	RET
+;
+;View the file in ASCII starting at
+;current sector, stepping thru the disk
+;
+VIEW:	MOV	AL,WRFLG
+	OR	AL,AL
+	JNZ	L@00087
+	JMP	BADDMP
+L@00087:
+	CALL	HEXIN			;get displ if any
+	PUSH	BX
+	MOV	AL,DL
+	OR	AL,AL
+	JNZ	VIEWLP
+	INC	DL			;dflt=1
+;
+VIEWLP:	MOV	BX,OFFSET BASE +80H	;to data
+;
+VEWCHR:	CALL	CTLCS
+	JZ	VEWEND
+	MOV	AL,BYTE	PTR [BX]
+	CMP	AL,1AH
+	JZ	VEWEOF
+	AND	AL,7FH
+	CMP	AL,7EH
+	JAE	VIEWHX			;show rubout and tilde as hex
+	CMP	AL,' '
+	JAE	VIEWPR
+	CMP	AL,CR
+	JZ	VIEWPR
+	CMP	AL,LF
+	JZ	VIEWPR
+	CMP	AL,TAB
+	JZ	VIEWPR
+;
+VIEWHX:	MOV	AL,BYTE	PTR [BX]	;not ascii...print as <nn>
+	CALL	BHEX
+	JMP	VIEWNP
+;
+VIEWPR:	CALL	TYPEOUT
+;
+VIEWNP:	INC	BL
+	JNZ	VEWCHR
+	DEC	DL
+	JZ	VEWEND
+	PUSH	DX			;save count
+	CALL	NXTSEC
+	MOV	BX,CURSEC
+	XCHG	BX,DX
+	CALL	SETSEC
+	MOV	BX,CURTRK
+	XCHG	BX,DX
+	CALL	SETTRK
+	CALL	READ
+	POP	DX			;restore count
+	JMP	VIEWLP
+;
+VEWEOF:	CALL	ILPRT
+	DB	CR,LF,TAB,'++EOF++',CR,LF,0
+;
+VEWEND:	POP	BX
+	CALL	CRLF
+	JMP	CLCGRP
+;
+;Dump in hex or ASCII
+;
+DUMP:	MOV	AL,WRFLG
+	OR	AL,AL
+	JNZ	DUMPOK
+;
+BADDMP:	XOR	AL,AL
+	MOV	QFLAG,AL
+	CALL	ILPRT
+	DB	'++Can''t dump, no sector read.',CR,LF,0
+;
+EXPL:	XOR	AL,AL
+	MOV	QFLAG,AL
+	CALL	ILPRT
+	DB	'Use G command following F,',CR,LF
+	DB	'or R or S following T',CR,LF,0
+	JMP	PRMPTR
+;
+DUMPOK:	MOV	AL,BYTE	PTR [BX]
+	CMP	AL,'!'
+	JZ	DUMPDF			;dflt
+	CMP	AL,CR
+	JNZ	DMPNDF
+;
+;Use default
+DUMPDF:	MOV	CX,OFFSET BASE +80H
+	MOV	DX,OFFSET 0FFH
+	JMP	DUMP1
+;
+DMPNDF:	CALL	DISP
+	MOV	CX,DX
+	CMP	AL,CR
+	JZ	DUMP1
+	CMP	AL,'!'
+	JZ	DUMP1
+	INC	BX			;skip ','
+	CALL	DISP
+;
+;BC = start, DE = end
+;
+DUMP1:	PUSH	BX			;save command pointer
+	MOV	BX,CX
+;
+DUMPLP:	MOV	AL,BL
+	AND	AL,7FH
+	CALL	HEX
+	CALL	SPACE
+	CALL	SPACE
+	MOV	AL,DUMTYP
+	CMP	AL,'A'
+	JZ	DUMPAS
+	PUSH	BX			;save start
+;
+DHEX:	MOV	AL,BYTE	PTR [BX]
+	CALL	HEX
+	MOV	AL,BL
+	AND	AL,3
+	CMP	AL,3
+	JNZ	L@00104
+	CALL	SPACE
+L@00104:
+	MOV	AL,BL
+	AND	AL,7
+	CMP	AL,7
+	JNZ	L@00105
+	CALL	SPACE
+L@00105:
+	MOV	AL,DL
+	CMP	AL,BL
+	JZ	DPOP
+	INC	BX
+	MOV	AL,BL
+	AND	AL,0FH
+	JNZ	DHEX
+;
+DPOP:	CALL	CTLCS
+	JNZ	L@00108
+	JMP	PRMPTR
+L@00108:
+	MOV	AL,DUMTYP
+	CMP	AL,'H'
+	JZ	DNOAS			;hex only
+	POP	BX			;get start addr
+;
+DUMPAS:	CALL	ASTER
+;
+DCHR:	MOV	AL,BYTE	PTR [BX]
+	AND	AL,7FH
+	CMP	AL,' '
+	JNAE	DPER
+	CMP	AL,7EH
+	JNAE	DOK
+;
+DPER:	MOV	AL,'.'
+;
+DOK:	CALL	TYPEOUT
+	MOV	AL,DL
+	CMP	AL,BL
+	JZ	DEND
+	INC	BX
+	MOV	AL,BL
+	AND	AL,0FH
+	JNZ	DCHR
+;
+DEND:	CALL	ASTER
+	CALL	CRLF
+	PUSH	DX
+	CALL	CTLCS
+	POP	DX
+	JNZ	L@00114
+	JMP	PRMPTR
+L@00114:
+	MOV	AL,DL
+	CMP	AL,BL
+	JZ	L@00115
+	JMP	DUMPLP
+L@00115:
+	POP	BX
+	JMP	PROMPT
+;
+DNOAS:	POP	CX
+	CALL	CRLF
+	MOV	AL,DL
+	CMP	AL,BL
+	JZ	L@00116
+	JMP	DUMPLP
+L@00116:
+	POP	BX
+	JMP	PROMPT
+;
+;Position
+;
+POS:	LAHF
+	XCHG	AL,AH
+	PUSH	AX
+	XCHG	AL,AH
+	MOV	AL,BYTE	PTR [BX]
+	CMP	AL,'!'
+	JZ	POSINQ
+	CMP	AL,CR
+	JNZ	POSOK
+;
+POSINQ:	POP	AX
+	XCHG	AL,AH
+	SAHF
+	JMP	INQ
+;
+POSOK:	POP	AX
+	XCHG	AL,AH
+	SAHF
+	CMP	AL,'T'
+	JZ	POSTKD
+	CMP	AL,'S'
+	JZ	POSSCD
+	CMP	AL,'G'
+	JNZ	L@00121
+	JMP	POSGPH
+L@00121:
+	JMP	WHAT
+;
+POSTKD:	CALL	DECIN
+;
+POSTRK:	PUSH	BX
+	MOV	BX,MAXTRK
+	CALL	SUBDE
+	POP	BX
+	JAE	L@00122
+	JMP	OUTLIM
+L@00122:
+	CALL	SETTRK
+	CALL	NORITE			;track doesn't read
+	MOV	AL,1
+	MOV	NOTPOS,AL		;show not positioned
+	JMP	CLCGRP
+;
+POSSCD:	CALL	DECIN
+	MOV	AL,DH
+	OR	AL,DL
+	JNZ	L@00123
+	JMP	WHAT			;don't allow sector 0
+L@00123:
+;
+POSSEC:	PUSH	BX
+	MOV	BX,SPT
+	CALL	SUBDE
+	POP	BX
+	JAE	L@00124
+	JMP	WHAT
+L@00124:
+	CALL	SETSEC
+	CALL	READ
+	XOR	AL,AL
+	MOV	NOTPOS,AL		;positioned ok
+;
+CLCGRP:	CALL	CLCSUB
+	JMP	INQ
+;
+;Calculate group from track and sector
+;
+CLCSUB:	PUSH	BX
+	MOV	BX,SYSTRK
+	XCHG	BX,DX
+	MOV	BX,CURTRK
+	CALL	SUBDE
+	XCHG	BX,DX
+	MOV	BX,SPT
+	CALL	MULT
+	XCHG	BX,DX
+	MOV	BX,CURSEC
+	DEC	BX
+	ADD	BX,DX
+	MOV	AL,BLM
+	MOV	CH,AL
+	MOV	AL,BL
+	AND	AL,CH
+	MOV	GRPDIS,AL
+	MOV	AL,BSH
+	MOV	CH,AL
+;
+CLCLOP:	CALL	ROTRHL
+	DEC	CH
+	JNZ	CLCLOP
+	MOV	GROUP,BX
+	POP	BX
+	RET
+;
+;Position in the dorectory after a find
+;(Does not work in CP/M-2.x)
+;
+POSDIR:	PUSH	BX			;save inbuf
+	MOV	BX,WORD	PTR BSH
+	XOR	AL,AL
+	MOV	FINDFL,AL		;cancel pos req
+	MOV	AL,DIRPOS		;get position
+	RCR	AL,1
+	RCR	AL,1
+	LAHF
+	XCHG	AL,AH
+	PUSH	AX
+	XCHG	AL,AH
+	AND	AL,BH
+	MOV	GRPDIS,AL
+	POP	AX
+	XCHG	AL,AH
+	SAHF
+;
+POSDLP:	RCR	AL,1
+	DEC	BL
+	JNZ	POSDLP
+	AND	AL,1			;get group
+	MOV	BL,AL			;setup for posgp2
+	MOV	BH,0
+	MOV	GROUP,BX
+	XCHG	BX,DX
+	JMP	POSGP2			;position to it
+;
+POSGPH:	CALL	HEXIN
+;
+POSGRP:	PUSH	BX
+	MOV	BX,DSM
+	CALL	SUBDE
+	POP	BX
+	JAE	L@00127
+	JMP	OUTLIM
+L@00127:
+	XCHG	BX,DX
+	MOV	GROUP,BX
+	XCHG	BX,DX
+	XOR	AL,AL
+	MOV	GRPDIS,AL
+	PUSH	BX
+;
+POSGP2:	CALL	GTKSEC
+	CALL	SETTRK
+	XCHG	BX,DX
+	CALL	SETSEC
+	CALL	READ
+	XOR	AL,AL
+	MOV	NOTPOS,AL		;now positioned
+	POP	BX
+	JMP	INQ
+;
+GTKSEC:
+	MOV	BX,DX
+	MOV	AL,BSH
+;
+GLOOP:
+	ADD	BX,BX
+	DEC	AL
+	JNZ	GLOOP
+	MOV	AL,GRPDIS
+	ADD	AL,BL			;can't carry
+	MOV	BL,AL
+;
+;Divide by nr of sectors, quotient=track, remainder=sector
+;
+	XCHG	BX,DX
+	MOV	BX,SPT
+	CALL	NEG
+	XCHG	BX,DX
+	MOV	CX,OFFSET 0
+;
+DIVLP:	PUSHF
+	INC	CX
+	POPF
+	PUSHF
+	ADD	BX,DX
+	RCR	SI,1
+	POPF
+	RCL	SI,1
+	JNAE	DIVLP
+	PUSHF
+	DEC	CX
+	POPF
+	XCHG	BX,DX
+	MOV	BX,SPT
+	PUSHF
+	ADD	BX,DX
+	RCR	SI,1
+	POPF
+	RCL	SI,1
+	PUSH	BX
+	MOV	BX,SYSTRK
+	PUSHF
+	ADD	BX,CX
+	RCR	SI,1
+	POPF
+	RCL	SI,1
+	XCHG	BX,DX
+	POP	BX
+	PUSHF
+	INC	BX
+	POPF
+	RET
+;
+POSFIL:	CALL	NORITE
+	MOV	AL,1
+	MOV	FINDFL,AL		;so we position later
+	MOV	DX,OFFSET FCB
+	XOR	AL,AL			;logged in disk
+	XCHG	BX,DX
+	MOV	[BX],AL
+	XCHG	BX,DX
+	INC	DX
+	MOV	CH,8
+	CALL	MVNAME
+	MOV	CH,3
+	CALL	MVNAME
+	MOV	DX,OFFSET FCB
+	MOV	CL,SRCHF
+	PUSH	BX
+	CALL	BDOS
+	INC	AL
+	JNZ	FLOK
+	MOV	DIRPOS,AL		;grp 0 if not found
+	CALL	ILPRT
+	DB	'++FILE NOT FOUND',CR,LF,0
+	POP	BX
+	JMP	PROMPT
+;
+FLOK:	DEC	AL
+	MOV	DIRPOS,AL		;save pos. in dir
+	AND	AL,3
+	MOV	BL,AL
+	MOV	BH,0
+	ADD	BX,BX
+	ADD	BX,BX
+	ADD	BX,BX
+	ADD	BX,BX
+	ADD	BX,BX
+	MOV	DX,OFFSET BASE +80H
+	ADD	BX,DX
+	MOV	DX,OFFSET 32
+	XCHG	BX,DX
+	ADD	BX,DX
+	XCHG	BX,DX
+	MOV	AL,'D'
+	MOV	DUMTYP,AL
+	JMP	DUMPLP			;which pops h
+;
+MVNAME:	MOV	AL,BYTE	PTR [BX]
+	CMP	AL,'.'
+	JZ	MVIPAD
+	CMP	AL,CR
+	JZ	PAD
+	CMP	AL,'!'
+	JZ	PAD
+	CALL	UPCASE
+	XCHG	BX,DX
+	MOV	[BX],AL
+	XCHG	BX,DX
+	INC	BX
+	INC	DX
+	DEC	CH
+	JNZ	MVNAME
+	MOV	AL,BYTE	PTR [BX]
+	CMP	AL,CR
+	JNZ	L@00135
+	RET
+L@00135:
+	CMP	AL,'!'
+	JNZ	L@00136
+	RET
+L@00136:
+	INC	BX
+	CMP	AL,'.'
+	JNZ	L@00137
+	RET
+L@00137:
+	JMP	WHAT
+;
+MVIPAD:
+	INC	BX
+;
+PAD:	MOV	AL,' '
+	XCHG	BX,DX
+	MOV	[BX],AL
+	XCHG	BX,DX
+	INC	DX
+	DEC	CH
+	JNZ	PAD
+	RET
+;
+PLUS:	MOV	DX,OFFSET 1		;dflt to 1 sect
+	MOV	AL,BYTE	PTR [BX]	;get next char
+	CMP	AL,CR			;cr?
+	JZ	PLUSGO			;yes, dflt to 1
+	CMP	AL,'!'
+	JZ	PLUSGO
+	CALL	HEXIN			;get #
+	MOV	AL,DH
+	OR	AL,DL
+	JNZ	L@00141
+	JMP	WHAT
+L@00141:
+;
+PLUSGO:	CALL	NXTSEC
+	DEC	DX			;more to go?
+	MOV	AL,DH
+	OR	AL,DL
+	JNZ	PLUSGO			;yes
+;
+;Ok, incremented to sector.  Setup and read
+;
+PLUSMI:	PUSH	BX
+	MOV	BX,CURSEC
+	XCHG	BX,DX
+	CALL	SETSEC
+	MOV	BX,CURTRK
+	XCHG	BX,DX
+	CALL	SETTRK
+	POP	BX
+	CALL	READ
+	JMP	CLCGRP
+;
+MINUS:	MOV	DX,OFFSET 1		;set dflt
+	MOV	AL,BYTE	PTR [BX]	;get char
+	CMP	AL,CR			;cr?
+	JZ	MINGO			;yes, dflt=1
+	CMP	AL,'!'
+	JZ	MINGO
+	CALL	HEXIN			;no, get ##
+	MOV	AL,DH
+	OR	AL,DL
+	JNZ	L@00145
+	JMP	WHAT
+L@00145:
+;
+MINGO:	PUSH	BX
+	MOV	BX,CURSEC
+	DEC	BX
+	MOV	AL,BH
+	OR	AL,BL
+	JNZ	MINOK
+	MOV	BX,CURTRK
+	MOV	AL,BH
+	OR	AL,BL
+	JNZ	SEASH
+	MOV	BX,MAXTRK		;wrap to end of disk
+	MOV	CURTRK,BX
+	MOV	BX,MAXSEC
+	JMP	MINOK
+;
+SEASH:
+	DEC	BX
+	MOV	CURTRK,BX
+	MOV	BX,SPT
+;
+MINOK:	MOV	CURSEC,BX
+	POP	BX
+	DEC	DX
+	MOV	AL,DH
+	OR	AL,DL
+	JNZ	MINGO
+	JMP	PLUSMI
+;
+;Go to next sector
+;
+NXTSEC:	PUSH	BX
+	PUSH	DX
+	MOV	BX,CURSEC
+	INC	BX
+	XCHG	BX,DX
+	MOV	BX,SPT
+	CALL	SUBDE
+	XCHG	BX,DX
+	JAE	NEXTOK
+	MOV	BX,CURTRK
+	INC	BX
+	XCHG	BX,DX
+	MOV	BX,MAXTRK
+	CALL	SUBDE
+	JAE	TRASK
+	MOV	DX,OFFSET 0		;wrap to start of disk
+;
+TRASK:	XCHG	BX,DX
+	MOV	CURTRK,BX
+	MOV	BX,OFFSET 1
+;
+NEXTOK:	MOV	CURSEC,BX
+	POP	DX
+	POP	BX
+	RET
+;
+;Tell what group, displacement, track, sector, physical sector
+;
+INQ:	CALL	INQSUB
+	JMP	PROMPT
+;
+;Position inquiry subroutine
+;Executed via: G S or T (with no operands)
+;
+INQSUB:	PUSH	BX
+	MOV	BX,SYSTRK
+	XCHG	BX,DX
+	MOV	BX,CURTRK
+	CALL	SUBDE
+	JNAE	NOGRP
+	CALL	ILPRT
+	DB	'G=',0
+	MOV	BX,GROUP
+	MOV	CH,BH
+	MOV	CL,BL
+	CALL	HEXB
+	MOV	AL,':'
+	CALL	TYPEOUT
+	MOV	AL,GRPDIS
+	CALL	HEX
+	MOV	AL,','
+	CALL	TYPEOUT
+;
+NOGRP:	CALL	ILPRT
+	DB	' T=',0
+	MOV	BX,CURTRK
+	CALL	DEC
+	CALL	ILPRT
+	DB	', S=',0
+	MOV	BX,CURSEC
+	CALL	DEC
+	CALL	ILPRT
+	DB	', PS=',0
+	MOV	BX,PHYSEC
+	CALL	DEC
+	CALL	CRLF
+	POP	BX
+	RET
+;
+CHG:	MOV	AL,BYTE	PTR [BX]	;get type (hex, ascii)
+	CALL	UPCASE
+	LAHF
+	XCHG	AL,AH
+	PUSH	AX
+	XCHG	AL,AH			;save "H" or "A"
+	INC	BX
+	CALL	DISP			;get, validate disp to de
+	INC	BX
+	MOV	CX,OFFSET 0		;show no 'thru' addr
+	CMP	AL,'-'			;test delim fr. disp
+	JNZ	CHGNTH			;no thru
+	PUSH	DX			;save from
+	CALL	DISP			;get thru
+	INC	BX			;skip end delim
+	MOV	CX,DX			;bc = thru
+	POP	DX			;get from
+	JMP	CHGAH
+;
+CHGNTH:	CMP	AL,','
+	JZ	L@00153
+	JMP	WHAT
+L@00153:
+;
+CHGAH:	POP	AX
+	XCHG	AL,AH
+	SAHF
+	CMP	AL,'H'
+	JNZ	L@00154
+	JMP	CHGHEX
+L@00154:
+	CMP	AL,'A'
+	JZ	L@00155
+	JMP	WHAT
+L@00155:
+;
+;Change ASCII
+CHGALP:	MOV	AL,BYTE	PTR [BX]
+	CMP	AL,CR
+	JNZ	L@00156
+	JMP	PROMPT
+L@00156:
+	CMP	AL,'!'
+	JNZ	L@00157
+	JMP	PROMPT
+L@00157:
+	XCHG	BX,DX
+	MOV	AL,[BX]
+	XCHG	BX,DX
+	CMP	AL,' '
+	JNAE	CHGAHX
+	CMP	AL,7EH
+	JAE	CHGAHX
+	JMP	CHGA2
+;
+CHGAHX:	CALL	BHEX
+	JMP	CHGA3
+;
+CHGA2:	CALL	TYPEOUT
+;
+CHGA3:	MOV	BACK,BX			;in case "THRU"
+	CALL	GETVAL			;ascii or <hex>
+	XCHG	BX,DX
+	MOV	[BX],AL
+	XCHG	BX,DX			;update char
+	INC	BX			;to next input char
+;See if 'THRU' requested
+	MOV	AL,CL
+	OR	AL,AL
+	JZ	CHANTH
+	CMP	AL,DL			;done?..
+	JNZ	L@00161
+	JMP	PROMPT			;yes
+L@00161:
+	MOV	BX,BACK
+;
+CHANTH:	INC	DL
+	JZ	L@00162
+	JMP	CHGALP
+L@00162:
+	MOV	AL,BYTE	PTR [BX]
+	CMP	AL,CR
+	JNZ	L@00163
+	JMP	PROMPT
+L@00163:
+	CMP	AL,'!'
+	JNZ	L@00164
+	JMP	PROMPT
+L@00164:
+	JMP	WHAT
+;
+;Change hex
+;
+CHGHCM:
+	INC	BX
+;
+CHGHEX:	MOV	AL,BYTE	PTR [BX]
+	CMP	AL,CR
+	JNZ	L@00165
+	JMP	PROMPT
+L@00165:
+	CMP	AL,'!'
+	JNZ	L@00166
+	JMP	PROMPT
+L@00166:
+	CMP	AL,','			;delim?
+	JZ	CHGHCM
+	PUSH	DX
+	MOV	HEXAD,BX		;in case 'thru'
+	CALL	HEXIN			;positions to delim
+	MOV	AL,DL			;get value
+	POP	DX			;addr
+	LAHF
+	XCHG	AL,AH
+	PUSH	AX
+	XCHG	AL,AH			;save value
+	XCHG	BX,DX
+	MOV	AL,[BX]
+	XCHG	BX,DX			;get old
+	CALL	HEX			;echo in hex
+	POP	AX
+	XCHG	AL,AH
+	SAHF				;get new
+	XCHG	BX,DX
+	MOV	[BX],AL
+	XCHG	BX,DX			;save new
+	MOV	AL,CL			;see if 'thru'
+	OR	AL,AL
+	JZ	CHHNTH			;no.
+	CMP	AL,DL			;yes, done?
+	JNZ	L@00169
+	JMP	PROMPT
+L@00169:
+	MOV	BX,HEXAD		;no: more
+;
+CHHNTH:	INC	DL
+	JNZ	CHGHEX
+	MOV	AL,BYTE	PTR [BX]
+	CMP	AL,CR
+	JNZ	L@00171
+	JMP	PROMPT
+L@00171:
+	CMP	AL,'!'
+	JNZ	L@00172
+	JMP	PROMPT
+L@00172:
+	JMP	WHAT
+;
+DOREAD:	MOV	AL,NOTPOS
+	OR	AL,AL
+	JNZ	CANTRD
+	CALL	READ
+	JMP	PROMPT
+;
+CANTRD:	XOR	AL,AL
+	MOV	QFLAG,AL		;not quiet
+	CALL	ILPRT
+	DB	'++Can''t read - not positioned',CR,LF
+	DB	'Position by:',CR,LF
+	DB	9,'Track then Sector, or',CR,LF
+	DB	9,'Group',CR,LF,0
+	JMP	PROMPT
+;
+DORITE:	CALL	WRITE
+	JMP	PROMPT
+;
+BHEX:	LAHF
+	XCHG	AL,AH
+	PUSH	AX
+	XCHG	AL,AH
+	MOV	AL,'<'
+	CALL	TYPEOUT
+	POP	AX
+	XCHG	AL,AH
+	SAHF
+	CALL	HEX
+	MOV	AL,'>'
+	CALL	TYPEOUT
+	RET
+;
+HEXB:	MOV	AL,BYTE	PTR DSM+1
+	OR	AL,AL
+	JZ	HEXX
+	MOV	AL,CH
+	CALL	HEX
+;
+HEXX:	MOV	AL,CL
+;
+HEX:	LAHF
+	XCHG	AL,AH
+	PUSH	AX
+	XCHG	AL,AH
+	RCR	AL,1
+	RCR	AL,1
+	RCR	AL,1
+	RCR	AL,1
+	CALL	NIBBL
+	POP	AX
+	XCHG	AL,AH
+	SAHF
+;
+NIBBL:	AND	AL,0FH
+	CMP	AL,10
+	JNAE	HEXNU
+	ADD	AL,7
+;
+HEXNU:	ADD	AL,'0'
+	JMP	TYPEOUT
+;
+;Decimal output routine
+;
+DEC:	PUSH	CX
+	PUSH	DX
+	PUSH	BX
+	MOV	CX,-OFFSET 10
+	MOV	DX,-OFFSET 1
+;
+DECOU2:	PUSHF
+	ADD	BX,CX
+	RCR	SI,1
+	POPF
+	RCL	SI,1
+	PUSHF
+	INC	DX
+	POPF
+	JNAE	DECOU2
+	MOV	CX,OFFSET 10
+	ADD	BX,CX
+	XCHG	BX,DX
+	MOV	AL,BH
+	OR	AL,BL
+	JZ	L@00177
+	CALL	DEC
+L@00177:
+	MOV	AL,DL
+	ADD	AL,'0'
+	CALL	TYPEOUT
+	POP	BX
+	POP	DX
+	POP	CX
+	RET
+;
+SPACE:	MOV	AL,' '
+	JMP	TYPEOUT
+;
+ASTER:	MOV	AL,'*'
+	JMP	TYPEOUT
+;
+;Inline print routine
+;
+ILPRT:	POP	SI
+	XCHG	BX,SI
+	PUSH	SI
+;
+ILPLP:	CALL	CTLCS			;abort?
+	JNZ	L@00178
+	JMP	PRMPTR
+L@00178:
+	MOV	AL,BYTE	PTR [BX]
+	CMP	AL,1			;pause?
+	JNZ	ILPOK
+	CALL	CONIN
+	CMP	AL,1BH ! JE IL_ABORT	;escape
+	CMP	AL,'Q'-40H ! JE	IL_ABORT ;^q
+	CMP	AL,'C'-40H ! JE	IL_ABORT ;^c=abort?
+	JMPS	L@00180
+IL_ABORT:
+	JMP	PRMPTR
+L@00180:
+	JMP	ILPNX
+;
+ILPOK:	CALL	TYPEOUT
+;
+ILPNX:
+	INC	BX
+	MOV	AL,BYTE	PTR [BX]
+	OR	AL,AL
+	JNZ	ILPLP
+	INC	BX
+	POP	SI
+	XCHG	BX,SI
+	PUSH	SI
+	RET
+;
+;DISP calls HEXIN, and validates a sector
+;displacement, then converts it to an address
+;
+DISP:	CALL	HEXIN
+	LAHF
+	XCHG	AL,AH
+	PUSH	AX
+	XCHG	AL,AH			;save delimiter
+	MOV	AL,DH
+	OR	AL,AL
+	JNZ	BADISP
+	MOV	AL,DL
+	OR	AL,AL
+	JS	BADISP
+	ADD	AL,80H			;to point to buffer at base+80h
+	MOV	DL,AL
+	MOV	DH,BASE/256
+	POP	AX
+	XCHG	AL,AH
+	SAHF				;get delim
+	RET
+;
+BADISP:	XOR	AL,AL
+	MOV	QFLAG,AL
+	CALL	ILPRT
+	DB	'++BAD DISPLACEMENT (NOT 0-7F)'
+	DB	CR,LF,0
+	JMP	PRMPTR
+;
+HEXIN:	MOV	DX,OFFSET 0
+	MOV	AL,BYTE	PTR [BX]
+	CMP	AL,'#'			;decimal?
+	JZ	HDIN			;make decimal
+;
+HINLP:	MOV	AL,BYTE	PTR [BX]
+	CALL	UPCASE
+	CMP	AL,CR
+	JNZ	L@00185
+	RET
+L@00185:
+	CMP	AL,'!'
+	JNZ	L@00186
+	RET
+L@00186:
+	CMP	AL,','
+	JNZ	L@00187
+	RET
+L@00187:
+	CMP	AL,'-'			;'thru'?
+	JNZ	L@00188
+	RET
+L@00188:
+	CMP	AL,'>'
+	JNZ	L@00189
+	RET
+L@00189:
+	INC	BX
+	CMP	AL,'0'
+	JAE	L@00190
+	JMP	WHAT
+L@00190:
+	CMP	AL,'9'+1
+	JNAE	HINNUM
+	CMP	AL,'A'
+	JAE	L@00192
+	JMP	WHAT
+L@00192:
+	CMP	AL,'F'+1
+	JNAE	L@00193
+	JMP	WHAT
+L@00193:
+	SUB	AL,7
+;
+HINNUM:	SUB	AL,'0'
+	XCHG	BX,DX
+	ADD	BX,BX
+	ADD	BX,BX
+	ADD	BX,BX
+	ADD	BX,BX
+	ADD	AL,BL
+	MOV	BL,AL
+	XCHG	BX,DX
+	JMP	HINLP
+;
+HDIN:
+	INC	BX			;skip '.'
+;
+DECIN:	MOV	DX,OFFSET 0
+;
+DINLP:	MOV	AL,BYTE	PTR [BX]
+	CALL	UPCASE
+	CMP	AL,CR
+	JNZ	L@00194
+	RET
+L@00194:
+	CMP	AL,'!'
+	JNZ	L@00195
+	RET
+L@00195:
+	CMP	AL,','
+	JNZ	L@00196
+	RET
+L@00196:
+	CMP	AL,'-'			;'thru'?
+	JNZ	L@00197
+	RET
+L@00197:
+	INC	BX
+	CMP	AL,'0'
+	JAE	L@00198
+	JMP	WHAT
+L@00198:
+	CMP	AL,'9'+1
+	JNAE	L@00199
+	JMP	WHAT
+L@00199:
+	SUB	AL,'0'
+	PUSH	BX
+	MOV	BH,DH
+	MOV	BL,DL
+	ADD	BX,BX
+	ADD	BX,BX
+	ADD	BX,DX
+	ADD	BX,BX
+	ADD	AL,BL
+	MOV	BL,AL
+	MOV	AL,BH
+	ADC	AL,0
+	MOV	BH,AL
+	XCHG	BX,DX
+	POP	BX
+	JMP	DINLP
+;
+;Read in a console buffer full
+;
+RDBUF:					;print prompt as du nna:
+	CALL	ILPRT
+	DB	CR,LF,'DU ',0		;say who we are
+	MOV	AL,UNUM
+	CMP	AL,0 ! JZ DONT_0
+	MOV	BL,AL			;display user number
+	MOV	BH,0
+	CALL	DEC			;print in decimal
+DONT_0:
+	MOV	AL,DRIVE		;get drive number
+	ADD	AL,'A'			;convert to ascii
+	CALL	TYPEOUT
+	CALL	ILPRT			;print the prompt
+	DB	': ',0
+;
+RDBF1:	MOV	BX,OFFSET INBUF
+	MOV	CH,0
+;
+RDBLP:	CALL	CONIN
+	MOV	CL,AL			;save for bs test
+;
+;Evaluate control characters
+;
+	CMP	AL,'U'-40H
+	JNZ	L@00200
+	JMP	RDCTLU
+L@00200:
+;
+	CMP	AL,CR
+	JZ	RDCR
+;
+	CMP	AL,'H'-40H
+	JZ	RDBS
+;
+	CMP	AL,7FH
+	JZ	RDBS
+;
+	CMP	AL,'R'-40H
+	JZ	RDCTLR
+;
+	CMP	AL,'X'-40H
+	JZ	RDCTLX
+
+	CMP	AL,'['-40H
+	JNE	NO_QUIT
+	JMP	QUIT
+NO_QUIT:
+;
+	CMP	AL,' '
+	JNAE	RDBLP
+;
+	MOV	BYTE PTR [BX],AL
+	INC	BX
+	INC	CH
+	JS	FULL
+	CALL	TYPEOUT
+	JMP	RDBLP
+;
+FULL:	DEC	CH
+	PUSHF
+	DEC	BX
+	POPF
+	MOV	AL,'*'			;signal we're full
+	CALL	TYPEOUT
+	JMP	RDBLP
+;
+;Got CR
+;
+RDCR:	MOV	BYTE PTR [BX],AL	;save it
+	CALL	TYPEOUT			;echo it
+	MOV	AL,LF			;echo..
+	CALL	TYPEOUT			;lf
+	MOV	BX,OFFSET INBUF
+	RET
+;
+;Got DELETE or BS, echo if BS
+;
+RDBS:	XOR	AL,AL			;at front..
+	OR	AL,CH			;of line?
+	JZ	RDCTLU			;yes, echo ^u
+	DEC	BX
+	DEC	CH
+	MOV	AL,CL
+	CMP	AL,'H'-40H		;bs?
+	JZ	BACKUP			;echo the bs
+	MOV	AL,BYTE	PTR [BX]	;echo..
+	CALL	TYPEOUT			;deleted char
+	JMP	RDBLP
+;
+BACKUP:	CALL	WIPER
+	JMP	RDBLP
+;
+RDCTLX:	INC	CH
+;
+RDCX1:	DEC	CH
+	JZ	RDBF1
+	CALL	WIPER
+	JMP	RDCX1
+;
+WIPER:	PUSH	CX
+	PUSH	DX
+	PUSH	BX
+	MOV	DX,OFFSET BSMSG		;backspace, space, backspace
+	MOV	CL,PRINT
+	CALL	BDOS
+	POP	BX
+	POP	DX
+	POP	CX
+	RET
+;
+BSMSG	DB	BS,' ',BS,'$'
+;
+;Got CTL-R, retype
+;
+RDCTLR:	MOV	BYTE PTR [BX],CR
+	CALL	CRLF
+	MOV	BX,OFFSET INBUF
+	MOV	CH,0
+;
+RDCRL:	MOV	AL,BYTE	PTR [BX]
+	CMP	AL,CR
+	JNZ	L@00211
+	JMP	RDBLP
+L@00211:
+	CALL	TYPEOUT
+	INC	CH
+	INC	BX
+	JMP	RDCRL
+;
+;Got CTL-U or backup to beginning of line.
+;
+RDCTLU:	MOV	AL,'^'
+	CALL	TYPEOUT
+	MOV	AL,'U'
+	CALL	TYPEOUT
+	JMP	RDBUF
+;
+CRLF:	MOV	AL,CR
+	CALL	TYPEOUT
+	MOV	AL,LF
+	JMP	TYPEOUT
+;
+UPCASE:	CMP	AL,60H
+	JNB	L@00212
+	RET
+L@00212:
+	AND	AL,5FH			;make upper case
+	RET
+;
+CONST:	PUSH	CX
+	PUSH	DX
+	PUSH	BX
+	CALL	BCONST			;get console status using bios call
+	POP	BX
+	POP	DX
+	POP	CX
+	RET
+;
+CONIN:	PUSH	CX
+	PUSH	DX
+	PUSH	BX
+	CALL	BCONIN			;get console char from bios
+	POP	BX
+	POP	DX
+	POP	CX
+	RET
+;
+;Console out with TAB expansion
+;	Enter: char in AL
+;
+TYPEOUT:
+	PUSH	CX
+	PUSH	DX
+	PUSH	BX
+	MOV	CL,AL			;for output routine
+	CMP	AL,TAB
+	JNZ	TYPE2
+;
+TYPTAB:	MOV	AL,' '
+	CALL	TYPEOUT
+	MOV	AL,TABCOL
+	AND	AL,7
+	JNZ	TYPTAB
+	JMP	TYPRET
+;
+;Filter out control characters to
+;prevent garbage during view of file
+;
+TYPE2:	CMP	AL,' '
+	JAE	TYPEQ
+	CMP	AL,CR
+	JZ	TYPEQ
+	CMP	AL,LF
+	JNZ	TYPNCR
+;
+TYPEQ:	MOV	AL,QFLAG
+	OR	AL,AL
+
+VCONOT:	JNZ	L@00218
+	PUSH	CX
+	CALL	BCONOUT			;console out thru bios
+	POP	CX
+L@00218:
+;
+;Update column used in tab expansion
+	MOV	AL,CL			;get char
+	CMP	AL,CR
+	JNZ	TYPNCR
+	MOV	AL,0
+	MOV	TABCOL,AL
+	JMP	TYPLST
+;
+TYPNCR:	CMP	AL,' '			;ctl char?
+	JNAE	TYPLST			;no cgange in col
+	MOV	AL,TABCOL
+	INC	AL
+	MOV	TABCOL,AL
+;
+TYPLST:	MOV	AL,PFLAG
+	AND	AL,1
+	JZ	L@00221
+	CALL	LISTOUT			;from c reg.
+L@00221:
+;
+TYPRET:	POP	BX
+	POP	DX
+	POP	CX
+	RET
+;
+LISTOUT:				;enter char in cl
+	MOV	DL,CL			;put char in dl
+	MOV	CL,L_WRITE		;write to default list device
+	CALL	BDOS			;list to printer thru bdos
+	RET
+;
+HOME:	PUSH	BX
+	CALL	BHOME			;home drive thru bios
+	POP	BX
+	RET
+;
+;Set track # in DE
+;
+SETTRK:	PUSH	BX
+	MOV	BX,MAXTRK
+	CALL	SUBDE
+	POP	BX
+	JNAE	OUTLIM
+	XCHG	BX,DX
+	MOV	CURTRK,BX
+	XCHG	BX,DX
+	MOV	CX,DX
+	PUSH	BX
+	CALL	TRK			;set track thru bios
+	POP	BX
+	RET
+;
+SETSEC:	PUSH	BX
+	PUSH	DX
+	MOV	BX,SYSTRK
+	XCHG	BX,DX
+	MOV	CURSEC,BX
+	MOV	BX,CURTRK
+	CALL	SUBDE
+	POP	CX
+	MOV	BX,CX
+	JAE	NOTSYS
+	MOV	AL,FIRST0		;see if first sec 0
+	OR	AL,AL
+	JNZ	GSTSEC			;no, jump away
+	DEC	BX			;yes, so decrement
+	JMP	GSTSEC			;requested, then go
+;
+NOTSYS:	MOV	BX,SECTBL
+	XCHG	BX,DX
+	DEC	CX
+	CALL	BSECTTRAN
+	MOV	AL,BYTE	PTR SPT+1	;if spt<256 (hi-ord = 0)
+	OR	AL,AL			;then force 8-bit translation
+	JNZ	VSCTR1			;else keep all 16 bits
+	MOV	BH,AL
+VSCTR1:
+GSTSEC:
+	MOV	PHYSEC,BX
+	CMP	BYTE PTR CPM_VERSION,31H
+	JB	AINT31
+	MOV	BX,CURSEC		;version 31 does it's own xlate, use cursec
+AINT31:
+	MOV	CX,BX
+	CALL	SEC			;set sector thru bios
+	POP	BX
+	RET
+;
+OUTLIM:	XOR	AL,AL
+	MOV	QFLAG,AL
+	CALL	ILPRT
+	DB	'++not within tracks 0-',0
+	PUSH	BX
+	MOV	BX,MAXTRK
+	CALL	DEC
+	POP	BX
+	CALL	ILPRT
+	DB	'++'
+	DB	CR,LF,0
+	CALL	NORITE
+	JMP	PRMPTR
+;
+SETDMA:
+	CALL	DMA			;set up dma for bios
+	MOV	CX,CS			;set dma segment for bios
+	JMP	SETDMAB
+;
+;
+READ:	XOR	AL,AL
+	MOV	WRFLG,AL
+	PUSH	BX
+	CALL	DSKREAD			;read disk thru bios
+	OR	AL,AL
+	JZ	READGOOD
+	XOR	AL,AL
+	MOV	QFLAG,AL
+	CALL	ILPRT
+	DB	'++READ failed, sector may be invalid++'
+	DB	CR,LF,0
+;
+	JMPS	READOK
+READGOOD:
+	MOV	WRFLG,1
+READOK:	POP	BX
+	RET
+;
+WRITE:	MOV	AL,WRFLG
+	OR	AL,AL
+	JNZ	PWRITE
+;
+BADW:	XOR	AL,AL
+	MOV	QFLAG,AL
+	CALL	ILPRT
+	DB	'++CANNOT WRITE UNLESS READ ISSUED'
+	DB	CR,LF,0
+	JMP	EXPL
+;
+PWRITE:	PUSH	BX
+	MOV	CL,1			;force write type 1 in case 2.x deblock used
+	CALL	DSKWRITE		;write disk
+	OR	AL,AL
+	JZ	WRITOK
+	MOV	WRFLG,0
+	MOV	TRK_SECT,0FFFFH
+	XOR	AL,AL
+	MOV	QFLAG,AL
+	CALL	ILPRT
+	DB	'++WRITE failed++',CR,LF,0
+;
+WRITOK:	POP	BX
+	RET
+;
+;Help
+;
+HELP:	CALL	ILPRT
+	DB	'Operands in brackets [...] are optional'
+	DB	CR,LF
+	DB	'Numeric values: ''n'' are decimal, ''x'' hex'
+	DB	CR,LF,CR,LF
+	DB	'+[n]   step in [n] sectors;'
+	DB	CR,LF
+	DB	'-[n]   step out [n] sectors'
+	DB	CR,LF
+	DB	'#      print disk parameters for curr drive.'
+	DB	CR,LF
+	DB	'=xxx   search for ASCII xxx from curr sector.'
+	DB	CR,LF
+	DB	'       Caution: upper/lower case matters.'
+	DB	CR,LF
+	DB	'       Use <xx> for hex:'
+	DB	CR,LF
+	DB	'       To find "IN AL,0C0h" use: =<E4><C0>     or'
+	DB	CR,LF
+	DB	'       "(tab)H,0(CR)(LF)" use: =<9>H,0<D><A>'
+	DB	CR,LF
+	DB	'<      save current sector into mem. buff.'
+	DB	CR,LF
+	DB	'>      restore saved sector'
+	DB	CR,LF
+	DB	'?      give help'
+	DB	CR,LF
+	DB	'A[ff,tt] ASCII dump'
+	DB	CR,LF,CR,LF
+	DB	'(type space bar to continue)'
+	DB	1,CR,LF,CR,LF
+	DB	'C      Change:'
+	DB	CR,LF
+	DB	'       CHaddr,byte,byte... (hex)'
+	DB	CR,LF
+	DB	'  or   CAaddr,data...  (Ascii)'
+	DB	CR,LF
+	DB	'       <xx> Allowed for imbedded hex.'
+	DB	CR,LF
+	DB	'  or   CHfrom-thru,byte  e.g. ch0-7f,e5'
+	DB	CR,LF
+	DB	'  or   CAfrom-thru,byte'
+	DB	CR,LF
+	DB	'D[ff,tt] Dump (hex+ASCII)'
+	DB	CR,LF
+	DB	'Fn.t   Find file'
+	DB	CR,LF
+	DB	'Gnn    CP/M Allocation Group nn'
+	DB	CR,LF
+	DB	'H[ff,tt]       hex dump'
+	DB	CR,LF
+	DB	'L      Log in drive'
+	DB	CR,LF
+	DB	'Lx     Log in drive x'
+	DB	CR,LF
+	DB	'M[nn]  Map [from group nn]'
+	DB	CR,LF,CR,LF
+	DB	'(type space bar to continue)'
+	DB	1,CR,LF,CR,LF
+	DB	'N      New disk'
+	DB	CR,LF
+	DB	'P      Toggle printer switch'
+	DB	CR,LF
+	DB	'Q      Quiet mode (no msgs)'
+	DB	CR,LF
+	DB	'R      Read current sector'
+	DB	CR,LF
+	DB	'Snn    Sector nn'
+	DB	CR,LF
+	DB	'Tnn    Track nn'
+	DB	CR,LF
+	DB	'Unn    Set User nn for Find command'
+	DB	CR,LF
+	DB	'V[nn]  View [nn] ASCII sectors'
+	DB	CR,LF
+	DB	'W      Write current sector'
+	DB	CR,LF
+	DB	'X      Exit program'
+	DB	CR,LF
+	DB	'Z[nn]  Sleep [nn tenths]'
+	DB	CR,LF
+	DB	'/[nn]  Repeat [nn (decimal) times]'
+	DB	CR,LF,CR,LF
+	DB	'(type space bar to continue)'
+	DB	1,CR,LF,CR,LF
+	DB	'Cancel a function with ESC or Ctl-C.'
+	DB	CR,LF
+	DB	'Suspend output with S or Ctl-S.'
+	DB	CR,LF
+	DB	'Separate commands with "!".'
+	DB	CR,LF
+	DB	'       Example: g0'
+	DB	CR,LF
+	DB	'       +!d!z#20!/'
+	DB	CR,LF
+	DB	'       would step in, dump, sleep 2 sec, '
+	DB	CR,LF
+	DB	'       and repeat until control-c typed.'
+	DB	CR,LF
+	DB	'All "nn" usage except "/", "T", and "S" are'
+	DB	CR,LF
+	DB	'        HEX.  Use #nn for decimal.'
+	DB	CR,LF,CR,LF
+	DB	'See DU.DOC for complete examples.'
+	DB	CR,LF,CR,LF,0
+	JMP	PROMPT
+;
+;********************************
+;*				*
+;*    Utility Subroutines	*
+;*				*
+;********************************
+;
+GRPCMP:	MOV	AL,CL
+	INC	DH
+	DEC	DH
+	JZ	CMP8
+	CMP	AL,BYTE	PTR [BX]
+	PUSHF
+	INC	BX
+	POPF
+	JZ	L@00231
+	RET
+L@00231:
+	MOV	AL,CH
+;
+CMP8:	CMP	AL,BYTE	PTR [BX]
+	RET
+;
+;2's complement HL ==> HL
+;
+NEG:
+	NOT	BX
+	PUSHF
+	INC	BX
+	POPF
+	RET
+;
+;HL/2 ==> HL
+;
+ROTRHL:	OR	AL,AL
+	MOV	AL,BH
+	RCR	AL,1
+	MOV	BH,AL
+	MOV	AL,BL
+	RCR	AL,1
+	MOV	BL,AL
+	RET
+;
+;Collect the number of '1' bits
+;in A as a count in C
+;
+COLECT:	MOV	CH,8
+;
+COLOP:	RCL	AL,1
+	JAE	COSKIP
+	INC	CL
+;
+COSKIP:	DEC	CH
+	JNZ	COLOP
+	RET
+;
+;HL-DE ==> HL
+;
+SUBDE:
+	SUB	BX,DX
+	RET
+;
+;Quick Kludge multiply
+;HL=DE ==> HL
+;
+MULT:	PUSH	CX
+	PUSH	DX
+	XCHG	BX,DX
+	MOV	CX,DX
+	MOV	AL,CH
+	OR	AL,CL
+	JNZ	MULCON
+	MOV	BX,OFFSET 0		;filter special case
+	JMP	MLDONE			;of multiply by 0
+;
+MULCON:
+	DEC	CX
+	MOV	DX,BX
+;
+MULTLP:	MOV	AL,CH
+	OR	AL,CL
+	JZ	MLDONE
+	ADD	BX,DX
+	DEC	CX
+	JMP	MULTLP
+;
+MLDONE:	POP	DX
+	POP	CX
+	RET
+;
+;Routine to fill in disk params
+;with every drive change
+;
+LOGIT:
+	CMP	BYTE PTR CPM_VERSION,31H ;if it's ver 31 the select
+	JAE	LOGCAL			;routine done moved dpb
+	MOV	DX,OFFSET DPB		;then move to local
+	MOV	CH,DPBLEN		;workspace
+	CALL	MOVEFROMBIOS
+;
+LOGCAL:	MOV	BX,OFFSET GRPDIS
+	MOV	AL,BYTE	PTR [BX]
+	PUSH	AX
+	MOV	AL,BLM
+	MOV	BYTE PTR [BX],AL
+	PUSH	BX
+	MOV	BX,DSM
+	XCHG	BX,DX
+	CALL	GTKSEC
+	MOV	MAXSEC,BX
+	XCHG	BX,DX
+	MOV	MAXTRK,BX
+	POP	BX
+	POP	AX
+	MOV	BYTE PTR [BX],AL
+	RET
+;
+;
+DATAOFFSET EQU	OFFSET$
+	DSEG
+	ORG	DATAOFFSET
+;
+;
+;
+	RW	200
+STACK	RW	1			;local stack
+;
+;Temporary storage area
+;
+BUFAD	DW	BASE +100H		;forces initial read
+HEXAD	DW	0			;to re-fetch a value
+TOGO	DW	0FFFFH			;repeat count (ffff=cont)
+TWOUP	DB	0
+PFLAG	DB	0			;1=print
+GROUP	DW	0
+GRPDIS	DB	0
+SAVEFL	DB	0
+CURTRK	DW	0
+CURSEC	DW	1
+PHYSEC	DW	1
+TABCOL	DB	0
+FILECT	DW	0
+DIRPOS	DB	0
+FINDFL	DB	0			;1=must position after find
+FTSW	DB	1			;search w/o increment
+NOTPOS	DB	1			;initially not positioned
+WRFLG	DB	0			;may not write until '+', '-',
+;			 OR 'G' COMMAND
+QFLAG	DB	0			;quiet? (0=no)
+FIRST0	DB	0			;sets to 0 if first sec # is 0
+UNUM	DB	0			;user number
+DRIVE	DB	0
+MAXTRK	DW	0
+MAXSEC	DW	0
+SECTBL	DW	0			;pointer to sector skew table
+;
+BACK	RW	1			;to back up in "CA0-7F,X"
+DUMTYP	RS	1
+;
+;--------------------------------------------------
+
+BIOS_CALL_TBL RW 1			;address of bios call table goes here
+
+TABLE11	DW	OFFSET SELECT_DISK11	;direct bios calls for cp/m-11
+	DW	OFFSET SET_TRACK11
+	DW	OFFSET SET_DMASEG11
+	DW	OFFSET SET_DMAOFF11
+	DW	OFFSET SET_SECTOR11
+	DW	OFFSET READ_SECTOR11
+	DW	OFFSET WRITE_SECTOR11
+	DW	OFFSET SECTOR_XLAT11
+	DW	OFFSET HOME_DISK11
+
+TABLE31	DW	OFFSET SELECT_DISK31	;direct bios calls for cp/m-31
+	DW	OFFSET SET_TRACK31
+	DW	OFFSET SET_DMASEG31
+	DW	OFFSET SET_DMAOFF31
+	DW	OFFSET SET_SECTOR31
+	DW	OFFSET READ_SECTOR31
+	DW	OFFSET WRITE_SECTOR31
+	DW	OFFSET SECTOR_XLAT31
+	DW	OFFSET HOME_DISK31
+
+BPB	RS	0			;bios parameter block
+BPB_FUNC RB	1			;for direct bios call 50
+BPB_CX	RW	1
+BPB_DX	RW	1
+
+CPM_VERSION DW	0			;cpm version
+
+SYSADDR	DW	0			;sysdat addr
+UDAADDR	DW	0			;process uda addr
+
+IMCNT	DB	1			;multi-sector count (preset to 1)
+IDRIVE	RB	1			;drive number (a:=0)
+ITRACK	RW	1			;track number (first track=0)
+ISECTOR	RW	1			;sector number (first sector=0)
+IDMASEG	RW	1			;dma segment for sector buffer
+IDMAOFF	DW	OFFSET SECTOR_BUF	;dma offset for sector buffer
+
+DMASEG	RW	1			;dma segment for data
+DMAOFF	RW	1			;dma offset for data
+
+TRK_SECT DW	0FFFFH,0		;number of track/sector in memory
+
+SEC_XLAT_TBL DW	0			;address of bios xlat table
+
+REC_OFFSET DW	0			;logical record offset into phy sec
+
+;  data storage for Disk Parameter Block (DPB)
+;
+DPB	RS	0			;17 bytes of storage
+;
+SPT	RW	1
+BSH	RB	1
+BLM	RB	1
+EXM	RB	1
+DSM	RW	1
+DRM	RW	1
+AL0	RB	1
+AL1	RB	1
+CKS	RW	1
+SYSTRK	RW	1
+PHYSHF	RB	1			;not in cp/m-86 ver 1.1
+PHYMSK	RB	1			;"   "	 "	"   "
+;
+;End of disk parameter block
+
+WVMSG	DB	13,10,'Only CP/M-86 ver 1.1 & 3.1 Plus '
+	DB	'and CCP/M ver 3.1-4.1 are Supported$'
+MPMSG	DB	13,10,'THE MP/M OPERATING SYSTEM IS NOT SUPPORTED$'
+
+FATMSG	DB	13,10,'DOS-format disks are not supported$'
+
+TOOBIG	DB	13,10,'SECTOR SIZE TOO BIG - ABORTING$'
+
+SECTOR_BUF RS	2048
+
+;--------------------------------------------------
+;
+SAVBUF	RS	128
+INBUF	RS	128
+;
+;Directory read in here; also search work area
+;
+WORK	EQU	$
+DIRECT	EQU	$
+	END

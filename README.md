@@ -71,6 +71,7 @@ Ancillary goals:
 | [arc86](arc/README.md) | Create, list and extract ARC archives (`arc86.cmd`, `marc86.cmd`); archives are interchangeable with the CP/M-86 Classic freeware `ARC86.CMD` | Unix ARC 5.21 / Howard Chu, from MSDOS ARC by Thom Henderson, SEA Sources (https://github.com/ani6al/arc) | GPL |
 | [disk7](disk7/README.md) | DISK7, a full-screen file manager, translated from CP/M-80 with XLT86 | Frank Gaudé | Non-commercial (© 1984) |
 | [diskstat](diskstat/README.md) | DISKSTAT 1.2, display a disk drive's DPB, DPH and usage statistics (used / free blocks), translated from CP/M-80 with XLT86 | D. Powys-Lybbe, MML Systems (1983); 8086 conversion by John Elliott (2015) | Freeware / Abandonware |
+| [du](du/README.md) | Raw CP/M disk inspector/editor | Ward Christensen; CP/M-86 adaptations by H. M. Van Tassell and others | Historical attribution; terms unspecified |
 | [filer](filer/README.md) | VFILER, a full-screen file manager | ZCPR2 VFILER by Rich Conn, CP/M-86 translation by H. M. Van Tassell | Public domain / Abandonware |
 | [frag](frag/README.md) | Read-only CP/M directory extents and allocation maps; rejects DOS/FAT volumes | FILE-EXT / Kelly Smith; Charlie Godet-Ceraolo | Historical attribution; terms unspecified |
 | [fv](fv/README.md) | FileView, view and amend a file in hex and ASCII | Stephen Hunt | Public domain |
