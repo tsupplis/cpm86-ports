@@ -1,0 +1,2233 @@
+; DATE 10/07/83  09:43   last revision
+;
+; SIG/M release REVIDEO set TRUE & INTOREV & OUTAREV set for ADM-31
+;
+	TITLE	'SD Version 4.8B1 for CP/M-86'
+;
+; DATE 10/03/83  14:32
+; by: H.M. Van Tassell 120 Hill Hollow Rd, Watchung, NJ 07060 (201)755-5372
+;
+; This is an XLT86 translation of SD-4.8B the original of which was released
+; on SIG/M vol 145, see the original release for history and author credits.
+;
+; The "usual" minor changes have been made to enable the translation. 
+; References to CP/M ver 2.2 and lower have been deleted, segment override
+; added where required, and the version notice updated.
+;
+; NOTE: XLT86 deletes all conditional statements so this version is setup
+; as shown in the USER OPTION SPECIFICATIONS. None of these options will
+; work and are included here as reference for those who wish to add back
+; any of the OPTIONS.
+; I did add the REVIDEO option for those who dont wish to use enhanced video.
+;
+; This version should work with CP/M-86 ver 1.1, Concurrent 3.0, and Plus 3.1
+; It works with my beta test copy of PLUS 3.1 but I have not tested Concurrent.
+;
+;		 To generate program:
+;		 ASM86 SD $SZPZ
+;		 GENCMD SD 8080 CODE[M3FF]
+;
+;
+;>>>> The following notes appeared in the preamble to CP/M-80 SD-4.8B. <<<<
+;
+; Made several changes to make SD more useful and friendly to me and maybe
+; to others. Added HELP if // is filename or if a bad option specified.
+; Changed so will always start with drive A: if D option choosen and no
+; drive is specified in command line, user = 0 if A option choosen and no
+; user was specified as an option,-see the new STARTZ, ZUSR & ZDRV.
+; Added STSKIP & SKIPTO to skip over drives that dont exist but are in
+; drive table. Useful for some of us that use M: to specify memory drive.
+; To more closely conform to Digial Research notation used in CP/M PLUS,
+; changed from "$" to "[]" to indicate options and eliminated need for a
+; leading space and allow the use of either space or comma between options.
+; Added code for 3 byte INTO/OUTA reverse video so can use esc,G,x code to
+; indicate file attributes. Since directorys can be long, added a message 
+; at start of each section, see STMSG equate. Added option 'T' which is
+; a sort by filetype and then by filename, TOPREV reverses 'T' option.
+; NOTE: Edit help message at start of code to match your choice of options
+;			 SD.ASM Ver 4.8A
+;			  (Rev 14 MAY 83)
+;
+;		    SUPER DIRECTORY PROGRAM
+;		       by Bruce	R. Ratoff
+;
+;	    Based on 'DIRS' by Keith Petersen, W8SDZ
+;
+; Displays the directory of a CP/M disk, sorted	alphabetically,
+; with the file	size in	K, rounded to the nearest CP/M block size.
+;
+; This latest variation	on a common theme will automatically adjust
+; itself for any block size and	directory length under CP/M 1.4	or 2.x
+; or MP/M (any version).  Provisions are made for (1) automatic	pauses
+; when the screen fills	up; (2)	searching individual or	multiple drives
+; and/or user areas; (3) unconditional or optionally resetting the disk
+; system before	execution begins; (4) directing	output to a disk file
+; and appending	to it on subsequent runs; (5) summary line output giving
+; drive	and user information, #	of files matched and how much space they
+; consume, and the amount of free space	remaining on the disk; (6) displaying
+; or suppressing CP/M 2	"system" files;	(7) accepting ambiguous	filenames
+; with or without a drive name;	and (8)	printer	output.
+; See SD.DOC for detailed instructions on configuring and running SD.ASM
+;
+		;******************************
+		;*			      *
+		;* USER OPTION SPECIFICATIONS *
+		;*			      *
+		;******************************
+;
+;****** NOTE: none of these work - they are here for reference only *****
+;
+;ALTCPM	EQU	FALSE		;True for H8 or	TRS-80
+;DIRCON	EQU	FALSE		;True for direct console output
+;LOWCCP	EQU	FALSE		;True only if you are running with BYELOW
+;BDOSPG	EQU	0CCh		;Set properly if LOWCCP is true
+;OPTION	EQU	TRUE		;True if allowing ANY command line options
+;AOPT	EQU	TRUE		;True to allow searching all user areas
+;DOPT	EQU	TRUE		;True to allow searching all drives on-line
+;STARTZ	EQU	TRUE		;True to start with zero dr & user in none spec
+;FOPT	EQU	TRUE		;True to allow file output option
+;NOPT	EQU	TRUE		;True to allow disabling page pause option
+;PGPAWZ	EQU	TRUE		;True for pause after each page
+;POPT	EQU	TRUE		;True to allow printer option
+;REPERR	EQU	TRUE		;True to report command line option errors
+;REPSIZ	EQU	TRUE		;True to report file sizes
+;REPUSR	EQU	TRUE		;True to report user numbers
+;RMAC	EQU	FALSE		;True for RMAC assembly and external def link
+;ROPT	EQU	TRUE		;True to allow reset option
+;SOPT	EQU	TRUE		;True to allow system file option
+;TOPT	EQU	TRUE		;True for sort by filetype & filename
+;TOPREV	EQU	FALSE		;False to reverse "T" opt for normal sort
+;UOPT	EQU	TRUE		;True to allow user number option
+;VOPT	EQU	TRUE		;True to allow version number display
+;LOPT	EQU	TRUE		;True to allow Library file member printing
+;LOPREV	EQU	FALSE		;False to reverse the "L" option and not print
+;************ See above NOTE in reference to above equates **************
+
+;===========================================================================
+M	EQU	Byte Ptr 0[BX]
+FALSE	EQU	0
+TRUE	EQU	NOT FALSE
+
+REVIDEO EQU     false           ;Use reverse video sequences
+LEADIN  EQU     27              ;Esc. leadin
+INTOREV EQU     'p'             ;enter reverse video mode
+OUTAREV EQU     'q'             ;and to get out
+; NOTE: use a 2 digit INTO/OUTA sequence &  set one to 0 if only one needed
+; INTOREV	EQU	7047H		;Dim video for ADM-31 type terminals
+; OUTAREV	EQU	3047H		; "    "    "   "      "     "
+; INTOREV	EQU	0070H		;Sequence to enter reverse video (Z19)
+; OUTAREV	EQU	0071H		;And to get out
+; LEADIN	EQU	'~'		;Tilda leadin for hazeltine 1500
+; INTOREV	EQU	0019H		;Background mode on Hazeltine 1500
+; OUTAREV	EQU	001FH		;Foreground mode on Hazeltine 1500
+DELIM	EQU	7CH		;Fence (delimiter) character (vertical bar)
+;DELIM	EQU	20H		;Space
+NPL	EQU	4		;# of names per line (max of 3 for 64x16)
+;						     (max of 4 for 80x24)
+LPS	EQU	23		;# of lines per screen (max of 14 for 64x16)
+;						       (max of 23 for 80x24)
+STMSG	EQU	TRUE		;true to start each directory with message
+;
+;
+; BDOS equates
+;
+RDCHR	EQU	1		;Read char from	console
+WRCHR	EQU	2		;Write char to console
+CONST	EQU	11		;Check cons stat
+RESET	EQU	13		;Reset disk system
+SELDSK	EQU	14		;Select	disk
+OPEN	EQU	15		;0FFH=not found
+CLOSE	EQU	16		;   "	"
+SEARCH	EQU	17		;   "	"
+NEXT	EQU	18		;   "	"
+READ	EQU	20		;not 0 = EOF
+WRITE	EQU	21		;not 0 = disk full
+MAKE	EQU	22		;0FFH =	directory full
+CURDSK	EQU	25		;Get currently logged disk name
+SETDMA	EQU	26		;Set current DMA
+GALLOC	EQU	27		;Get address of	allocation vector
+CURDPB	EQU	31		;Get current disk parameters
+CURUSR	EQU	32		;Get currently logged user number 
+
+BASE	EQU	0		;Default to 0 (or 100H with MAC	+R option)
+TPA	EQU	100H
+FCB	EQU	BASE+5CH
+BDOS	EQU	BASE+5
+	
+	ORG	TPA
+;********************************
+;				*
+; BEGIN	EXECUTABLE PROGRAM CODE	*
+;				*
+;********************************
+	JMP	START
+L_1	EQU	$
+	DSEG
+	ORG	Offset L_1
+MLEADIN	DB	LEADIN		;leadin char for hilite sequences
+MINTOREV DW	INTOREV		;code to enter hilite mode
+MOUTAREV DW	OUTAREV		;code to return to normal mode
+MDELIM	DB	DELIM		;char to delimit columns on display
+MNPL	DB	NPL		;names per line (# of columns)
+MLPS	DB	LPS		;lines per screen (between pauses)
+
+VERNAME	RS	0
+	DB	'SD 4.8C2 CP/M-86 Directory Utility ',0
+
+HLPMES	DB	13,10
+	DB	'Usage: SD DRV:FILENAME.TYP [option,option...]'
+	DB	13,10,10,'Drive and/or filespec are optional.'
+	DB	13,10,'Wildcards * and ? are allowed.'
+	DB	13,10,'Options: [NS or [NS] (commas and spaces optional).'
+	DB	13,10,'Type SD // for help.'
+	DB	13,10,10,'Options Are:'
+	DB	13,10,09,'A=All Users'
+	DB	13,10,09,'D=All Disks'
+	DB	13,10,09,'F=Make File'
+	DB	13,10,09,'L=Library'
+	DB	13,10,09,'N=No Paging'
+	DB	13,10,09,'P=Printer'
+	DB	13,10,09,'R=Reset'
+	DB	13,10,09,'S=System'
+	DB	13,10,09,'T=Sort by Type'
+	DB	13,10,09,'U<n>=User No. G<n> can be used instead'
+	DB	13,10,09,'V=Version',0
+L_2	EQU	$
+	CSEG
+	ORG	Offset L_2
+START:
+	MOV	AX,Word Ptr .BDOS+1
+	OR	AX,AX
+	JNZ	MEMLEN
+	MOV	AX,0FFF0H
+MEMLEN:	SUB	AX,100H
+	MOV	MEMTOP,AX
+	MOV	CL,12			;Get and save the CP/M version #
+	INT	224
+	MOV	AL,BL
+	MOV	Byte Ptr VERFLG,AL
+	MOV	DL,0FFH			;Get current user number
+	MOV	CL,CURUSR		
+	CALL	CPM
+	MOV	Byte Ptr OLDUSR,AL	;Initialize startup user number
+	MOV	Byte Ptr NEWUSR,AL	;..and make new	user match it
+	MOV	Byte Ptr BASUSR,AL	;Save extra copy for multi-disk	directories
+	MOV	CL,CURDSK
+	CALL	CPM			;Get current disk nr
+	MOV	Byte Ptr OLDDSK,AL	;Save for reset	if needed
+	PUSH	AX
+	MOV	CL,24
+	CALL	CPM
+	MOV	DRVSET,AX
+	POP	AX
+	INC	AL
+	MOV	Byte Ptr OUTFCB,AL	;Set directory output file drive
+; If at	least one option is allowed, scan the command line for the
+; option field delimiter.  The option field delimiter is considered
+; valid	only if	it is preceded by at least 1 space (otherwise, it
+; may be part of the directory filename).  Any unrecognized options
+; or illegal user numbers will be flagged or ignored (see REPERR).
+; (We scan the command line buffer rather than the 2nd default FCB
+; because all 8	options	plus a 2 digit user number won't fit in
+; the FCB name field).
+	MOV	BX,80H			;Set command line buffer+2 pointer
+	MOV	CH,M			;Get length of command line buffer
+; Check for a help request
+	INC	BX
+	INC	BX
+	MOV	AL,M
+	CMP	AL,'/'
+	JNZ	L_4	
+	CALL	HELP
+L_4:
+	LAHF
+	DEC	BX
+	SAHF
+	LAHF
+	DEC	BX
+	SAHF
+; Search for the command line delimiter.  If not found, assume no options.
+SCNDOL:	LAHF
+	INC	BX
+	SAHF
+	DEC	CH
+	JNS	L_5	
+	JMP	CKREST			;Exit if command line buffer empty
+L_5:
+	MOV	AL,M
+	CMP	AL,'['			;Digital Research changing to "["
+	JNZ	SCNDOL
+;	DCX	H		;'$' found - make sure space precedes it
+;	MOV	A,M
+;	INX	H
+;	CPI	' '
+;	JNZ	SCNDOL		;No space - ignore "$" and search again
+; Valid	delimiter found.  Scan the rest	of the buffer for options.  Errors
+; past this point will cause an	abort if the command line error	option is
+; enabled.  Otherwise, the dud option will be ignored and SD will attempt
+; to continue stumbling	through	the rest of the	field.
+	XCHG	BX,DX			;Get option field pointer to DE
+SCNOPT:	LAHF				;Bump to next option field character
+	INC	DX
+	SAHF
+	DEC	CH			;Dock characters left in option	field
+	JNS	L_6	
+	JMP	CKREST			;If option field exhausted, exit
+L_6:
+SCNAGN:	MOV	SI,DX			;Get the next option character
+	MOV	AL,[SI]
+	CMP	AL,' '			;Do we have a space?
+	JZ	SCNOPT			;Ignore	it if so
+	CMP	AL,','			;Same for comma
+	JZ	SCNOPT
+	CMP	AL,']'			;End of option list
+	JNZ	L_7	
+	JMP	CKREST
+L_7:
+	MOV	BX,(Offset OTBL)-1	;Get base of option lookup table
+	MOV	CL,(Offset OEND)-(Offset OTBL)+1	;Get length of option lookup table
+NOMACH:	INC	BX			;Bump to next option table character
+	DEC	CL			;Are we	out of the table?
+	JZ	CK4USR			;If so, check for user option
+	CMP	AL,M			;Compare our character with option table
+	JNZ	NOMACH			;Exit if no match
+	MOV	M,0			;Otherwise, activate the flag
+	JMPS	SCNOPT			;..and go get the next option character
+; If option character doesn't match the table, see if we have a User
+; option.
+CK4USR:				;Check for user	number option
+	CMP	AL,'U'
+    JZ  UAGN
+	CMP	AL,'G'
+	JNZ	CLERR			;Last option, so bad deal if that ain't it
+UAGN:	LAHF				;Bump to user number digit
+	INC	DX
+	SAHF
+	DEC	CH
+	JS	CLERR			;Error if nothing left
+	MOV	SI,DX			;Get decimal digit
+	MOV	AL,[SI]
+	CMP	AL,' '			;Ignore	leading	spaces
+	JZ	UAGN
+	SUB	AL,30H			;Subtract ASCII	BIAS
+	JB	CLERR			;Error if < 0
+	CMP	AL,10
+	JNB	CLERR			;Error if > 9
+	MOV	Byte Ptr NEWUSR,AL	;Save user number as it	may be only 1 digit
+	MOV	Byte Ptr BASUSR,AL	;Duplicate it if multi-disk mode
+	LAHF
+	XCHG	AL,AH
+	PUSH	AX
+	MOV	AL,0FFH			;Set got user flag
+	MOV	Byte Ptr GOTUSR,AL
+	POP	AX
+	XCHG	AL,AH
+	SAHF
+	LAHF				;Bump to possible 2nd digit of user number
+	INC	DX
+	SAHF
+	DEC	CH
+	JS	CKREST			;If no more buffer, exit with complete user #
+	MOV	SI,DX			;Else, check for another digit
+	MOV	AL,[SI]
+	SUB	AL,30H
+	JNB	L_8	
+	JMP	SCNAGN			;If next char not numeric, its not part	of
+L_8:
+	CMP	AL,10			;..user	number so go check for another option
+	JNAE	L_9	
+	JMP	SCNAGN
+L_9:
+	MOV	BL,AL			;Save units digit
+	MOV	AL,Byte Ptr NEWUSR	;Get tens digit
+	ADD	AL,AL			;Multiply by 10
+	MOV	BH,AL
+	ADD	AL,AL
+	ADD	AL,AL
+	ADD	AL,BH
+	ADD	AL,BL			;Combine with units digit
+	MOV	Byte Ptr NEWUSR,AL	;Save the total	user number
+	MOV	Byte Ptr BASUSR,AL	;Duplicate it if multi-disk mode
+	JMP	SCNOPT			;Continue scanning
+;Balance UOPT
+; If command line error	option enabled,	playback the command line up
+; to the character that	we gagged on and exit.	If REPERR is not enabled,
+; then continue	as if nothing were amiss to avoid acknowledging	that
+; some options are available.
+CLERR:
+	XOR	AL,AL
+	LAHF				;Tag end of command line with terminator
+	INC	DX
+	SAHF
+	MOV	SI,DX
+	MOV	[SI],AL
+	CALL	CRLF
+	MOV	DX,(Offset ERRMS2)
+	CALL	PRINT
+	MOV	DX,(Offset ERRTAG)
+	CALL	PRINT
+	MOV	BX,81H			;Playback bad command line to error point
+CLELP:	MOV	AL,M
+	OR	AL,AL
+	JZ	CLEX
+	CALL	TTYPE
+	INC	BX
+	JMPS	CLELP
+CLEX:	MOV	AL,'?'			;Tag line with a '?' field
+	CALL	TTYPE
+	JMP	HELP1			;..and tell how to do it
+;Balance OPTION
+; Options input or not specified.  If reset option specified, reset
+; the disk system now.	Its important that the reset be done OUTSIDE
+; the multiple drive loop if the file output option is enabled because
+; CP/M 1.4 clobbers the DMA buffer on reset.
+CKREST:
+	MOV	AL,Byte Ptr ROPFLG	;If reset flag set, reset disk system before
+	OR	AL,AL			;..starting to update allocation vectors
+	MOV	CL,RESET
+	JNZ	L_10	
+	CALL	CPM
+L_10:
+;Balance ROPT
+	MOV	AL,Byte Ptr VOPFLG	;If version display flag set, print it
+	OR	AL,AL
+	JNZ	NOVOPT
+	MOV	DX,(Offset VERNAME)
+	CALL	PRINT
+	CALL	CRLF
+NOVOPT:
+	MOV	AL,Byte Ptr DOPFLG	;If multi-disk flag set, 
+	OR	AL,AL			;..need to set error traps
+	JNZ	L_11	
+	CALL	SWAPEM			;Swap BDOS error vector	tables
+L_11:
+; If "A" option choosen and no user number specified
+; set user to zero
+ZUSR:	MOV	AL,Byte Ptr GOTUSR	;Was a user specified?
+	OR	AL,AL
+	JNZ	ZDRV			;YES-quit now
+	MOV	AL,Byte Ptr AOPFLG	;Was A option specified?
+	OR	AL,AL
+	JNZ	ZDRV			;JMP if NO
+	XOR	AL,AL
+	MOV	Byte Ptr NEWUSR,AL	;ZERO NEWUSR for all users
+	MOV	Byte Ptr BASUSR,AL	;ZERO BASUSR for all users
+; If "D" option choosen and no drive specified
+; set drive to physical zero
+ZDRV:	MOV	BX,FCB
+	MOV	AL,M			;Get drive name	for directory search
+	OR	AL,AL			;Any specified?
+	JNZ	NOOPT			;Yes skip next routine
+	MOV	AL,Byte Ptr DOPFLG	;else if DOPT then
+	OR	AL,AL
+	JNZ	ZDRV1
+	INC	AL			;always start with A
+	MOV	M,AL
+	JMPS	NOOPT
+ZDRV1:	MOV	AL,Byte Ptr OLDDSK	;Otherwise, get	default	disk
+	INC	AL
+	MOV	M,AL			;Put the absolute drive	code in	directory FCB
+; Validate drive code and user area numbers from the drive table.
+NOOPT:	CMP Byte Ptr DOPFLG,0
+	JNE DRIVEOK
+LOGDRIVE:	MOV AL,Byte Ptr .FCB
+	CMP AL,16
+	JBE DRIVEBIT
+	JMP NPRT
+DRIVEBIT:	DEC AL
+	MOV CL,AL
+	MOV AX,1
+	SHL AX,CL
+	TEST DRVSET,AX
+	JNZ DRIVEOK
+	INC Byte Ptr .FCB
+	JMP LOGDRIVE
+DRIVEOK:	MOV	DX,(Offset DREMSG)	;Get the drive/user error message
+	PUSH	DX
+	MOV	AL,Byte Ptr .FCB	;Get directory drive code
+	DEC	AL			;Normalize to range of 0-15
+	CMP	AL,(Offset HIDRV)-(Offset LODRV)	;Compare with maximum drives on-line
+	JNAE	L_12	
+	JMP	ERXIT			;Take drive error exit if out of range
+L_12:
+	MOV	BX,(Offset USRMSG)	;Switch	to user	# error	message
+	MOV	BP,SP
+	XCHG	BX,[BP]
+	MOV	DL,AL			;Use drive code	as index into table
+	MOV	DH,0
+	MOV	BX,(Offset LODRV)	;Point to base of drive/user table
+	ADD	BX,DX
+	MOV	AL,M			;Get the maximum user #	for this drive
+	AND	AL,0FH			;Make sure its in range	0 - 15
+	MOV	Byte Ptr MAXUSR,AL	;Save it for later
+	MOV	BX,(Offset NEWUSR)	;Point to the directory	user area
+	CMP	AL,M			;Compare it with the maximum
+	JNB	L_13	
+	JMP	ERXIT			;Take error exit if user number	illegal
+L_13:
+	POP	DX			;Destroy error message pointer
+	MOV	BX,FCB+1		;Point to name
+	MOV	AL,M			;Any specified?
+	CMP	AL,'['
+	JZ	GOTDL
+	CMP	AL,' '
+	JNZ	GOTFCB
+; No FCB - make	FCB all	'?'
+GOTDL:	MOV	CH,11			;FN+FT count
+QLOOP:	MOV	M,'?'			;Store '?' IN FCB
+	INC	BX
+	DEC	CH
+	JNZ	QLOOP
+GOTFCB:	MOV	AL,'?'			;Force wild extent
+	MOV	Byte Ptr .FCB+12,AL
+	CALL	SETSRC			;Set DMA for BDOS media change check
+	MOV	BX,FCB			;Point to FCB drive code for directory
+	MOV	DL,M			;Get the drive code out of the FCB
+	DEC	DL			;Normalize drive code for SELECT
+	MOV	CL,SELDSK		;Select the directory drive to retrieve
+	CALL	CPM			;..the proper allocation vector
+	MOV	CL,CURDPB		;request DPB
+	INT	224
+	INC	BX
+	INC	BX
+	MOV	AL,ES:M			;Get block shift
+	MOV	Byte Ptr BLKSHF,AL
+	INC	BX			;Bump to block mask
+	MOV	AL,ES:M
+	MOV	Byte Ptr BLKMSK,AL	;Get it
+	INC	BX
+	INC	BX
+	MOV	DL,ES:M			;Get max block #
+	INC	BX
+	MOV	DH,ES:M
+	XCHG	BX,DX
+	MOV	Word Ptr BLKMAX,BX	;Save it
+	XCHG	BX,DX
+	INC	BX
+	MOV	DL,ES:M			;Get directory size
+	INC	BX
+	MOV	DH,ES:M
+	XCHG	BX,DX
+
+; Calculate # of K free	on selected drive now so that the FREE figure
+; will not reflect either the creation or additions to the SD.DIR
+; file (which we would probably	erase or move anyway).
+FREE:	MOV	Word Ptr DIRMAX,BX	;Save max # of entries in directory
+	MOV	AL,Byte Ptr VERFLG	;check version #
+	CMP	AL,30H			;3.0 or higher?
+	JB	FREE20			;use old method if not
+	MOV	AL,Byte Ptr .FCB	;get drive #
+	DEC	AL
+	MOV	DL,AL			;Use new Compute Free Space BDOS call
+	MOV	CL,46
+	CALL	CPM
+	MOV	CL,3			;answer is a 24-bit integer
+FRE3L1:
+	MOV	BX,BASE+82H		;answer is in 1st 3 bytes of DMA adr
+	MOV	CH,3			;convert it from sectors to K
+	OR	AL,AL			;by dividing by 8
+FRE3L2:
+	MOV	AL,M
+	RCR	AL,1
+	MOV	M,AL
+	DEC	BX
+	DEC	CH
+	JNZ	FRE3L2			;Loop for 3 bytes
+	DEC	CL
+	JNZ	FRE3L1			;Shift 3 times
+	MOV	BX,Word Ptr .BASE+80H	;Now get result in K
+	JMPS	SAVFRE			;Go store it
+FREE20:
+	MOV	CL,GALLOC		;Get address of	allocation vector
+	INT	224			;address ret as ES:BX
+	XCHG	BX,DX			
+	MOV	BX,Word Ptr BLKMAX	;Get its length
+	INC	BX
+	MOV	CX,0			;Init block count to 0
+GSPBYT:	PUSH	DX			;Save alloc address
+	MOV	SI,DX			;offset in SI
+	MOV	AL,ES:[SI]		;seg in ES
+	MOV	DL,8			;Set to	process	8 blocks
+GSPLUP:	RCL	AL,1			;Test bit
+	JB	NOTFRE
+	INC	CX
+NOTFRE:	MOV	DH,AL			;Save bits
+	DEC	BX			;Count down blocks
+	MOV	AL,BL
+	OR	AL,BH
+	JZ	ENDALC			;Quit if out of	blocks
+	MOV	AL,DH			;Restore bits
+	DEC	DL			;Count down 8 bits
+	JNZ	GSPLUP			;Do another bit
+	POP	DX			;Bump to next byte..
+	INC	DX			;..of alloc. vector
+	JMPS	GSPBYT			;Process it
+ENDALC:	POP	DX			;Clear allocation vector pointer from stack
+	MOV	BL,CL			;Copy blocks to	hl
+	MOV	BH,CH
+	MOV	AL,Byte Ptr BLKSHF	;Get block shift factor
+	SUB	AL,3			;Convert from sectors to K
+	JZ	SAVFRE			;Skip shifts if 1K blocks - return free in HL
+FREKLP:	SHL	BX,1			;Multiply blocks by K/BLK
+	DEC	AL
+	JNZ	FREKLP
+SAVFRE:	MOV	Word Ptr FREEBY,BX	;Save the free space for output later
+
+; Identify the CDOS synthetic FAT header; an absent result is not a header.
+	CALL SETSRC
+	MOV DOSFLG,0
+	MOV DX,Offset CHKFCB
+	MOV CL,17
+	CALL CPM
+	CMP AL,3
+	JA MEDDONE
+	XOR AH,AH
+	MOV CL,5
+	SHL AX,CL
+	MOV BX,80H
+	ADD BX,AX
+	CMP Byte Ptr [BX],20H
+	JNE MEDDONE
+	CMP Byte Ptr 0FH[BX],80H
+	JNE MEDDONE
+	CMP Word Ptr 10H[BX],8080H
+	JNE MEDDONE
+	MOV DOSFLG,0FFH
+MEDDONE:
+;
+; Reenter here on subsequent passes while in the all-users mode
+SETTBL:	MOV BX,Word Ptr DIRMAX
+	INC BX
+	JZ TABFULL
+	SHL BX,1
+	JC TABFULL
+	ADD BX,Offset ORDER
+	JC TABFULL
+	CMP BX,MEMTOP
+	JAE TABFULL
+	MOV Word Ptr TBLOC,BX
+	MOV Word Ptr NEXTT,BX
+	JMP L_14
+TABFULL:	JMP OUTMEM
+L_14:
+	MOV	AL,Byte Ptr NEWUSR	;Get user area for directory
+	MOV	DL,AL
+	MOV	CL,CURUSR		;Get the user function
+	CALL	CPM			;..and set new user number
+; Look up the FCB in the directory
+SFIRST:	MOV	BX,0
+	MOV	Word Ptr COUNT,BX	;Initialize match counter
+	MOV	Word Ptr TOTFIL,BX	;     "	    total file counter
+	MOV	Word Ptr TOTSIZ,BX	;     "	    total size counter
+	CALL	SETSRC			;Set DMA for directory search
+	MOV	CL,SEARCH		;Get 'search first' function
+	JMPS	LOOK			;..and go search for 1st match
+; Read more directory entries
+MORDIR:	MOV	CL,NEXT			;Search	next
+LOOK:	MOV	DX,FCB
+	CALL	CPM			;Read directory	entry
+	INC	AL			;Check for end (0FFH)
+	JNZ	L_16	
+	JMP	SPRINT			;If no more, sort & print what we have
+L_16:
+; Point	to directory entry
+SOME:	CMP	AL,4
+	JBE	VALIDRC
+	JMP	BADDIR
+VALIDRC:	DEC	AL			;Undo prev 'INR A'
+	AND	AL,3			;Make modulus 4
+	ADD	AL,AL			;Multiply...
+	ADD	AL,AL			;..by 32 because
+	ADD	AL,AL			;..each	directory
+	ADD	AL,AL			;..entry is 32
+	ADD	AL,AL			;..bytes long
+	MOV	BX,BASE+81H		;Point to buffer
+;(skip to FN/FT)
+	ADD	AL,BL			;Point to entry
+	ADD	AL,9			;Point to SYS byte
+	MOV	BL,AL			;Save (can't carry to H)
+	MOV	AL,Byte Ptr SOPFLG	;Did user request SYS files?
+	OR	AL,AL
+	JZ	SYSFOK
+	MOV	AL,M			;Get SYS byte
+	OR	AL,AL			;Check bit 7
+	JS	MORDIR			;Skip that file
+SYSFOK:	MOV	AL,BL			;Go back now
+	SUB	AL,10			;Back to user number (alloc flag)
+	MOV	BL,AL			;HL points to entry now
+	MOV	AL,Byte Ptr NEWUSR	;Get current user
+	CMP	AL,M
+	JNZ	MORDIR			;Ignore	if different
+	INC	BX
+; Move entry to	table
+	XCHG	BX,DX			;Entry to DE
+	MOV	BX,Word Ptr NEXTT	;Next table entry to HL
+	MOV	AX,BX
+	ADD	AX,14
+	JC	TABFULL
+	CMP	AX,MEMTOP
+	JBE	MEMROOM
+	JMP	OUTMEM
+MEMROOM:
+	MOV	AX,Word Ptr COUNT
+	CMP	AX,Word Ptr DIRMAX
+	JBE	ROOMENT
+	JMP	OUTMEM
+ROOMENT:	MOV	CH,11			;Name and type; then full extent and RC
+TMOVE:	MOV	SI,DX			;Get entry char
+	MOV	AL,[SI]
+	MOV	M,AL			;Store in table
+	INC	DX
+	INC	BX
+	DEC	CH			;More?
+	JNZ	TMOVE
+	MOV SI,DX			;EX at +12, S2 at +14, RC at +15
+	MOV AL,2[SI]
+	AND AL,3FH
+	XOR AH,AH
+	MOV CL,5
+	SHL AX,CL
+	MOV CL,[SI]
+	AND CL,1FH
+	OR AL,CL
+	MOV [BX],AH			;High byte first for lexical extent sorting
+	MOV 1[BX],AL
+	MOV AL,3[SI]
+	MOV 2[BX],AL
+	ADD BX,3
+	MOV	Word Ptr NEXTT,BX	;Save updated table addr
+	XCHG	BX,DX
+	MOV	BX,Word Ptr COUNT	;Bump the # of matches made
+	INC	BX
+	MOV	Word Ptr COUNT,BX
+	JMP	MORDIR
+OUTMEM:	CALL	ERXIT			;Exit if directory too large
+	DB	'Memor','y',0
+BADDIR:	CALL	ERXIT
+	DB	'Directory search',0
+; Sort and print
+SPRINT:
+	CALL	SETFOP			;Return to file output DMA & user #
+	MOV	BX,Word Ptr COUNT	;Get file name count
+	MOV	AL,BL
+	OR	AL,BH			;Any found?
+	JNZ	L_18	
+	JMP	PRTOTL			;Exit if no files found
+L_18:
+	PUSH	BX			;Save file count
+	MOV	Byte Ptr SUPSPC,AL	;Enable	leading	zero suppression
+; Initialize the order table
+	MOV	BX,Word Ptr TBLOC	;Get start of name table
+	XCHG	BX,DX			;Into DE
+	MOV	BX,(Offset ORDER)	;Point to order	table
+	MOV	CX,14			;Name/type, full extent, RC
+BLDORD:	MOV	M,DL			;Save low order	address
+	INC	BX
+	MOV	M,DH			;Save high order address
+	INC	BX
+	XCHG	BX,DX			;Table addr to HL
+	ADD	BX,CX			;Point to next entry
+	XCHG	BX,DX
+	MOV	BP,SP			;Save tbl addr,	fetch loop counter
+	XCHG	BX,[BP]
+	DEC	BX			;Count down loop
+	MOV	AL,BL
+	OR	AL,BH			;More?
+	MOV	BP,SP			;(restore tbl addr, save counter)
+	XCHG	BX,[BP]
+	JNZ	BLDORD			;Yes, go do another one
+	POP	BX			;Clean loop counter off	stack
+	MOV	BX,Word Ptr COUNT	;Get count
+	MOV	Word Ptr SCOUNT,BX	;Save as # to sort
+	DEC	BX			;Only 1	entry?
+	MOV	AL,BL
+	OR	AL,BH
+	JNZ	L_19	
+	JMP	DONE			;Yes, so skip sort
+L_19:
+; This sort routine is adapted from SOFTWARE TOOLS
+; by Kernigan and Plaugher.
+SORT:	MOV	BX,Word Ptr SCOUNT	;Number	of entries
+L0:	OR	AL,AL			;Clear carry
+	MOV	AL,BH			;GAP=GAP/2
+	RCR	AL,1
+	MOV	BH,AL
+	MOV	AL,BL
+	RCR	AL,1
+	MOV	BL,AL
+	OR	AL,BH			;Is it zero?
+	JNZ	L_20	
+	JMP	DONE			;Then none left
+L_20:
+	MOV	AL,BL			;Make gap odd
+	OR	AL,01
+	MOV	BL,AL
+	MOV	Word Ptr GAP,BX
+	INC	BX			;I=GAP+1
+SL2:	MOV	Word Ptr I,BX
+	XCHG	BX,DX
+	MOV	BX,Word Ptr GAP
+	MOV	AL,DL			;J=I-GAP
+	SUB	AL,BL
+	MOV	BL,AL
+	MOV	AL,DH
+	SBB	AL,BH
+	MOV	BH,AL
+SL3:	MOV	Word Ptr J,BX
+	XCHG	BX,DX
+	MOV	BX,Word Ptr GAP		;JIG=J+GAP
+	LAHF
+	ADD	BX,DX
+	SAHF
+	MOV	Word Ptr JIG,BX
+	CALL	COMPARE			;Compare (J) and (JIG)
+	JNS	SL5			;If A(J)<=A(JIG)
+	MOV	BX,Word Ptr J
+	XCHG	BX,DX
+	MOV	BX,Word Ptr JIG
+	CALL	SWAP			;Exchange A(J) and A(JIG)
+	MOV	BX,Word Ptr J		;J=J-GAP
+	XCHG	BX,DX
+	MOV	BX,Word Ptr GAP
+	MOV	AL,DL
+	SUB	AL,BL
+	MOV	BL,AL
+	MOV	AL,DH
+	SBB	AL,BH
+	MOV	BH,AL
+	JS	SL5			;If J>0	GOTO SL3
+	OR	AL,BL			;Check for zero
+	JZ	SL5
+	JMPS	SL3
+SL5:	MOV	BX,Word Ptr SCOUNT	;For later
+	XCHG	BX,DX
+	MOV	BX,Word Ptr I		;I=I+1
+	INC	BX
+	MOV	AL,DL			;IF I<=N GOTO SL2
+	SUB	AL,BL
+	MOV	AL,DH
+	SBB	AL,BH
+	JS	L_21	
+	JMP	SL2
+L_21:
+	MOV	BX,Word Ptr GAP
+	JMP	L0
+; Sort is all done - print entries
+DONE:					;If output option wanted, prepare file
+	MOV	AL,Byte Ptr FOPFLG
+	OR	AL,AL
+	JZ	L_22	
+	JMP	NOOUT			;If file output, fall through with A=0
+L_22:
+; If all user option enabled, and we're not on the first pass, then the
+; output file is already open and positioned, so we can skip the open.
+;	IF	AOPT
+	MOV	BX,(Offset OPNFLG)	;point to output file open flag
+	CMP	AL,M			;a=0, set z if opnflg=0 also
+	JZ	L_23	
+	JMP	NOOUT			;if opnflg not zero, skip open
+L_23:
+	DEC	M			;else, make opnflg not zero and open
+;	ENDIF			;Balance AOPT
+; First pass on file append - prepare SD.DIR to receive new or appended
+; output.
+	MOV	DX,(Offset OUTFCB)	;Does output file already exist?
+	MOV	CL,SEARCH
+	CALL	CPM
+	INC	AL
+	JNZ	OPENIT			;If it does, then open it for processing
+	MOV	CL,MAKE			;Otherwise, create the output file
+	CALL	CPM
+	INC	AL
+	JZ	L_24	
+	JMP	NOOUT			;Continue if open successful
+L_24:
+; If make or open fails, declare error
+OPNERR:	CALL	ERXIT
+	DB	'Ope','n',0
+WRTERR:	CALL	ERXIT
+	DB	'Writ','e',0
+; Output file already exists - open it and position to the last
+; record of the	last extent.
+OPENIT:	MOV	CL,OPEN			;Open 1st extent of output file
+	CALL	CPM
+	INC	AL
+	JZ	OPNERR			;Bad deal if 1st won't open
+OPNMOR:	MOV	AL,Byte Ptr OUTFCB+15
+	CMP	AL,128
+	JB	LSTEXT			;If RC<128, this is last extent
+	MOV	BX,(Offset OUTFCB)+12
+	INC	M			;Else, bump to next extent
+	CMP	Byte Ptr [BX],32
+	JB	APPEX
+	JMP	APERR
+APPEX:	MOV	CL,OPEN			;..and try to open it
+	CALL	CPM
+	INC	AL
+	JNZ	OPNMOR			;Continue opening extents til no more
+	DEC	M			;Then, reopen preceding	extent
+	MOV	CL,OPEN
+	CALL	CPM
+	MOV	AL,Byte Ptr OUTFCB+15	;Get RC	for the	last extent
+; At this point, OUTFCB is opened to the last extent of the file,
+; so read in the last record in the last extent.
+LSTEXT:	OR	AL,AL			;Is this extent empty?
+	JNZ APPREC
+	MOV BX,Offset OUTFCB+12
+	CMP Byte Ptr [BX],0
+	JNE APPPREV
+	JMP NOOUT			;Only extent zero means an empty file
+APPPREV:	DEC Byte Ptr [BX]
+	MOV DX,Offset OUTFCB
+	MOV CL,OPEN
+	CALL CPM
+	CMP AL,0FFH
+	JNE APPBACK
+	JMP APERR
+APPBACK:	MOV AL,Byte Ptr OUTFCB+15
+	JMP LSTEXT
+APPREC:
+	DEC	AL			;Normalize record count
+	MOV	Byte Ptr OUTFCB+32,AL	;Set record number to read
+	MOV	CL,READ			;..and read last record	of file
+	CALL	CPM
+	OR	AL,AL			;Was read successful?
+	JZ	RDOK			;If so,	proceed	to scan	for EOF	mark
+APERR:	CALL	ERXIT
+	DB	'Appen','d',0
+; We now have the last record in the file in our buffer.
+; Scan the last	record for the EOF mark, indicating where
+; we can start adding data.
+RDOK:	MOV	BX,(Offset OUTBUF)	;Point to start of output buffer
+	MOV	CH,128			;Get length of output buffer
+SCAN:	MOV	AL,M
+	CMP	AL,'Z'-40H		;Have we found end of file?
+	JZ	RESCR			;If so, save pointers and reset CR
+	LAHF
+	INC	BX
+	SAHF
+	DEC	CH
+	JNZ	SCAN			;Otherwise, keep looking til end of buffer
+; If we find an explicit EOF mark in the last buffer (or an implied EOF
+; if the last record is full), move the FCB record and extent pointers
+; back to correct for the read operation so that our first write operation
+; will effectively replace the last record of the SD.DIR file.
+RESCR:	PUSH	BX			;Save EOF buffer pointer
+	PUSH	CX			;Save EOF buffer remaining
+	MOV	BX,(Offset OUTFCB)+32	;Get current record again
+	DEC	M			;Dock it
+	JNS	SAMEXT			;If CR >=0, we're still in same extent
+	MOV	BX,(Offset OUTFCB)+12	;Else, move to previous	extent
+	DEC	M
+	MOV	CL,OPEN			;Then, reopen the previous extent
+	CALL	CPM
+	INC	AL
+	JZ	APERR			;Append position error if we can't reopen
+	MOV	AL,Byte Ptr OUTFCB+15	;Else, position to last record of extent
+	DEC	AL
+	MOV	Byte Ptr OUTFCB+32,AL
+SAMEXT:	POP	AX			;Recall where EOF is in buffer
+	XCHG	AL,AH
+	SAHF
+	MOV	Byte Ptr BUFCNT,AL	;..and set buffer counter
+	POP	BX			;Recall next buffer pointer
+	MOV	Word Ptr BUFPNT,BX	;.. and set pointer for first addition
+;Balance FOPT
+NOOUT:
+	MOV	BX,Word Ptr COUNT
+	MOV	Word Ptr LCOUNT,BX
+	MOV	BX,0
+	MOV	Word Ptr LBTOTL,BX
+	MOV	Word Ptr LMTOTL,BX
+	MOV	BX,(Offset ORDER)	;Initialize order table	pointer
+	MOV	Word Ptr NEXTL,BX
+	MOV	Word Ptr NEXTT,BX
+;Print "Driectory for...
+	MOV	DX,(Offset DIRMS1)	;at start of each section
+	CALL	PRINT
+	CALL	PRDIR			;Print " Drive, x User, y"
+	MOV	AL,Byte Ptr LINCNT
+	INC	AL			;Bump line count
+	MOV	Byte Ptr LINCNT,AL
+	JMP	NEWLIN			;Start new line	and output the files
+; Output the directory files we've matched.
+ENTRY:	MOV	BX,Word Ptr COUNT
+	DEC	BX			;Dock file count
+	MOV	Word Ptr COUNT,BX
+	MOV	AL,BH			;Is this the last file?
+	OR	AL,BL
+	JZ	OKPRNT			;If COUNT=0, last file so skip compare
+; Compare each entry to	make sure that it isn't part of a multiple
+; extent file.	Go only	when we	have the last extent of	the file.
+	PUSH	CX			;Save NPL
+	CALL	CKABRT			;Check for abort code from keyboard
+	MOV	BX,Word Ptr NEXTT
+	MOV	AL,11
+	CALL	COMPR			;Does this entry match next one?
+	POP	CX			;Recall	NPL
+	JNZ	OKPRNT			;No, print it
+	INC	BX
+	INC	BX			;Skip since highest extent comes last in list
+	MOV	Word Ptr NEXTT,BX
+	JMPS	ENTRY			;Loop back for next lowest extent
+; Valid	entry obtained - spit it out.
+OKPRNT:	MOV	BX,Word Ptr NEXTT	;Get order table pointer
+	MOV	DL,M			;Get low order address
+	INC	BX
+	MOV	DH,M			;Get high order	address
+	INC	BX
+	MOV	Word Ptr NEXTT,BX	;Save updated table pointer
+	XCHG	BX,DX			;Table entry to	HL
+	MOV	CH,8			;File name length
+	CALL	TYPEIT			;Type filename
+	MOV	AL,'.'			;Period	after FN
+	CALL	TTYPE
+	MOV	CH,3			;Display 3 characters of filetype
+	CALL	TYPEIT
+; Compute the size of the file and update our summary datum.
+	MOV	DH,M			;High extent byte
+	INC	BX
+	MOV	DL,M			;Low extent byte
+	INC	BX
+	MOV	AL,M			;Get sector count of last extent
+	XCHG	BX,DX
+	SHL	BX,1			;# of extents times 16k
+	SHL	BX,1
+	SHL	BX,1
+	SHL	BX,1
+	XCHG	BX,DX			;Save in DE
+	MOV	BX,(Offset BLKMSK)
+	ADD	AL,M			;Round last extent to block size
+	ROR	AL,1
+	ROR	AL,1			;Convert from sectors to K
+	ROR	AL,1
+	AND	AL,1FH
+	MOV	BL,AL			;Add to	total K
+	MOV	BH,0
+	ADD	BX,DX
+	MOV	AL,Byte Ptr BLKMSK	;Get SECTORS/BLK-1
+	ROR	AL,1
+	ROR	AL,1			;Convert to K/BLK
+	ROR	AL,1
+	AND	AL,1FH
+	NOT	AL			;Use to	finish rounding
+	AND	AL,BL
+	MOV	BL,AL
+	XCHG	BX,DX			;Save file size	in DE
+	MOV	BX,Word Ptr TOTSIZ
+	LAHF				;Add to	total used
+	ADD	BX,DX
+	RCR	SI,1
+	SAHF
+	RCL	SI,1
+	MOV	Word Ptr TOTSIZ,BX
+	MOV	BX,Word Ptr TOTFIL	;Increment file	count
+	LAHF
+	INC	BX
+	SAHF
+	MOV	Word Ptr TOTFIL,BX
+	XCHG	BX,DX			;Get back file size
+; If report size enabled, output the size of the individual file.
+;If file size report wanted
+	CALL	DECPRT			;..go print it
+	MOV	AL,'k'			;..and follow with K size
+	CALL	TTYPE
+; One file output - test to see	if we have to output another one.
+	MOV	BX,Word Ptr COUNT	;Get current file counter and test it
+	MOV	AL,BH
+	OR	AL,BL
+	JNZ	L_25	
+	JMP	PRTOTL			;If no more files, exit	to summary output
+L_25:
+; At least one more file to output - can we put	it on the current line?
+	DEC	CL
+	LAHF
+	XCHG	AL,AH
+	PUSH	AX
+	JZ	L_26	
+	CALL	FENCE			;If room left, output the fence	character
+L_26:
+	POP	AX
+	XCHG	AL,AH
+	SAHF
+	JZ	L_27	
+	JMP	ENTRY			;.. and	go output another file
+L_27:
+; Current line full, start a new one.
+NEWLIN:	MOV	AL,Byte Ptr MNPL
+	MOV	CL,AL			;Reset names per line counter
+	CALL	CRLF			;Space down to next line
+	MOV	AL,3			;If printing less than 4 wide
+	CMP	AL,CL
+	JB	NWLA
+	MOV	AL,Byte Ptr .FCB	;.. precede new	line with drive	name
+	ADD	AL,'A'-1
+	CALL	TTYPE
+;If reporting user numbers 
+	CALL	TYPUSR
+
+;Balance REPUSR
+	MOV	AL,':'			;Tag header with a colon and a space
+	CALL	FPAD			;..and exit back to ENTRY
+NWLA:
+	JMP	ENTRY			;Go back and output another file
+; Print	HL in decimal with leading zero	suppression
+DECPRT:	SUB	AL,AL			;Clear leading zero flag
+	MOV	Byte Ptr LZFLG,AL
+	CMP	BX,10000
+	JB	DECFOUR
+	MOV	DX,-10000
+	CALL	DIGIT
+DECFOUR:	MOV	DX,-1000		;Print 1000's digit
+	CALL	DIGIT
+	MOV	DX,-100			;Etc.
+	CALL	DIGIT
+	MOV	DX,-10
+	CALL	DIGIT
+	MOV	AL,'0'			;Get 1's digit
+	ADD	AL,BL
+	JMP	TTYPE
+DIGIT:	MOV	CH,'0'			;Start off with	ASCII 0
+DIGLP:	PUSH	BX			;Save current remainder
+	ADD	BX,DX			;Subtract
+	JNB	DIGEX			;Quit on overflow
+	POP	AX			;Throw away remainder
+	INC	CH			;Bump digit
+	JMPS	DIGLP			;Loop back
+DIGEX:	POP	BX			;Restore pointer
+	MOV	AL,CH
+	CMP	AL,'0'			;Zero digit?
+	JNZ	DIGNZ			;No, type it
+	MOV	AL,Byte Ptr LZFLG	;Leading zero?
+	OR	AL,AL
+	MOV	AL,'0'
+	JZ	L_29	
+	JMP	TTYPE			;Print digit
+L_29:
+	MOV	AL,Byte Ptr SUPSPC	;Get space suppression flag
+	OR	AL,AL			;See if	printing file totals
+	JNZ	L_30	
+	RET				;Yes, don't give leading spaces
+L_30:
+	JMP	SPACE			;Leading zero...print space
+DIGNZ:	MOV	Byte Ptr LZFLG,AL	;Set leading zero flag so next zero prints
+	JMP	TTYPE			;And print digit
+; Show total space and files used
+PRTOTL:
+	MOV	AL,Byte Ptr LOPFLG
+	OR	AL,AL
+	JNZ	L_31
+	MOV	BX,Word Ptr TOTFIL	;How many files	did we match?
+	MOV	AL,BH
+	OR	AL,BL
+	JZ	L_32	
+	CALL	PRTLMEM			;Skip the Library check if we didn't find any
+L_32:
+L_31:
+PRTOT1	EQU	(Offset $)
+	XOR	AL,AL			;Get a zero to...
+	MOV	Byte Ptr SUPSPC,AL	;Suppress leading spaces in totals
+	MOV	BX,Word Ptr TOTFIL	;How many files	did we match?
+	MOV	AL,BH
+	OR	AL,BL
+	JZ	NXTUSR			;Skip the summary if we	didn't find any
+	PUSH	BX			;Save TOTFIL
+	MOV	Byte Ptr FNDFLG,AL	;Set file found flag
+	CALL	CRLF
+	CALL	PRDIR			;Print "  Drive, x User, y"
+NOUSER:	MOV	DX,(Offset TOTMS3)	;Print " CONTAINS "
+	CALL	PRINT
+	MOV	BX,Word Ptr TOTSIZ	;Print total K used by files matched
+	CALL	DECPRT
+	MOV	DX,(Offset TOTMS4)	;PRINT "K IN "
+	CALL	PRINT
+	POP	BX			;Recall	TOTFIL
+	CALL	DECPRT			;Print number of files matched
+	MOV	DX,(Offset TOTMS5)	;Print " FILES WITH "
+	CALL	PRINT
+	CALL	PRTFRE			;Output	free space remaining & " FREE."
+; Directory for	one user area completed.  If all users option is
+; selected, then go do another directory on the	next user number
+; until	we exceed the maximum user # for the selected drive.
+NXTUSR:				;If all	users option enabled
+	MOV	AL,Byte Ptr AOPFLG	;If not	all users mode - skip next
+	OR	AL,AL
+	JNZ	GOCLZ
+	CMP	DOSFLG,0 ! JNZ GOCLZ	;no A OP allowed on dos media
+	CALL	CKABRT			;Check for user	abort first
+	MOV	AL,Byte Ptr MAXUSR	;No abort - get	maximum	user number
+	MOV	BX,(Offset NEWUSR)	;Bump directory	user number
+	INC	M
+	CMP	AL,M			;Does next user	# exceed maximum?
+	JNAE	L_33	
+	JMP	SETTBL			;Continue if more user areas to	go
+L_33:
+;AOPT
+;If multi-disk option enabled
+	MOV	AL,Byte Ptr BASUSR	;Reset base user number	for the
+	MOV	M,AL			;..next	directory search
+;Balance DOPT and AOPT
+; We've finished all of our outputting.  Flush the remainder of the
+; output buffer and close the file before going to exit routine.
+GOCLZ:
+;	LDA	FOPFLG		;Is file output mode active?
+;	ORA	A
+;	JNZ	NXTDSK		;If not, move to next drive, otherwise ..
+;	STA	PASS1		;Make PASS1=0 to force reopen on next drive
+	MOV	BX,(Offset OPNFLG)	;get file open status then reset flag to
+	MOV	AL,M			;..force reopen on next pass
+	MOV	M,0
+	OR	AL,AL
+	JZ	NXTDSK			;skip closing sd.dir if it wasn't opened
+	MOV	BX,(Offset BUFCNT)
+	MOV	AL,M			;RETRIEVE # OF UNFLUSHED CHARACTERS IN BUFFER
+	MOV	M,128			;FORCE BUFCNT TO EMPTY STATUS FOR NEXT DRIVE
+	OR	AL,AL			;IF BUFCNT=128, BUFFER EMPTY SO SET SIGN BIT
+	JS	CLOZE			;close sd.dir if buffer is empty
+	JZ	FLUSH			;write last record to sd.dir if buffer full
+	MOV	BX,Word Ptr BUFPNT	;OTHERWISE, PAD UNUSED BUFFER WITH CTRL-ZS
+PUTAGN:	MOV	M,'Z'-40H
+	INC	BX
+	DEC	AL
+	JNZ	PUTAGN			;CONTINUE PADDING TIL BUFFER FILLED OUT
+;	MVI	A,128
+;	STA	BUFCNT		;Force buffer to empty status
+FLUSH:	MOV	DX,(Offset OUTFCB)	;FLUSH THE LAST OUTPUT BUFFER
+	MOV	CL,WRITE
+	CALL	CPM
+	OR	AL,AL
+	JZ	L_34	
+	JMP	WRTERR
+L_34:
+CLOZE:	MOV	DX,(Offset OUTFCB)	;CLOSE THE OUTPUT FILE
+	MOV	CL,CLOSE
+	CALL	CPM
+	CMP	AL,0FFH
+	JNE	CLOSEOK
+	CALL	ERXIT
+	DB	'Close',0
+CLOSEOK:
+;BALANCE FOPT
+; Directory for	all user areas completed.  If the multi-disk option
+; is enabled and selected, reset to the	base user area and repeat
+; the directory	for next drive on-line until we	either exceed the
+; drives in our	LODRV-HIDRV table, or the BDOS shuts us	down with
+; a select or bad sector error,	which will be intercepted back to
+; the EXIT module.
+NXTDSK:	MOV	BX,(Offset FNDFLG)	;Get file found flag
+	MOV	AL,M
+	MOV	M,0			;Clear file found flag for next drive
+	OR	AL,AL
+	JNZ	NDSK			;Continue if at least 1 file found
+;If file output enabled, disable temporarily
+	MOV	BX,(Offset FOPFLG)
+	DEC	M
+	PUSH	BX
+	MOV	AL,Byte Ptr .FCB	;Stash ASCII directory drive in NO FILE msg
+	ADD	AL,'A'-1
+	MOV	Byte Ptr NOFMS2,AL
+	MOV	DX,(Offset NOFMS1)	;Print "No file on ? - "
+	CALL	PRINT
+	CALL	PRTFRE			;Tag with free message
+;Restore original file output mode
+	POP	BX
+	INC	M
+NDSK:					;If multi-disk option enabled
+	MOV	AL,Byte Ptr DOPFLG	;If multi-disk not selected - skip next
+	OR	AL,AL
+	JNZ	NPRT
+	CALL	CKABRT			;Check for user	abort first
+	MOV	BX,FCB
+	INC	M
+NEXT1:	MOV	AL,(Offset HIDRV)-(Offset LODRV)	;Get maximum drive code	to search
+	CMP	AL,M			;Does next disk	exceed maximum?
+	JNAE	L_35	
+	JMP	NOOPT			;Search	next disk if not
+L_35:
+;Balance DOPT
+NPRT:					;if no printer, fall through to EXIT
+;now, check if printer is in use
+	MOV	AL,Byte Ptr POPFLG
+	OR	AL,AL			;printer active?
+	JZ	L_36	
+	JMP	EXIT			;no, just exit...
+L_36:
+	MOV	CL,5
+	MOV	DL,13			;print a CRLF
+	CALL	CPM
+	MOV	DL,10			;line feed
+	CALL	CPM
+;POPT
+	JMP	EXIT			;All done - exit to CCP
+; Print "Directory for....
+PRDIR:	MOV	DX,(Offset TOTMS1)	;Print [CR,LF]  " Drive	"
+	CALL	PRINT
+	MOV	AL,Byte Ptr .FCB
+	ADD	AL,'A'-1
+	CALL	TTYPE			;Output	the drive code
+
+	cmp	DOSFLG,0 ! jz it_is_cpm
+	mov	dx,offset DOSMSG
+	call	print
+	ret
+
+it_is_cpm:
+	MOV	DX,(Offset TOTMS2)	;Print ", USER "
+	CALL	PRINT
+	CALL	TYPUSR			;Output	the user number
+	RET
+; Print	the user number	of the directory in decimal
+TYPUSR:
+	MOV	AL,Byte Ptr NEWUSR
+	CMP	AL,10			;If user no. > 9 print leading 1
+	JB	DUX
+	MOV	AL,'1'
+	CALL	TTYPE
+	MOV	AL,Byte Ptr NEWUSR	;Print low digit of user no.
+	SUB	AL,10
+DUX:	ADD	AL,'0'
+	JMPS	TTYPE
+; Force	new line on video and check for	page pause
+CRLF:	MOV	AL,0DH			;Send CR
+	CALL	TTYPE
+	MOV	AL,0AH			;Send LF
+	JMPS	TTYPE			;Exit to caller	from TTYPE
+; Separate the directory output	on a line with a space,	the delimiter,
+; followed by another space.
+FENCE:	CALL	SPACE
+	MOV	AL,Byte Ptr MDELIM	;Fence character
+FPAD:	CALL	TTYPE			;Print it, fall	into space
+SPACE:	MOV	AL,' '			;Fall through to TTYPE
+; Output character in A to console, and optionally to printer and/or
+; the output file.
+TTYPE:	PUSH	CX
+	PUSH	DX
+	PUSH	BX
+	PUSH	AX			;Save the character to output
+	CALL	TYPE2			;Send it to console
+	POP	AX			;Restore the output character
+	AND	AL,7FH			;Strip parity bit on character
+; Test file output mode and skip to page pause test if not active.
+	MOV	CH,AL			;Save stripped character to B
+	MOV	AL,Byte Ptr FOPFLG	;Is file output	active?
+	OR	AL,AL
+	JNZ	NOWRIT			;Go check for page pause if not
+; File output mode active - make sure we have room in buffer to add
+; next character.  If buffer full, write out current record first
+; and then start a new record with current character.
+	MOV	BX,Word Ptr BUFPNT	;Get current buffer pointer
+	MOV	AL,Byte Ptr BUFCNT	;Get buffer capacity remaining
+	OR	AL,AL
+	JNZ	PUTBUF			;Continue if buffer not full
+	CALL	SETFOP			;Set the DMA address
+	MOV	DX,(Offset OUTFCB)	;Otherwise, write the current buffer out
+	MOV	CL,WRITE
+	CALL	CPM			;(Note call must save character	in B)
+	OR	AL,AL
+	JZ	L_37	
+	JMP	WRTERR			;Take write error exit if disk full or R/O
+L_37:
+	MOV	BX,(Offset OUTBUF)	;Reset buffer pointer
+	MOV	AL,128			;Reset buffer capacity
+PUTBUF:	MOV	M,CH			;Shove character to next buffer position
+	INC	BX			;Bump buffer pointer
+	MOV	Word Ptr BUFPNT,BX	;.. and save it
+	DEC	AL			;Dock count of characters left in buffer
+	MOV	Byte Ptr BUFCNT,AL	;..and save it
+NOWRIT:	MOV	AL,CH			;Recall	stripped character
+;Balance FOPT
+;If printer option
+	AND	AL,7FH			;Strip parity bit on character
+	MOV	DL,AL			;Setup list output call
+	MOV	CL,5
+	MOV	AL,Byte Ptr POPFLG	;Test printer flag
+	OR	AL,AL
+	JNZ	L_38	
+	CALL	CPM			;Print character if flag true
+L_38:
+	MOV	AL,DL			;Recall	character
+	CMP	AL,0AH			;Do we have a LF?
+	JNZ	TYPRET			;Exit if not
+	MOV	AL,Byte Ptr NOPFLG	;Is the	page pause function disabled?
+	OR	AL,AL
+	JZ	TYPRET			;Exit if so
+	MOV	AL,Byte Ptr LINCNT	;Get line count
+	INC	AL			;Bump it
+	MOV	BX,(Offset MLPS)
+	CMP	AL,M			;Are we	at the end of the screen?
+	JB	NOTEOS			;Skip if not
+	MOV	DX,(Offset EOSMSG)	;Else, display pause message
+	MOV	CL,9			;..without checking for	LFs
+	INT	224
+	CALL	CINPUT			;Wait for character
+	CMP	AL,'C'-40H
+	JNZ	L_39	
+	JMP	EXIT			;Abort on CTRL-C
+L_39:
+	XOR	AL,AL			;Reset line count
+NOTEOS:	MOV	Byte Ptr LINCNT,AL	;Save new line count
+TYPRET:	POP	BX			;Exit from TTYPE
+	POP	DX
+	POP	CX
+	RET
+; Output character
+TYPE2:
+	IF	REVIDEO
+	TEST	AL,80H			;is high bit set?
+	JZ	TYPE99			;jmp if not
+	PUSH	AX			;save char.
+	MOV	AL,Byte Ptr MLEADIN	;Send ESC char first
+	CALL	TYPE99
+	MOV	AL,Byte Ptr MINTOREV	;INTO REV VIDEO
+	CALL	TYPE99
+	MOV	AL,Byte Ptr MINTOREV+1
+	CALL	TYPE99
+	POP	AX			;Retrieve character
+	AND	AL,7FH
+	CALL	TYPE99
+	MOV	AL,Byte Ptr MLEADIN	;Send ESC first
+	CALL	TYPE99
+	MOV	AL,Byte Ptr MOUTAREV	;The out of reverse video character
+	CALL	TYPE99
+	MOV	AL,Byte Ptr MOUTAREV+1	;The out of reverse video character
+TYPE99:
+	ENDIF				;Balance REVIDEO
+	MOV	DL,AL			;Get character into BDOS entry register
+	MOV	CL,WRCHR
+	INT	224			;Call CONOUT via the BDOS
+	RET
+;Balance DIRCON
+; Print	a string at HL of length B
+TYPEIT:	MOV	AL,M
+    AND AL,7FH
+	CALL	TTYPE
+	LAHF
+	INC	BX
+	SAHF
+	DEC	CH
+	JNZ	TYPEIT
+	RET
+; Print	string terminated with binary 0 on console.
+PRINT:	MOV	SI,DX
+	MOV	AL,[SI]
+	CMP	AL,0
+	JNZ	L_40
+	RET
+L_40:
+	CALL	TTYPE
+	INC	DX
+	JMPS	PRINT
+; Fetch	character from console (without	echo)
+CINPUT:	MOV	DL,0FFH
+	MOV	CL,6
+	INT	224
+	CMP	AL,0
+	JZ	CINPUT			;wait for char.
+	AND	AL,7FH
+	RET
+; Check	for a CTRL-C or	CTRL-S entered from the	keyboard.  Jump	to
+; exit if CTRL-C, pause	on CTRL-S.
+CKABRT:	MOV	DL,0FEH
+	MOV	CL,6			;Check status of keyboard
+	INT 	224			;Any key pressed?
+	OR	AL,AL
+	JNZ	L_41	
+	RET				;No, return to caller
+L_41:
+	CALL	CINPUT			;Get character
+	CMP	AL,'C'-40H		;CTRL-C?
+	JNZ	L_42	
+	JMP	EXIT			;If CTRL-C then	quit
+L_42:
+	CMP	AL,'S'-40H		;CTRL-S?
+	JZ	L_43	
+	RET				;No, return to caller
+L_43:
+	CALL	CINPUT			;Yes, wait for another char.
+	CMP	AL,'C'-40H		;Might be CTRL-C
+	JNZ	L_44	
+	JMP	EXIT			;Exit if CTRL-C, else fall thru	and continue
+L_44:
+	RET
+; Kludge to allow call to address in HL
+GOHL:	JMP	BX
+; Entry	to BDOS	saving all extended registers
+CPM:	PUSH	CX
+	PUSH	DX
+	PUSH	BX
+	INT	224
+	MOV	CH,AL			; Save return code
+	MOV	AL,Byte Ptr VERFLG	; Is this 3.0 or higher?
+	CMP	AL,30H
+	MOV	AL,CH
+	JB	CPM20			; No, exit normally
+	CMP	AL,0FFH			; It is 3.0 - was return code FF?
+	JNZ	CPM20			; No, exit normally
+	MOV	AL,BH			; 3.0 and A=FF - check for extended error code
+	OR	AL,AL
+	JZ	L_45	
+	JMP	DSKERR			; Trap out if we got a physical error
+L_45:
+	MOV	AL,CH			; Else continue normally
+CPM20:
+	POP	BX
+	POP	DX
+	POP	CX
+	RET
+; For file output mode,	return to old user area	and set	DMA for
+; the file output buffer.
+SETFOP:
+	MOV	AL,Byte Ptr OLDUSR	;Get user number at startup
+	MOV	DL,AL
+	MOV	CL,CURUSR
+	CALL	CPM			;Reset the old user number
+
+	MOV	DX,(Offset OUTBUF)	;Move DMA from search buffer into the
+	JMPS	SET2			;..output buffer
+	RET
+; Move disk buffer DMA to default buffer for directory search operations
+; and BDOS media change routines (necessary for pre-CP/M 2 systems while
+; in file output mode with an active buffer).
+SETSRC:	MOV	DX,BASE+80H
+SET2:	MOV	CL,SETDMA
+	JMPS	CPM
+; Print	the amount of free space remaining on the selected drive
+PRTFRE:	MOV	BX,Word Ptr FREEBY	;Get space left before adding to MASTER.DIR
+	CALL	DECPRT			;Print K free
+	MOV	DX,(Offset TOTMS6)	;Print " FREE."
+	JMP	PRINT
+; Compare routine for sort
+COMPR:	PUSH	BX			;Save table addr
+	MOV	DL,M			;Load low order
+	INC	BX
+	MOV	DH,M			;Load high order
+	INC	BX
+	MOV	CL,M
+	INC	BX
+	MOV	CH,M
+; BC, DE now point to entries to be compared
+	XCHG	BX,DX
+	MOV	DL,AL			;Get count
+CMPLP:	MOV	AL,M
+	AND	AL,7FH
+	MOV	DH,AL
+	MOV	SI,CX
+	MOV	AL,[SI]
+	AND	AL,7FH
+	CMP	AL,DH
+	LAHF
+	INC	BX
+	SAHF
+	LAHF
+	INC	CX
+	SAHF
+	JNZ	NOTEQL			;Quit on mismatch
+	DEC	DL			;Or end	of count
+	JNZ	CMPLP
+NOTEQL:	POP	BX
+	RET				;Cond code tells all
+; Swap entries in the order table
+SWAP:	MOV	CX,(Offset ORDER)-2	;Table base
+	SHL	BX,1			;*2
+	LAHF				;+ base
+	ADD	BX,CX
+	SAHF
+	XCHG	BX,DX
+	SHL	BX,1			;*2
+	LAHF				;+ base
+	ADD	BX,CX
+	RCR	SI,1
+	SAHF
+	RCL	SI,1
+	MOV	CL,M
+	MOV	SI,DX
+	MOV	AL,[SI]
+	XCHG	BX,DX
+	MOV	M,CL
+	MOV	SI,DX
+	MOV	[SI],AL
+	LAHF
+	INC	BX
+	SAHF
+	LAHF
+	INC	DX
+	SAHF
+	MOV	CL,M
+	MOV	SI,DX
+	MOV	AL,[SI]
+	XCHG	BX,DX
+	MOV	M,CL
+	MOV	SI,DX
+	MOV	[SI],AL
+	RET
+; New compare routine - modified for filetype sort
+COMPARE:
+	MOV	CX,(Offset ORDER)-2
+	SHL	BX,1
+	ADD	BX,CX
+	XCHG	BX,DX
+	SHL	BX,1
+	ADD	BX,CX
+	XCHG	BX,DX
+	MOV	CL,M
+	INC	BX
+	MOV	CH,M
+	XCHG	BX,DX
+	MOV	DL,M
+	INC	BX
+	MOV	DH,M
+	XCHG	BX,DX
+;If T option true
+	MOV	AL,Byte Ptr TOPFLG	;Get option flag
+	OR	AL,AL			;test for zero
+	JNZ	CMPFNFT
+;
+; Compare by Filename, Filetype, and Extent - in that order
+;
+	PUSH	BX
+	PUSH	CX
+	MOV	DX,8			;Pt to FT
+	CALL	ADDEM
+	MOV	DL,3			; 3 bytes in type
+	CALL	CMPLPE			;compare FT'S
+	POP	CX
+	POP	BX
+	JZ	L_47	
+	RET				;Continue if match
+L_47:
+	PUSH	BX
+	PUSH	CX
+	MOV	DL,8			;8 bytes in name
+	CALL	CMPLPE			;Compare FN'S
+	POP	CX
+	POP	BX
+	JZ	L_48	
+	RET				;Continue if match
+L_48:
+	MOV	DX,11			;Pt to EXT
+	CALL	ADDEM
+	MOV	SI,CX			;Compare EXT'S
+	MOV	AL,[SI]
+	CMP	AL,M
+	RET
+ADDEM:	PUSH	BX			;Adds DE to HL & BC
+	MOV	BH,CH
+	MOV	BL,CL
+	LAHF
+	ADD	BX,DX
+	SAHF
+	MOV	CH,BH
+	MOV	CL,BL
+	POP	BX
+	LAHF
+	ADD	BX,DX
+	RCR	SI,1
+	SAHF
+	RCL	SI,1
+	RET
+;
+;  Compare by Filename, Filetype, Extent - in that order
+;
+CMPFNFT:
+	MOV	DL,13			;Compare FN, FT and both extent bytes
+; and fall into routine
+CMPLPE:
+	MOV	AL,M
+	AND	AL,7FH
+	MOV	DH,AL
+	MOV	SI,CX
+	MOV	AL,[SI]
+	AND	AL,7FH
+	CMP	AL,DH
+	LAHF
+	INC	CX
+	SAHF
+	LAHF
+	INC	BX
+	SAHF
+	JZ	L_49
+	RET
+L_49:
+	DEC	DL
+	JNZ	CMPLPE
+	RET
+HELP:	INC	BX			;Make sure there is a 
+	CMP	AL,M			;second "/" else return
+	LAHF				;since some people use / 
+	DEC	BX
+	SAHF
+	JZ	L_50	
+	RET				;for a file name
+L_50:
+HELP1:	MOV	DX,(Offset HLPMES)	;Print a short HELP message
+	CALL	PRINT
+	CALL	CRLF
+	JMPS	EXIT
+; Error	exit
+ERXIT:
+	MOV	AL,-1
+	MOV	Byte Ptr FOPFLG,AL	;Disable file output mode on error
+	CALL	CRLF			;Space down
+	POP	DX			;Get pointer to	message	string
+	CALL	PRINT			;Print it
+	MOV	DX,(Offset ERRMS1)	;Print " Error"
+	CALL	PRINT
+	CALL	CRLF			;Space down
+; Exit - all done, restore stack
+EXIT:	MOV	CL,CONST		;Check console status
+	CALL	CPM
+	OR	AL,AL			;Char waiting?
+	MOV	CL,RDCHR
+	JZ	L_51	
+	CALL	CPM			;Gobble	up char
+L_51:
+;Restore BDOS intercept	vectors
+	MOV	AL,Byte Ptr VERFLG	;Or error mode, depending on version
+	CMP	AL,30H
+	JB	EXIT0
+	MOV	CL,45
+	MOV	DL,0			;Set error mode back to default
+	CALL	CPM
+	JMPS	EXIT1
+EXIT0:
+	MOV	AL,Byte Ptr DOPFLG	;..if they were swapped
+	OR	AL,AL
+	JNZ	L_52	
+	CALL	SWAPEM
+L_52:
+EXIT1:	MOV DL,Byte Ptr OLDUSR
+	MOV CL,CURUSR
+	CALL CPM
+	MOV DL,Byte Ptr OLDDSK
+	MOV CL,SELDSK
+	CALL CPM
+L_53:
+;Balance ROPT
+	MOV	CL,0			;EXIT PROGRAM
+	MOV	DL,0
+	INT	224
+
+
+; Trap BDOS select and sector error vectors to our own intercept
+; routine so we	can catch a reference to an illegal drive.
+SWAPEM:	MOV	AL,Byte Ptr VERFLG	;Check version
+	CMP	AL,30H			;see if error mode call is available
+	JB	SWAP20			;If not, use BDOS error vectors
+	MOV	CL,45
+	MOV	DL,0FFH			;Use Set Error Mode call
+	CALL	CPM			;set "return code only" mode
+SWAP20:	RET				;this doesn't make sense in CP/M-86
+					;...version 1.1
+; Check	CP/M version number.  Return carry flag	set if pre-CP/M	2.
+; If CP/M 2 or later or	MP/M (any version), return carry clear.
+CKVER:	MOV	AL,Byte Ptr VERFLG
+	CMP	AL,20H
+	RET
+; Recovery point from intercepted BDOS select and bad sector errors.
+DSKERR:
+	JMP	EXIT			;..and exit back to CCP
+;* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+;
+;	SUBROUTINES to read library file directory
+;
+;* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+;
+PRTLMEM:MOV	BX,(Offset ORDER)	;Initialize order table	pointer
+	MOV	Word Ptr NEXTL,BX
+	XOR	AL,AL
+	MOV	Byte Ptr LNCNT,AL
+ENTRYL:	MOV	BX,Word Ptr LCOUNT
+	MOV	AL,BH			;Is this the last file?
+	OR	AL,BL
+	JZ	LBEXIT			;If COUNT=0, last file so RETURN
+	LAHF				;Dock file count
+	DEC	BX
+	SAHF
+	MOV	Word Ptr LCOUNT,BX
+	PUSH	CX
+	CALL	CKABRT			;Check for abort code from keyboard
+	MOV	BX,Word Ptr NEXTL
+	MOV	AL,11
+	CALL	COMPR			;Does this entry match next one?
+	POP	CX
+	JNZ	LBRTST			;No, print it
+	INC	BX
+	INC	BX			;Skip since highest extent comes last in list
+	MOV	Word Ptr NEXTL,BX
+	JMPS	ENTRYL			;Loop back for next lowest extent
+;
+;	Exit Library member printing
+;
+LBEXIT:	MOV	BX,Word Ptr LMTOTL
+	MOV	AL,BH
+	OR	AL,BL
+	JNZ	L_54
+	RET
+L_54:
+	PUSH	BX			;Save Member count
+	XOR	AL,AL			;Get a zero to...
+	MOV	Byte Ptr SUPSPC,AL	;Suppress leading spaces in totals
+	MOV	BX,(Offset MNPL)
+	MOV	AL,Byte Ptr LNCNT
+	CMP	AL,M
+	JZ	L_55	
+	CALL	CRLF
+L_55:
+	MOV	DX,(Offset CONTM)	;Print "There are "
+	CALL	PRINT
+	POP	BX			;GET TOTAL MEMBER COUNT BACK
+	CALL	DECPRT
+	MOV	DX,(Offset MFILES)	;PRINT "Members in "
+	CALL	PRINT
+	MOV	BX,Word Ptr LBTOTL
+	CALL	DECPRT
+	MOV	DX,(Offset LIBR)
+	CALL	PRINT
+	RET
+; Valid	entry obtained - spit it out.
+LBRTST:	MOV	BX,Word Ptr NEXTL	;Get order table pointer
+	MOV	DL,M			;Get low order address
+	LAHF
+	INC	BX
+	SAHF
+	MOV	DH,M			;Get high order	address
+	LAHF
+	INC	BX
+	SAHF
+	MOV	Word Ptr NEXTL,BX	;Save updated table pointer
+	MOV	BX,8
+	LAHF
+	ADD	BX,DX
+	SAHF
+	CALL	CKLBR
+	JZ	L_56	
+	JMP	ENTRYL
+L_56:
+	PUSH	DX
+	MOV	BX,(Offset MNPL)
+	MOV	AL,Byte Ptr LNCNT
+	CMP	AL,M
+	JZ	L_57	
+	CALL	CRLF
+L_57:
+	MOV	BX,(Offset LFMSEP)
+	MOV	CH,31
+	CALL	TYPEIT
+	POP	BX
+	PUSH	BX
+	MOV	CH,8			;File name length
+	CALL	TYPEIT
+	MOV	AL,'.'			;Period	after FN
+	CALL	TTYPE
+	MOV	CH,3			;Display 3 characters of filetype
+	CALL	TYPEIT
+	CALL	CRLF
+	POP	BX
+;
+; Saves the library file name into LBRFCB
+;
+	MOV	AL,Byte Ptr .FCB
+	MOV	DX,(Offset LBRFCB)	;TO
+	MOV	SI,DX
+	MOV	[SI],AL
+	LAHF
+	INC	DX
+	SAHF
+	MOV	CH,11			;LEN
+	CALL	MOVE			;DO THE MOVE
+	XCHG	BX,DX
+	MOV	CH,25
+CLMFCB:	MOV	M,0
+	LAHF
+	INC	BX
+	SAHF
+	DEC	CH
+	JNZ	CLMFCB
+	CALL	SETLDMA
+	MOV	DX,(Offset LBRFCB)	;POINT TO FILE
+	MOV	CL,OPEN			;GET FUNCTION
+	CALL	CPM			;OPEN IT
+	CMP	AL,0FFH
+	JNE	LBOPEN
+	JMP	BADLBR
+LBOPEN:	MOV	CL,READ
+	MOV	DX,(Offset LBRFCB)
+	CALL	CPM
+	OR	AL,AL
+	JZ	LBREAD
+	JMP	BADLBR
+LBREAD:	CALL	SETFOP
+	MOV	BX,(Offset LBBUF)
+	MOV	AL,M
+	OR	AL,AL
+	JZ	CKLDIR			;check directory present?
+BADLBR:	CALL	SETFOP
+	MOV	BX,(Offset NLBRF)
+	MOV	CH,25
+	CALL	TYPEIT
+LMLEXI:	CALL	LBCLOSE
+	JMP	ENTRYL
+L_58	EQU	$
+	DSEG
+	ORG	Offset L_58
+NLBRF	DB	'++Not a LIBRARY file.++',13,10
+L_59	EQU	$
+	CSEG
+	ORG	Offset L_59
+;
+;	Close the library file
+;
+LBCLOSE:MOV	DX,(Offset LBRFCB)
+	MOV	CL,CLOSE
+	CALL	CPM
+	RET
+;
+; SETLDMA - Set the Library file DMA adderss
+;
+SETLDMA:
+	MOV	AL,Byte Ptr NEWUSR	;Get user area for directory
+	MOV	DL,AL
+	MOV	CL,CURUSR		;Get the user function
+	CALL	CPM			;..and set new user number
+
+	MOV	DX,(Offset LBBUF)
+	MOV	CL,SETDMA
+	CALL	CPM
+	RET
+;
+; CKLDIR - check to see if there indeed is a LBR file
+;	  directory and barf if not
+;
+CKLDIR:	MOV	CH,11			;len of file name
+	MOV	AL,' '			;space
+	INC	BX
+CKDLP:	CMP	AL,M
+	JNZ	BADLBR
+	DEC	CH
+	LAHF
+	INC	BX
+	SAHF
+	JNZ	CKDLP
+;
+; The first entry in the LBR directory is indeed blank.
+; Now see if the directory size is >0
+;
+	MOV	DL,M			;file starting location low
+	INC	BX			;must be zero here
+	MOV	AL,M			;file starting location high
+	OR	AL,DL			;must be zero here also
+	JNZ	BADLBR
+	INC	BX
+	MOV	DL,M			;get library size low
+	INC	BX			;point to library size high
+	MOV	DH,M			;get library size high
+	MOV	AL,DH
+	OR	AL,DL			;library must have some size
+	JNZ	L_61	
+	JMP	BADLBR
+L_61:
+	DEC	DX
+	XCHG	BX,DX
+	MOV	Word Ptr SLFILE,BX
+	MOV	BX,Word Ptr LBTOTL
+	INC	BX
+	MOV	Word Ptr LBTOTL,BX
+	MOV	AL,Byte Ptr MNPL
+	MOV	Byte Ptr LNCNT,AL	;Reset names per line counter
+	MOV	CH,3
+	MOV	BX,17
+	ADD	BX,DX
+	MOV	AL,Byte Ptr MNPL
+	MOV	Byte Ptr LNCNT,AL	;Reset names per line counter
+	JMPS	LMTEST
+LFMLOP:	MOV	BX,Word Ptr SLFILE	;GET
+	MOV	AL,BL
+	OR	AL,BH
+	JNZ	L_62	
+	JMP	LMLEXI
+L_62:
+	LAHF
+	DEC	BX
+	SAHF
+	MOV	Word Ptr SLFILE,BX
+	CALL	SETLDMA
+	MOV	CL,READ
+	MOV	DX,(Offset LBRFCB)
+	CALL	CPM
+	OR	AL,AL
+	JZ	LBNEXT
+	JMP	BADLBR
+LBNEXT:	CALL	SETFOP
+	MOV	CH,4			;GET FILE COUNT PER SECTOR
+	MOV	BX,(Offset LBBUF)	;GET BUFFER STARTING ADDRESS
+LMTEST:	MOV	AL,M			;Get member open flag
+	OR	AL,AL			;TEST FOR OPEN
+	JZ	PRMNAM
+LMTESA:	MOV	DX,32			;Member not open get offset
+	ADD	BX,DX			;to next and add it in.
+	DEC	CH			;is buffer empty ?
+	JNZ	LMTEST			;No so test next entry
+	JMPS	LFMLOP			;Yes get next buffer...
+PRMNAM:	PUSH	BX			;Print member NAME and SIZE
+	PUSH	CX
+	CALL	CKABRT			;Check for abort code from keyboard
+	MOV	BX,(Offset LNCNT)
+	MOV	AL,Byte Ptr MNPL
+	CMP	AL,M
+	JNZ	PRMNA1
+	MOV	AL,3			;If printing less than 4 wide
+	CMP	AL,M
+	JB	PRMNA1
+	MOV	AL,Byte Ptr LBRFCB	;.. precede new	line with drive	name
+	ADD	AL,'A'-1
+	CALL	TTYPE
+;If reporting user numbers
+	CALL	TYPUSR
+
+	MOV	AL,':'			;Tag header with a colon and a space
+	CALL	FPAD			;..and exit back to ENTRY
+PRMNA1:	POP	CX
+	POP	BX
+	PUSH	BX
+	PUSH	CX
+	LAHF
+	INC	BX
+	SAHF
+	MOV	CH,8			;File name length
+	CALL	TYPEIT
+	MOV	AL,'.'			;Period	after FN
+	CALL	TTYPE
+	MOV	CH,3			;Display 3 characters of filetype
+	CALL	TYPEIT
+	LAHF
+	INC	BX
+	SAHF
+	LAHF
+	INC	BX
+	SAHF
+	MOV	DL,M
+	LAHF
+	INC	BX
+	SAHF
+	MOV	DH,M
+	XCHG	BX,DX
+; If report size enabled, output the size of the individual file.
+;If file size report wanted
+	CALL	DECPRT			;..go print it
+	MOV	AL,'s'			;..and follow with S size
+	CALL	TTYPE
+; At least one more file to output - can we put	it on the current line?
+	MOV	BX,Word Ptr LMTOTL
+	LAHF
+	INC	BX
+	SAHF
+	MOV	Word Ptr LMTOTL,BX
+	MOV	AL,Byte Ptr LNCNT
+	DEC	AL
+	MOV	Byte Ptr LNCNT,AL
+	LAHF
+	XCHG	AL,AH
+	PUSH	AX
+	JZ	L_64	
+	CALL	FENCE			;If room left, output the fence	character
+L_64:
+	POP	AX
+	XCHG	AL,AH
+	SAHF
+	POP	CX
+	POP	BX
+	JZ	L_65	
+	JMP	LMTESA			;.. and	go output another file
+L_65:
+; Current line full, start a new one.
+	MOV	AL,Byte Ptr MNPL
+	MOV	Byte Ptr LNCNT,AL	;Reset names per line counter
+	CALL	CRLF			;Space down to next line
+	JMP	LMTESA
+;
+; Move characters from 'HL' to 'DE' length in 'B'
+;
+MOVE:	MOV	AL,M			;GET A CHAR
+	MOV	SI,DX			;STORE IT
+	MOV	[SI],AL
+	LAHF				;TO NEXT "FROM"
+	INC	BX
+	SAHF
+	LAHF				;TO NEXT "TO"
+	INC	DX
+	SAHF
+	DEC	CH			;MORE?
+	JNZ	MOVE			;   YES, LOOP
+	RET				;   NO, RETURN
+;
+; cklbr -- test file extent for LBR
+;
+CKLBR:	PUSH	BX
+	PUSH	DX
+	PUSH	CX
+	XCHG	BX,DX
+	MOV	BX,(Offset LBRTYP)
+	MOV	CL,3
+CKLBL:	MOV	SI,DX
+	MOV	AL,[SI]
+	AND	AL,7FH
+	CMP	AL,M
+	JNZ	CKLBX
+	LAHF
+	INC	BX
+	SAHF
+	LAHF
+	INC	DX
+	SAHF
+	DEC	CL
+	JNZ	CKLBL
+CKLBX:	POP	CX
+	POP	DX
+	POP	BX
+	RET
+L_66	EQU	$
+	DSEG
+	ORG	Offset L_66
+;
+LFMSEP	DB	'    Library file members for : '
+LBRTYP	DB	'LBR'
+L_67	EQU	$
+	CSEG
+	ORG	Offset L_67
+;LOPT
+;**********************
+;		      *
+; End of Program Code *
+;		      *
+;**********************
+; Initialized data area
+DOSMSG	DB	', DOS Media',0
+DREMSG	DB	'Driv','e',0
+EOSMSG	DB	'    [More]',0DH,'$'
+ERRMS1	DB	' '
+ERRMS2	DB	'Erro','r',0
+ERRTAG	DB	' -','>',0
+NOFMS1	DB	0DH,0AH,'No file on '
+NOFMS2	DB	'  -',' ',0
+DIRMS1	DB	0DH,0AH,'  Directory fo','r',0
+TOTMS1	DB	'  Drive',' ',0
+TOTMS2	DB	', User',' ',0
+TOTMS3	DB	' contains',' ',0
+TOTMS4	DB	'k in',' ',0
+TOTMS5	DB	' files with',' ',0
+TOTMS6	DB	'k free','.',0DH,0AH,0	;,0DH,0AH ,0
+USRMSG	DB	'User ','#',0
+CONTM	DB	'    There are',' ',0
+MFILES	DB	' Member Files in',' ',0
+LIBR	DB	' Library(s)','.',0
+FNDFLG	DB	0			;Flag whether any files matched
+LINCNT	DB	0			;Count of lines	printed	on screen
+; Drive	code/user area lookup table
+; Note that the	LODRV-HIDRV table is included here fully configured.
+; For your own use, you	should change the maximum user areas as
+; appropriate for each drive on	your system, and then delete any
+; DBs referencing drives that don't exist.  Note also that there
+; are only 16 user areas available under CP/M 2, so the highest
+; legal user area you can specify is 15 (range 0-15 = 16 areas).
+; The program will convert anything over 15 into mod 15.
+; NOTE: If some drives in active table are unused then skip these
+; drives by using STSKIP and SKIPTO equates.
+LODRV	EQU	(Offset $)		;Mark beginning	of drive/user table
+	DB	15			;Maximum user area for Drive A
+	DB	15			;   "	  "    "    "	 "   B
+	DB  15          ;   "     "    "    "    "   C
+	DB	15			;   "	  "    "    "	 "   D
+	DB	15			;   "	  "    "    "	 "   E
+	DB	15			;   "	  "    "    "	 "   F
+	DB	15			;   "	  "    "    "	 "   G
+	DB	15			;   "	  "    "    "	 "   H
+	DB	15			;   "	  "    "    "	 "   I
+	DB	15			;   "	  "    "    "	 "   J
+	DB	15			;   "	  "    "    "	 "   K
+	DB	15			;   "	  "    "    "	 "   L
+	DB	15			;   "	  "    "    "	 "   M
+ 	DB	15			;   "	  "    "    "	 "   N
+ 	DB	15			;   "	  "    "    "	 "   O
+ 	DB	15			;   "	  "    "    "	 "   P
+HIDRV	EQU	(Offset $)		;Mark end of drive/user	table
+; Option field lookup table.
+; Note that you	can force any of these options as a DEFAULT by
+; changing the letter for the option into a zero (assuming that
+; its enabling equate is true).	 Each option that you hard-wire	in
+; this manner will no longer be	recognized as a	command	line OPTION,
+; and if you redundantly key it in, SD will flag it as unrecognized.
+OTBL	EQU	(Offset $)		;Mark start of option table
+;All users-option flag
+AOPFLG	DB	'A'
+;Multi-disk-option flag
+DOPFLG	DB	'D'
+;File-output-option flag
+FOPFLG	DB	'F'
+;Display Library members flag
+LOPFLG	DB	'L'
+;No page-pause option flag
+NOPFLG	DB	'N'
+;Printer option	flag
+POPFLG	DB	'P'
+;Reset option flag
+ROPFLG	DB	'R'
+;System	file option flag
+SOPFLG	DB	'S'
+TOPFLG	DB	'T'			;Type sort option flag
+;Display version number flag
+VOPFLG	DB	'V'
+OEND	EQU	(Offset $)		;Mark end of option table
+; End of option	lookup table
+;	IF	AOPT
+;PASS1: DB	0		;First pass flag for all user file output
+;	ENDIF
+VECTBL	DW	(Offset DSKERR)		;BDOS SECTOR ERROR INTERCEPT VECTOR
+	DW	(Offset DSKERR)		;BDOS SELECT ERROR INTERCEPT VECTOR
+BUFPNT	DW	(Offset OUTBUF)		;POINTER TO NEXT LOCATION IN OUTPUT BUFFER
+BUFCNT	DB	128			;NUMBER OF BYTES LEFT IN OUTPUT BUFFER
+opnflg	DB	0			;file open flag for all user file output
+DOSFLG	DB	0
+CHKFCB	DB	'????????????'
+	DB	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+OUTFCB	DB	0,'SD      DIR'
+	DB	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+OUTBUF	RS	128			;OUTPUT FILE BUFFER
+GOTUSR	DB	0
+; Uninitialized	data area
+DRVSET	DW	0
+MEMTOP	DW	0
+BASUSR	RS	1			;Dupe of original directory user # to search
+BLKMAX	RS	2			;Highest block # on drive
+BLKMSK	RS	1			;SEC/BLK - 1
+BLKSHF	RS	1			;# shifts to mult by SEC/BLK
+COUNT	RS	2			;Entry count
+DIRMAX	RS	2			;Highest file #	in directory
+FREEBY	RS	2			;Contains number of K left on directory	drive
+GAP	RS	2			;Sort routine storage
+I	RS	2			; ditto
+J	RS	2			; ditto
+JIG	RS	2			; ditto
+LZFLG	RS	1			;Zero when printing leading zeros
+MAXUSR	RS	1			;Maximum user #	for drive from lookup table
+NEWUSR	RS	1			;Contains user number selected by "$U" option
+NEXTT	RS	2			;Next table entry
+OLDDSK	RS	1			;Holder	for currently logged-in	drive
+OLDUSR	RS	1			;Contains user number upon invocation
+SCOUNT	RS	2			;# to sort
+SUPSPC	RS	1			;Leading space flag for	decimal	routine
+TBLOC	RS	2			;Pointer to start of name table
+TEMP	RS	2			;Save dir entry
+TOTFIL	RS	2			;Total number of files
+TOTSIZ	RS	2			;Total size of all files
+VERFLG	RS	1			;CP/M version number (0=pre-CP/M 2)
+LMTOTL	DW	0
+LBTOTL	DW	0
+LNCNT	DB	0
+LCOUNT	DW	0
+NEXTL	DW	0
+SLFILE	DW	0
+LBRFCB	RS	36
+LBBUF	RS	80H
+ORDER	EQU	(Offset $)		;Order table starts here
+	END
+

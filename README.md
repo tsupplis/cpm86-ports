@@ -77,6 +77,7 @@ Ancillary goals:
 | [lbr](lbr/) | LU library (.LBR) tools: lu86 manages libraries; lbrdir lists members, lbrtype displays them, and delbr extracts them | lu86 / Stephen C. Hemminger, Bill Bolton; lbrdir/lbrtype by Charlie Godet-Ceraolo; delbr by Jeff Martin | Public domain / Abandonware |
 | [modem9](modem9/README.md) | MODEM9 terminal and XMODEM-CRC file transfer, IBM PC COM2 | Irvin M. Hoff; Michael Mellinger, Bill Bolton, Dick Hill | Historical copyright notices; terms unspecified |
 | [page](page/README.md) | Small forward-only text pager with a plain [more] prompt | Bill Bolton; IBM adaptations by Kirk Lawrence | Copyright; terms unspecified |
+| [sd](sd/README.md) | Super Directory: sorted sizes, user areas, library members and listing output | SD / D 4.8C2; Van Tassell, Ratoff and Petersen | Historical attribution; terms unspecified |
 | [seemem](seemem/README.md) | Full-screen memory browser for CP/M-86 on the IBM PC | Frank Kotler and Kirk Lawrence | Freeware / Public domain |
 | [wash15](wash15/README.md) | WASH, a directory maintenance utility, translated from CP/M-80 with XLT86 | Michael J. Karas, Simon J. Ewins | Public domain, non-commercial |
 | [xsq](xsq/README.md) | sq, usq and sqtype: squeeze, unsqueeze and display squeezed (.?Q?) files | Richard Greenlaw, with Dick Greenlaw, Chuck Forsberg and W. Earnest | Public domain / Abandonware |
@@ -106,6 +107,7 @@ Ancillary goals:
 | [focal](focal/README.md) | FOCAL-81 interpretive language interpreter | Dave Conroy / Akira KIDA | Public domain | |
 | [patcher](patcher/README.md) | Build a dedicated binary patch installer with expected-byte verification | PATCHER 1.0 (8-Jan-2001) | Public domain | |
 | [ratfor](ratfor/README.md) | RATFOR v1.05 preprocessor — translates structured Fortran to standard Fortran 77; use `-u` for DR Fortran-77 compatible upper-case output | Brian Gaeke / UofA Ratfor C sources | Public domain | Used by [cpm86-crossdev](https://github.com/tsupplis/cpm86-crossdev) |
+| [res86](res86/README.md) | Interactive 8086 disassembler with symbols, comments and assembly listings | RESOURCE / RES86 2.4, Christensen, Etienne and Earnest | Historical copyright; no explicit license grant found | CP/M-86 CMD and COM images; hardened loading and annotation tables |
 | [tinybas](tinybas/README.md) | Tiny BASIC interpreter | Classic Tiny BASIC sources | Public domain / Abandonware | |
 | [xlisp](xlisp/) | Lisp interpreter and runtime | David Betz | Public domain / Abandonware | |
 | [yacc](yacc/) | YACC-compatible parser generator | RetroBSD / original yacc sources | BSD-style | |

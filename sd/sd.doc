@@ -1,0 +1,31 @@
+
+SD Version 4.8C - Enhanced Directory Displayer For CP/M-86
+  by H.M. Van Tassell, 120 Hill Hollow Rd, Watchung, NJ 07060 - 03/29/85
+    Adapted from SUPER DIRECTORY PROGRAM by Bruce R. Ratoff
+      Based on DIRS by Keith Petersen, W8SDZ
+
+
+Displays the directory of a CP/M-86 disk (including hard disk), sorted alpha-
+betically, with the file size in K, rounded to the nearest CP/M-86 block size.
+
+    Usage: SD dr:FILENAME.TYP [option,option...]
+      NOTE: Bracket character  MUST be included in order for
+            the program to recognize any options!
+
+    Drive and/or filespec are optional.  Wildcards * and ? allowed.
+
+=> For help, type SD //
+
+    Options Are:
+           A=Show DIR Of All User Areas
+           D=All Disks (A:, B:, C:)
+           F=Save Directory List To File "SD.DIR"
+           L=Show Contents Of Library (.LBR) Files
+           N=No Paging
+           P=Send Directory List To Printer
+           R=Reset Disk Drive
+           S=Show System Files
+           T=Sort by Type
+           Un=User No.
+           V=Version
+
