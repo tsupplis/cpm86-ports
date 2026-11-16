@@ -55,6 +55,7 @@ VAR
 BEGIN
   REPEAT
     ClrScr;
+    Write(#$1B'j'#$1B'b', Chr(BannerColor), #$1B'k');
     WriteLN('               LL                     dd       dd');
     WriteLN('               LL                     dd       dd                      tm');
     WriteLN('               LL         aaaa     ddddd    ddddd    eeee   rrrrrrr');
@@ -62,6 +63,7 @@ BEGIN
     WriteLN('               LL        aa  aa   dd  dd   dd  dd   eeeeee  rr');
     WriteLN('               LL        aa  aa   dd  dd   dd  dd   ee      rr');
     WriteLN('               LLLLLLLL   aaa aa   ddd dd   ddd dd   eeee   rr');
+    Write(#$1B'j'#$1B'b', Chr(NormalColor), #$1B'k');
     WriteLN;
     WriteLN('                                       Version : ', Version);
     WriteLN('(c) 1982, 1983 Yahoo Software          Terminal: ', dataFileContents.TerminalName);

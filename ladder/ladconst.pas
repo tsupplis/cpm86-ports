@@ -5,6 +5,7 @@ CONST
   NumHighScores = 5;           { # of stored high scores }
   DataFileStrLength = 31;      { # chars in data file terminal config strings }
   DataFileNameLength = 29;     { # chars in high score names }
+  BannerColor = 12;           { bright red }
   HeroColor = 11;             { bright cyan, PC foreground attribute }
   RockColor = 12;             { bright red }
   StructureColor = 14;        { bright yellow }
