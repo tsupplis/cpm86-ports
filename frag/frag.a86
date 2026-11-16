@@ -1,0 +1,490 @@
+; 
+;       FRAG.A86 based on FILE-EXT.A86
+;       3/05/85 modified by Charlie Godet-Ceraolo
+;                           2610 Glenwood Road
+;                           Brooklyn, NY  11210
+;
+;       o    Now displays alphabetically by file, so you can see
+;            the FRAGmentation of the file.
+;       o    Cleaned up the display a bit, too
+;       o    Takes wildcards on command line
+;
+;       FILE-EXT.A86 Version 1.0, as of March 29, 1982
+;
+;  Originally named FILES.ASM, and from a disassembly by
+; "J.A.P"  of January 23,1980...FILE-EXT.A86 will display the
+; selected disk's directory entries in the form:
+; 
+; User Filename R/OSysArc ex rc <---------Group--------->
+; Where:
+;       "User" is the User area for the file.
+;       "Filename" is the ASCII file name/type.
+;       "R/O" is the "read only" bit
+;       "Sys" is the "system directory" bit
+;       "Arc" is the "Archive" bit.
+;       "ex" is the "file extent" byte
+;       "rc" is the "record count" byte.
+;       "Group" is the "allocation map" for the file.
+; 
+;  The  program will display the disk directory entries for the selected
+; files, including all the Hexadecimal information on the data map.
+;       Best regards, Kelly Smith
+;       CP/M-NET (tm), 805-527-9321 (Modem, 300 Baud), 805-527-0518 (Verbal)
+; 
+Release         EQU     1
+Version         EQU     16
+ConOut          EQU     2
+PrintConBuf     EQU     9
+SearchFirst     EQU     17
+SearchNext      EQU     18
+CR              EQU     0DH                     ;ASCII CARRIAGE RETURN
+LF              EQU     0AH                     ;ASCII LINE FEED
+Ascii_Zero      EQU     '0'
+Space           EQU     ' '
+ON              EQU     '+'
+OFF             EQU     '-'
+EOS             EQU     '$'
+F_Type          EQU     9
+Extent          EQU     12
+RecordCount     EQU     15
+DataMap         EQU     16
+EntryLength     EQU     34
+;
+                CSEG
+;
+FRAG:
+                MOV     DX,DS
+                MOV     SS,DX
+                MOV     SP,Offset Local_Stack
+                MOV     ES,DX
+                CLD
+                MOV     DX,Offset SignOn
+                CALL    P_String
+                CALL    Check_Drive
+                CMP     FCBFN,Space             ; anything in fcb?
+                JNE     got_file                ; yes, proceed
+                MOV     DI,Offset FCBFN         ; no, fill with '?'
+                MOV     CX,11
+                MOV     AL,'?'
+                REP     STOSB
+got_file:
+                MOV     FCBEX,'?'               ; we want all the extents
+                MOV     CL,SearchFirst
+MAIN02:
+                MOV     DX,Offset FCB
+                CALL    BDOS
+                CMP     AL,0FFH
+                JNE     found_entry
+                JMP     list_done
+found_entry:
+                CMP     AL,3
+                JBE     entry_index
+                JMP     Bad_Search
+entry_index:
+                XOR     AH,AH
+                SHL     AX,1                    ; times 32
+                SHL     AX,1
+                SHL     AX,1
+                SHL     AX,1
+                SHL     AX,1
+                MOV     SI,Offset BUFF          ; plus buffer start
+                ADD     SI,AX                   ; SI  --> FILE INFO
+                CMP     Byte Ptr [SI],15
+                JA      next_search            ; omit labels/timestamps
+                MOV     DI,Last_Entry
+                CMP     DI,Offset Dir_End-EntryLength
+                JBE     entry_fits
+                MOV     DX,Offset FullMsg
+                CALL    P_String
+                JMP     Main_Exit
+entry_fits:
+                MOV     BX,DI                   ; save location in BX
+                ADD     DI,2                    ; allow for Next field
+                MOV     CX,16        ; bytes to move
+                REP     MOVSW                   ; movem
+                MOV     Last_Entry,DI           ; save new starting place
+                MOV     SI,BX                   ; now SI --> new entry
+                CALL    Insert_Entry
+next_search:
+                MOV     CL,SearchNext
+                JMP     MAIN02
+list_done:
+                CMP     List_Head,0             ; anything to display
+                JNE     do_display              ; yes, go ahead
+                MOV     DX,Offset NoFileMsg     ; nope, tell 'em and leave
+                CALL    P_String
+                JMPS    Main_Exit
+do_display:
+                MOV     DX,Offset Header
+                CALL    P_String
+                CALL    Display_Files
+Main_Exit:
+                MOV     DL,Old_Drive
+                MOV     CL,14
+                CALL    BDOS
+                MOV     CL,0
+                MOV     DL,0
+                CALL    BDOS
+;
+ ; Validate the selected volume before using CP/M directory allocation data.
+Check_Drive:
+                MOV     CL,25
+                CALL    BDOS
+                MOV     Old_Drive,AL
+                MOV     DL,FCBDN
+                OR      DL,DL
+                JZ      drive_selected
+                DEC     DL
+                MOV     CL,14
+                CALL    BDOS
+                CMP     AL,0FFH
+                JNE     drive_selected
+                JMP     Bad_Search
+ drive_selected:
+                MOV     DX,Offset Raw_FCB
+                MOV     CL,SearchFirst
+                CALL    BDOS
+                CMP     AL,0FFH
+                JE      get_dpb
+                CMP     AL,3
+                JBE     probe_index
+                JMP     Bad_Search
+probe_index:
+                XOR     AH,AH
+                MOV     CL,5
+                SHL     AX,CL
+                MOV     BX,Offset BUFF
+                ADD     BX,AX
+                CMP     Byte Ptr [BX],20H
+                JNE     get_dpb
+                CMP     Byte Ptr 15[BX],80H
+                JNE     get_dpb
+                CMP     Word Ptr 16[BX],8080H
+                JNE     get_dpb
+                MOV     DX,Offset DosMsg
+                CALL    P_String
+                JMP     Main_Exit
+get_dpb:
+                PUSH    ES
+                MOV     CL,31
+                INT     224                    ; ES:BX is the selected DPB
+                MOV     AX,ES:5[BX]            ; DSM: highest allocation block
+                POP     ES
+                CMP     AX,255
+                JBE     dpb_done
+                MOV     Map_Words,1
+ dpb_done:
+                RET
+Bad_Search:
+                MOV     DX,Offset DiskMsg
+                CALL    P_String
+                JMP     Main_Exit
+;
+;       SI --> N, the new entry; DI = P; BX = Q
+;
+Insert_Entry:
+                MOV     DI,Offset List_Head     ; P := addr of ListHead
+                MOV     Word Ptr [SI],0         ; N^.Next := NIL
+Stow_Repeat:
+                MOV     BX,[DI]                 ; Q := P^.Next
+                OR      BX,BX                   ; While Q <> NIL
+                JZ      Stow_Until
+                CALL    CompareNewToOld
+                JB      Stow_LT
+                MOV     DI,BX                   ; P := Q
+                JMPS    Stow_Repeat
+Stow_LT:
+                MOV     [SI],BX                 ; N^.Next := Q
+Stow_Until:
+                MOV     [DI],SI                 ; P^.Next := N
+                RET
+;
+CompareNewToOld:
+                MOV     BP,BX           ; save regs
+                MOV     DX,SI
+                ADD     BX,3            ; point to start of name
+                ADD     SI,3
+                MOV     CX,12           ; includes the extent byte
+cmp_loop:
+                LODSB                   ; get byte from new name
+                AND     AL,7FH          ; strip attributes for compare
+                MOV     AH,[BX]         ; get byte from old name
+                INC     BX
+                AND     AH,7FH          ; strip attributes for compare
+                CMP     AL,AH           ; compare new vs old
+                LOOPE   cmp_loop        ; leave if not equal or CX = 0
+                MOV     BX,BP           ; restore regs
+                MOV     SI,DX
+                RET
+;
+Display_Files:
+                MOV     DI,List_Head            ; P := Listhead
+w_loop:
+                OR      DI,DI                   ; while P <> NIL
+                JNZ     w_not_done
+                RET
+w_not_done:
+                LEA     SI,2[DI]                ; SI --> user number
+                MOV     BX,SI                   ; save location in BX
+                CALL    Name_Break              ; same name?
+                JNC     new_name                ; nope, print the info
+;
+                MOV     DX,Offset Space28       ; yes, space fill output
+                CALL    P_String
+                JMPS    start_info
+;
+new_name:
+                CALL    P_Space                 ; indent one
+                LODSB
+                CALL    P_Hex                   ; Print User Number
+                CALL    P_Space
+                CALL    P_Space
+                MOV     CX,8
+do_name:
+                LODSB                           ; Print file name
+                CALL    P_Char
+                LOOP    do_name
+                MOV     AL,'.'
+                CALL    P_Char                  ; Print file extension
+                MOV     CX,3
+do_ext:
+                LODSB
+                CALL    P_Char
+                LOOP    do_ext
+                CALL    P_Space
+                LEA     SI,F_Type[BX]           ; position to extension
+                MOV     CX,3                    ; 3 chars to process
+do_attr:
+                CALL    P_Space
+                LODSB
+                TEST    AL,80H                  ; SYS, R/O, & Archive bits
+                MOV     AL,ON                   ; assume on
+                JNZ     its_on
+                MOV     AL,OFF                  ; it's off, send a zero
+its_on:
+                CALL    P_Char
+                CALL    P_Space
+                LOOP    do_attr
+                CALL    P_Space
+start_info:
+                MOV     AL,Extent[BX]           ; Print ext byte
+                CALL    P_Hex
+                CALL    P_Space
+                MOV     AL,RecordCount[BX]      ; and RC byte
+                CALL    P_Hex
+                MOV     DX,Offset Space3
+                CALL    P_String
+                LEA     SI,DataMap[BX]
+                MOV     CX,8
+                CMP     Map_Words,0
+                JNE     do_map
+                MOV     CX,16
+ do_map:
+                CMP     Map_Words,0
+                JE      byte_map
+                LODSW
+                OR      AX,AX
+                JNE     word_value
+                MOV     DX,Offset Space4
+                CALL    P_String
+                JMP     map_next
+word_value:
+                CALL    P_Hex_Word
+                JMP     map_next
+byte_map:
+                LODSB
+                OR      AL,AL
+                JNE     byte_value
+                CALL    P_Space
+                CALL    P_Space
+                JMP     map_next
+byte_value:
+                CALL    P_Hex
+map_next:
+                CMP     Map_Words,0
+                JNE     map_space
+                TEST    CL,1                   ; pair bytes to fit 80 columns
+                JZ      map_loop
+map_space:
+                CALL    P_Space
+map_loop:
+                LOOP    do_map
+                MOV     DI,[DI]                 ; P := P^.Next
+                CALL    CRLF                    ; new line
+                JMP     w_loop                  ; and back for more
+                RET
+;
+Name_Break:
+                PUSH    CX
+                PUSH    SI
+                PUSH    DI
+                MOV     DI,Offset Current_Name  ; last filename displayed
+                LEA     SI,1[BX]                ; this filename
+                MOV     CX,11
+                REPE    CMPSB
+                JE      same_name               ; return CF set if equal
+                MOV     DI,Offset Current_Name  ; new name, save it
+                LEA     SI,1[BX]                ; and return CF clear
+                MOV     CX,11
+                REP     MOVSB
+                POP     DI
+                POP     SI
+                POP     CX
+                CLC
+                RET
+same_name:
+                POP     DI
+                POP     SI
+                POP     CX
+                STC
+                RET
+;
+;       SYSTEM SUBROUTINES
+;
+P_String:
+                PUSH    BX
+                PUSH    CX
+                PUSH    DX
+                MOV     CL,PrintConBuf
+                CALL    BDOS
+                POP     DX
+                POP     CX
+                POP     BX
+                RET
+;
+P_Char:
+                PUSH    AX
+                PUSH    CX
+                PUSH    DX
+                PUSH    BX
+                MOV     CL,ConOut
+                MOV     DL,AL
+                AND     DL,7FH          ; strip parity
+                CALL    BDOS
+                POP     BX
+                POP     DX
+                POP     CX
+                POP     AX
+                RET
+;
+P_Hex_Word:
+                XCHG    AL,AH                   ; do msb first
+                CALL    P_Hex
+                XCHG    AH,AL                   ; then lsb
+                CALL    P_Hex
+                RET
+;
+P_Hex:
+                PUSH    AX
+                PUSH    BX
+                PUSH    CX
+                MOV     BX,Offset HexTable
+                MOV     AH,AL                   ; save our byte
+                MOV     CL,4                    ; do high nibble
+                SHR     AL,CL
+                XLAT    BX                      ; get hex digit
+                CALL    P_Char
+                MOV     AL,AH                   ; get our byte back
+                AND     AL,0FH                  ; do low nibble
+                XLAT    BX                      ; get hex digit
+                CALL    P_Char
+                POP     CX
+                POP     BX
+                POP     AX
+                RET
+;
+CRLF:
+                PUSH    AX
+                MOV     AL,CR
+                CALL    P_Char
+                MOV     AL,LF
+                CALL    P_Char
+                POP     AX
+                RET
+;
+P_Space:
+                PUSH    AX
+                MOV     AL,Space
+                CALL    P_Char
+                POP     AX
+                RET
+;
+BDOS:
+                PUSH    ES
+                INT     224
+                POP     ES
+                RET
+        IF (Offset $ - Offset FRAG) MOD 10 EQ 1
+                NOP
+        ENDIF
+;
+                DSEG
+;
+BASEPAGE        EQU     $
+                RB      5CH
+FCB             EQU     $               ; default fcb
+FCBDN           RB      1
+FCBFN           RB      8
+FCBFT           RB      1
+FCBQ            RB      1
+                RB      1
+FCBEX           RB      1
+FCBS1           RB      1
+FCBS2           RB      1
+FCBRC           RB      1
+FCB2            EQU     $               ; second fcb
+FCB2DN          RB      1
+FCB2FN          RB      8
+FCB2FT          RB      3
+                RB      4
+FCBCR           RB      1
+FCBRNO          RW      1
+FCBR2           RB      1
+BUFF            RB      80H             ; default buffer
+;
+;       initialized data
+;
+SignOn          DB      cr,lf,'FRAG Version '
+                DB      (Release MOD 10) + Ascii_Zero,'.'
+                DB      (Version / 10) + Ascii_Zero
+                DB      (Version MOD 10) + Ascii_Zero
+                db      cr,lf,'by Charlie Godet-Ceraolo (3/05/85)'
+                db      cr,lf,'(based on FILE-EXT by Kelly Smith, 3/29/82)'
+                DB      CR,LF,lf,EOS
+Old_Drive       DB      0
+Map_Words       DB      0
+Raw_FCB         DB      '????????????'
+                DB      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+DosMsg          DB      CR,LF,'DOS/FAT disks are not supported.',CR,LF,EOS
+FullMsg         DB      CR,LF,'Too many extents (maximum 256).',CR,LF,EOS
+DiskMsg         DB      CR,LF,'Cannot read CP/M directory.',CR,LF,EOS
+NoFileMsg       DB      CR,LF,'No file(s) found.',CR,LF,EOS
+Header          DB      'User Filename     R/OSysArc ex rc'
+                DB      '   <--------------Group-------------->'
+                DB      CR,LF
+                DB      '========================================='
+                DB      '===================================='
+                DB      CR,LF,EOS
+HexTable        DB      '0123456789ABCDEF'
+Current_Name    DB      '           '           ; store last file printed
+Space28         DB      '                            ',EOS
+Space4          DB      '    ',EOS
+Space3          DB      '   ',EOS
+        IF (Offset $ - Offset BASEPAGE) MOD 2 NE 0
+                RB      1
+        ENDIF
+List_Head       DW      0
+Last_Entry      DW      Offset Dir_Array
+;
+;       uninitialized data
+;
+        IF (Offset $ - Offset BASEPAGE) MOD 2 NE 0
+                RB      1
+        ENDIF
+                RS      128
+Local_Stack     EQU     $
+Dir_Array       RS      256 * EntryLength
+Dir_End         EQU     $
+Min_Data        EQU     (Offset $ - Offset BASEPAGE) / 16       ; for gencmd
+;
+        END

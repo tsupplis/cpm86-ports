@@ -1,0 +1,311 @@
+;********************************************************
+;*                                                      *
+;*          FILE SCREEN PAGING UTILITY                  *
+;*                                                      *
+;********************************************************
+;
+;       Copyright (C) 1980,1982
+;
+;       By:             Bill Bolton
+;                       Software Tools,
+;                       P.O. Box 80,
+;                       Newport Beach,
+;                       NSW, 2106,
+;                       AUSTRALIA
+;
+;       CP/M-86 History (most recent version at top)
+;
+;       Version 1.0     Converted from CP/M-80 version
+;                       1.0 on 1/Mar/82
+;                       (Fix-ups for IBM-compatibles by Kirk Lawrence)
+;
+        TITLE   'PAGE Utility for CP/M-86'
+        PAGEWIDTH       132
+        EJECT
+
+;************************************************
+;*                                              *
+;*             MISCELLANEOUS EQUATES            *
+;*                                              *
+;************************************************
+
+PAGEL   EQU     23                      ;LINES/PAGE
+WIDTH   EQU     79                      ;CHARACTERS/LINE
+BUFFER  EQU     0080H                   ;TRANSIENT PROGRAM BUFFER 
+TFCB    EQU     005CH                   ;TRANSIENT PROGRAM FCB
+DIRECT  EQU     6                       ;DIRECT CONSOLE FUNCTION
+STRING  EQU     9                       ;STRING PRINT FUNCTION
+STATUS  EQU     11                      ;CONSOLE STATUS FUNCTION
+VERSION EQU     12                      ;VERSION NUMBER FUNCTION
+OPEN    EQU     15                      ;OPEN FUNCTION CODE
+READ    EQU     20                      ;READ FUNCTION CODE
+CREAD   EQU     0FFH                    ;DIRECT CONSOLE INPUT
+TAB     EQU     009H                    ;ASCII TAB
+ALF     EQU     00AH                    ;ASCII LINE FEED
+ACR     EQU     00DH                    ;ASCII CARRIAGE RETURN
+ESC     EQU     01BH                    ;ASCII ESCAPE
+SPACE   EQU     020H                    ;ASCII SPACE
+DEVICE  EQU     2                       ;CP/M CONSOLE
+M       EQU     Byte Ptr 0[BX]          ;Handy equate for ASM86
+
+        EJECT
+        CSEG
+
+START:
+        MOV     CL,VERSION              ;CP/M VERSION FUNCTION
+        INT     224
+        ; Version is returned in AX by CP/M-86 BDOS.
+        CMP     AL,20H                  ;>=VERSION 2.0?
+        JNB     L_1     
+        JMP     ERROR3                  ;NO, EXIT       
+L_1:
+        MOV     DX,TFCB                 ;POINT TO FCB
+        CALL    FOPEN                   ;OPEN FILE
+        JNB     L_2     
+        JMP     ERROR1                  ;IF ERROR, EXIT
+L_2:
+        CALL    RESET
+LOOP:
+        CALL    FETCH@BYTE              ;GET NEXT BYTE FROM FILE
+        JNB     L_3     
+        JMP     ERROR2                  ;EXIT IF ERROR
+L_3:
+        CMP     AL,1AH                  ;EOF?
+        JNZ     L_4     
+        JMP     EXIT                    ;YES, EXIT
+L_4:
+        CMP     AL,ALF                  ; suppress LF only after CR
+        JNZ     NOTLF
+        CMP     Byte Ptr AFTERCR,0
+        JZ      NEWLINE
+        MOV     Byte Ptr AFTERCR,0
+        JMP     LOOP
+NOTLF:
+        MOV     Byte Ptr AFTERCR,0
+        CMP     AL,ACR
+        JNZ     NOTCR
+        MOV     Byte Ptr AFTERCR,1
+        JMP     NEWLINE
+NOTCR:
+        CMP     AL,TAB                  ;TAB?
+        JZ      TABMOV                  ;YES, DO IT
+        CMP     AL,SPACE                ;ANOTHER CONTROL CHARACTER?
+        JNB     DISPLAY                 ;NO, PRINT CHACTER
+        JMPS    LOOP                    ;YES, IGNORE IT
+;
+TABMOV:
+        MOV     BX,(Offset COL)         ;POINT TO COLUMN
+TABLOOP:
+        MOV     AL,SPACE                ;GET A SPACE
+        CALL    DBYTE                   ;DISPLAY IT
+        MOV     AL,M                    ;GET CURRENT COLUMN
+        AND     AL,07H                  ;MOD 8, AT TAB STOP?
+        JNZ     TABLOOP                 ;NO, ANOTHER SPACE
+        JMPS    LOOP
+;
+DISPLAY:
+        CALL    DBYTE                   ;DISPLAY THE CHARACTER
+        JMPS    LOOP
+;
+NEWLINE:
+        MOV     Byte Ptr COL,0
+        MOV     AL,ACR
+        CALL    DBYTE
+        MOV     AL,ALF
+        CALL    DBYTE
+        INC     Byte Ptr LINE
+        CMP     Byte Ptr LINE,PAGEL
+        JB      LINECONT
+        CALL    KEYLOOP
+LINECONT:
+        JMP     LOOP
+;
+KEYLOOP:
+        MOV     DX,Offset MOREMSG
+        MOV     CL,STRING
+        INT     224
+KEYWAIT:
+        CALL    KEY
+        OR      AL,AL
+        JZ      KEYWAIT
+        MOV     DX,Offset MORECLR
+        MOV     CL,STRING
+        INT     224
+        CALL    RESET
+        RET
+;
+KEY:
+        PUSH    BX                      ;SAVE
+        PUSH    DX                      ;  THE
+        PUSH    CX                      ;    ENVIRONMENT
+        MOV     CL,DIRECT               ;DIRECT CONSOLE FUNCTIONG
+        MOV     DL,CREAD                ;CONSOLE INPUT
+        INT     224
+        POP     CX                      ;RESTORE
+        POP     DX                      ;  THE
+        POP     BX                      ;    ENVIRONMENT
+        RET
+;
+RESET:
+        XOR     AL,AL
+        MOV     Byte Ptr LINE,AL        ;RESET LINE COUNT
+        MOV     Byte Ptr COL,AL         ;RESET COLUMN COUNT
+        RET
+;
+DBYTE:
+        PUSH    BX                      ;SAVE THE
+        PUSH    CX                      ;  ENVIRONMENT
+        PUSH    AX                      ;  AND THE CHARACTER
+        MOV     DL,AL                   ;COPY THE CHARACTER
+        MOV     CL,DEVICE               ;GET FUNCTION
+        INT     224
+        POP     AX                      ;RESTORE THE CHARACTER
+        CMP     AL,SPACE                ;IS A CR OR LF?
+        JB      CONT                    ;YES, DONT BUMP COLUMN COUNT
+        MOV     BX,(Offset COL)         ;GET COLUMN COUNT
+        INC     M                       ;BUMP IT
+        MOV     AL,M                    ;GET NEW COLUMN COUNT
+        CMP     AL,WIDTH                ;AT THE END OF A LINE?
+        JNZ     CONT                    ;NO
+        MOV     Byte Ptr COL,0
+        MOV     AL,ACR
+        CALL    DBYTE
+        MOV     AL,ALF
+        CALL    DBYTE
+        INC     Byte Ptr LINE
+        CMP     Byte Ptr LINE,PAGEL
+        JB      CONT
+        CALL    KEYLOOP
+CONT:
+        MOV     CL,STATUS               ;CONSOLE STATUS FUNCTION
+        INT     224
+        CMP     AL,0                    ;KEY PRESSED?
+        JNZ     DONE                    ;YES, EXIT
+        POP     CX                      ;RESTORE THE
+        POP     BX                      ;  ENVIRONMENT
+        RET
+;
+DONE:
+        MOV     CL,0                    ;QUIT
+        MOV     DL,0
+        INT     224
+;
+EXIT:
+        MOV     DX,(Offset MESSG4)      ;POINT TO EOF MESSAGE
+        JMPS    MESSAGE
+;
+ERROR3:
+        MOV     DX,(Offset MESSG3)      ;POINT TO VERSION MESSAGE 
+        JMPS    MESSAGE
+;
+ERROR2:
+        MOV     DX,(Offset MESSG2)      ;POINT TO READ MESSAGE
+        JMPS    MESSAGE
+;
+ERROR1:
+        MOV     DX,(Offset MESSG1)      ;POINT TO OPEN MESSAGE
+MESSAGE:
+        MOV     CL,STRING               ;DISPLAY THE MESSAGE
+        INT     224
+        MOV     CL,0
+        MOV     DL,0
+        INT     224
+;
+;****************************************************************
+;*                                                              *
+;*              ROUTINE TO OPEN A DISK FILE                     *
+;*                                                              *
+;****************************************************************
+;
+FOPEN:                                  ;DE POINTS TO A FCB
+        MOV     CL,OPEN                 ;FILE OPEN FUNCTION
+        INT     224
+        CMP     AL,0FFH                 ;OPEN FILE  ERROR?
+        JZ      OPENERR                 ;YES, EXIT
+        XOR     AL,AL                   ;CLEAR CARRY
+        RET
+OPENERR:
+        STC                             ;SET CARRY
+        RET
+;
+;
+;****************************************************************
+;*                                                              *
+;*               ROUTINE TO READ A BYTE                         *
+;*                                                              *
+;****************************************************************
+;
+FETCH@BYTE:
+        MOV     BX,BUFFER+128
+        XCHG    BX,DX                   ;BUFFER END ADDRESS IN DX
+        MOV     BX,Word Ptr POINTER     ;CURRENT POINTER IN BX
+        CMP     DX,BX                   ;END OF BUFFER?
+        JZ      NEXT@BLOCK              ;YES, READ ANOTHER BLOCK
+NEXT@CHAR:
+        MOV     AL,M                    ;GET CHARACTER
+        INC     BX                      ;BUMP POINTER
+        MOV     Word Ptr POINTER,BX     ;SAVE POINTER
+        OR      AL,AL                   ;RESET CARRY
+        RET
+;
+NEXT@BLOCK:
+        MOV     CL,READ                 ;READ FUNCTION
+        MOV     DX,TFCB                 ;FCB ADDRESS
+        INT     224
+        CMP     AL,1                    ; physical end of file is normal
+        JNZ     READSTATUS
+        MOV     AL,1AH
+        CLC
+        RET
+READSTATUS:
+        CMP     AL,0                    ;ERROR?
+        JNZ     INERROR                 ;YES, EXIT
+        MOV     BX,BUFFER               ;RESET BUFFER POINTER
+        MOV     Word Ptr POINTER,BX
+        JMPS    NEXT@CHAR               ;CONTINUE
+;
+INERROR:
+        STC                             ;SET CARRY
+        RET
+
+        EJECT
+
+;************************************************
+;*                                              *
+;*                 D  A  T  A                   *
+;*                                              *
+;************************************************
+
+L_7     EQU     $
+        DSEG
+        ORG     Offset L_7
+
+        DB      'PAGE.CMD - File PAGE Utility, CP/M-86 Version 1.0, '
+        DB      '(C) Copyright March 1982, '
+        DB      'By Bill Bolton, Software Tools, Sydney, Australia'
+
+AFTERCR DB      0
+MOREMSG DB      '[more]$'
+MORECLR DB      8,8,8,8,8,8,'      ',8,8,8,8,8,8,'$'
+COL     DB      0                       ;COLUMN COUNTER
+LINE    DB      0                       ;LINE COUNTER
+POINTER DW      BUFFER+128              ;INPUT POINTER
+
+MESSG1:
+        DB      ' File Open Error '
+        DB      07,ACR,ALF,'$'
+
+MESSG2:
+        DB      ' File Read Error '
+        DB      07,ACR,ALF,'$'
+
+MESSG3:
+        DB      13,10,'  Sorry, you need CP/M-86 Version'
+        DB      ' 1.0 or later to run PAGE !',07
+        DB      '$'
+
+MESSG4:
+        DB      ' End of Input File Reached '
+        DB      '$'
+
+        END

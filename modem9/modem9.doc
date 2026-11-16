@@ -1,0 +1,114 @@
+
+MODEM9 - A Communications Program For CP/M-86
+         Running On An IBM-Compatible Computer.
+
+
+Originally written as MODEM7 for CP/M-80 by: Irvin M. Hoff.
+
+                   Translated to CP/M-86 by: Michael J. Mellinger
+                                             Data Research Associates, Inc.
+                                             9270 Olive Boulevard
+                                             St. Louis, MO 63132
+                                             U.S.A.
+
+   Many fixes and additional translation by: Bill Bolton
+                                             Software Tools RCPM
+                                             P.O. Box 80
+                                             Newport Beach, NSW 2106
+                                             Australia
+
+      Converted for use on the IBM PC-XT by: Dick Hill
+                                             (AMS) Advanced Micro Systems
+                                             2304 McCord Road
+                                             Valparaiso, IN 46383
+                                             U.S.A.
+
+MODEM9.CMD is a pre-compiled CP/M-86 communications program, for use on an
+IBM-compatible turbo XT-class computer.  Its parameters are set up as follows:
+
+   COM2, 2400 baud, 8 bits, no parity, 1 stop bit.
+
+If you're running an XT in turbo mode (8, 10 or 12 MHz.) with your 2400
+baud modem on COM2, you may use this program just as it is.  If you need
+to change any of the parameters indicated above, make the necessary changes
+to the included MODEM9.A86 source code, and re-compile...using the instruc-
+tions outlined within the file.
+
+MODEM9, being as old as it is, and having been "ported" from CP/M-80, is
+awkward, cumbersome, non-initutive and extremely limited.  However, it DOES
+function.  XMODEM-CRC uploads/downloads are supported.  High-ASCII characters,
+ANSI sequences, etc., are not supported.
+
+To alter the information contained in the Library of Phone Numbers (which
+may be displayed from within MODEM9), use the accompanying utility CHGNUM.CMD.
+
+Have fun, and good luck!
+
+
+==============================> MODEM9 COMMANDS <==============================
+
+Single Letter Commands
+~~~~~~~~~~~~~~~~~~~~~~
+H  - Display "help" information
+?  - Display current settings
+
+T  - Terminal mode
+E  - Terminal mode with echo
+L  - Terminal mode with local echo
+(For capturing text, use T (or E or L) FILENAME.TYP)
+
+R  - Receive CP/M file using Christensen (Xmodem-CRC) Protocol
+S  - Send CP/M file using Christensen (Xmodem-CRC) Protocol
+     Command is: R(or S) FILENAME.TYP
+     R and S can use the following subcommands:
+          B  - Bulk transfer using wildcards (e.g. *.*)
+          Q  - Quiet mode (no messages to console)
+          T  - Return to terminal mode after transfer
+          V  - View bytes transferred on console
+
+The single letter commands may also be used on the
+command line when the program is initially executed.
+
+
+
+Three Letter Commands
+~~~~~~~~~~~~~~~~~~~~~
+CPM - Exit from this program to CP/M
+DIR - List directory and space free (may specify drive)
+ERA - Erase file (may specify drive)
+LOG - Change default drive/user (specify drive/user) and reset disks.
+        e.g., LOG A0, LOG B (user unchanged)
+FOP - Display commands for setting terminal mode file output parameters
+DSC - Disconnect the modem from the telephone line
+TCC - Toggle Checksum/CRC mode on receive
+TBR - Toggle backspace to rub conversion
+TLC - Toggle  1) local command immediate
+              2) local command after CTRL-^
+TLF - Toggle send linefeed after carriage return
+NUM - List phone directory
+SET - Set communication ports
+
+
+
+The following are terminal text buffer commands:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+DEL - Delete memory buffer and file
+NOL - Return to terminal mode - no loss of data in buffer
+WRT - Write memory buffer to disk file
+
+
+
+Local Commands while in Terminal Mode
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+CTRL-B  - Change baud rate from terminal mode
+CTRL-E  - Exit to command mode
+CTRL-P  - Toggle printer
+CTRL-Y  - Start copy into buffer
+CTRL-R  - Stop copy into buffer
+            Start & Stop may be toggled as often as desired.
+            A ":" at start of line indicates buffer is open.
+            XOFF automatically used to stop input when writing
+            full buffer to disk, XON sent to resume.
+CTRL-T  - Transfer ASCII file to remote
+CTRL-^  - Send local control character to remote
+

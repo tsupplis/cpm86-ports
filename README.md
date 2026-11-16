@@ -72,8 +72,11 @@ Ancillary goals:
 | [disk7](disk7/README.md) | DISK7, a full-screen file manager, translated from CP/M-80 with XLT86 | Frank Gaudé | Non-commercial (© 1984) |
 | [diskstat](diskstat/README.md) | DISKSTAT 1.2, display a disk drive's DPB, DPH and usage statistics (used / free blocks), translated from CP/M-80 with XLT86 | D. Powys-Lybbe, MML Systems (1983); 8086 conversion by John Elliott (2015) | Freeware / Abandonware |
 | [filer](filer/README.md) | VFILER, a full-screen file manager | ZCPR2 VFILER by Rich Conn, CP/M-86 translation by H. M. Van Tassell | Public domain / Abandonware |
+| [frag](frag/README.md) | Read-only CP/M directory extents and allocation maps; rejects DOS/FAT volumes | FILE-EXT / Kelly Smith; Charlie Godet-Ceraolo | Historical attribution; terms unspecified |
 | [fv](fv/README.md) | FileView, view and amend a file in hex and ASCII | Stephen Hunt | Public domain |
 | [lbr](lbr/) | LU library (.LBR) tools: lu86 manages libraries; lbrdir lists members, lbrtype displays them, and delbr extracts them | lu86 / Stephen C. Hemminger, Bill Bolton; lbrdir/lbrtype by Charlie Godet-Ceraolo; delbr by Jeff Martin | Public domain / Abandonware |
+| [modem9](modem9/README.md) | MODEM9 terminal and XMODEM-CRC file transfer, IBM PC COM2 | Irvin M. Hoff; Michael Mellinger, Bill Bolton, Dick Hill | Historical copyright notices; terms unspecified |
+| [page](page/README.md) | Small forward-only text pager with a plain [more] prompt | Bill Bolton; IBM adaptations by Kirk Lawrence | Copyright; terms unspecified |
 | [seemem](seemem/README.md) | Full-screen memory browser for CP/M-86 on the IBM PC | Frank Kotler and Kirk Lawrence | Freeware / Public domain |
 | [wash15](wash15/README.md) | WASH, a directory maintenance utility, translated from CP/M-80 with XLT86 | Michael J. Karas, Simon J. Ewins | Public domain, non-commercial |
 | [xsq](xsq/README.md) | sq, usq and sqtype: squeeze, unsqueeze and display squeezed (.?Q?) files | Richard Greenlaw, with Dick Greenlaw, Chuck Forsberg and W. Earnest | Public domain / Abandonware |

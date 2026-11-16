@@ -3,7 +3,7 @@ SUBDIRS1=filer lbr fv seemem disk7 wash15 xsq uucp grep sed diff ndbm life kermi
 
 SUBDIRS2=tinybas xlisp vtl2 ratfor diskstat sokoban edlin advent
     
-SUBDIRS3=trek expr kilo arc rogue cpu ladder patcher
+SUBDIRS3=trek expr kilo arc rogue cpu ladder patcher page modem9 frag
 
 SUBDIRS4=focal setboot yacc ansi2kr figforth
 
@@ -16,7 +16,7 @@ all:
 
 # Only projects with runnable automated suites or build checks belong here.
 # Interactive PCE sessions are reserved for final-test.
-TEST_SUBDIRS=$(filter edlin lbr xsq uucp dc grep sed diff ndbm tr uniq sort tinybas xlisp vtl2 ratfor sokoban focal arc kilo yacc rogue figforth patcher,$(SUBDIRS))
+TEST_SUBDIRS=$(filter edlin lbr xsq uucp dc grep sed diff ndbm tr uniq sort tinybas xlisp vtl2 ratfor sokoban focal arc kilo yacc rogue figforth patcher page frag,$(SUBDIRS))
 
 test:
 	python3 tools/run-tests.py --make "$(MAKE)" $(TEST_SUBDIRS)

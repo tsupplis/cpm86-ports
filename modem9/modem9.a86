@@ -1,0 +1,6019 @@
+;	MODEM901, a 16-bit "MODEM" program for CP/M-86
+;
+;	by:	Michael J. Mellinger,
+;		Data Research Associates, Inc.,
+;		9270 Olive Boulevard,
+;		St. Louis,
+;		Missouri, 63132,
+;		U.S.A.
+;
+;	Many, many fixes to Mike's original translation and
+;	further translation by:
+;
+;		Bill Bolton,
+;		Software Tools RCPM,
+;		P.O. Box 80,
+;		Newport Beach,
+;		NSW, 2106,
+;		Australia
+;
+;*****************************************************************************
+;	Converted for IBM PC-XT. Most changes and fixes marked
+;       with "@DH".
+;
+;       by:	Dick Hill
+;		(AMS) Advanced Micro Systems
+;		2304 McCord Road
+;		Valparaiso, IN 46383
+;
+;*****************************************************************************
+;
+;VERSION LIST, most recent version first
+;
+;30/DEC/84 Added option to change baud rate from terminal mode.
+;	   Word length, parity, stop bits not affected.
+;	   MODEM 9.01.IBM-1.1 Dick Hill 
+;   
+;24/Dec/84 Converted for IBMPC. Changed version to MODEM 9.01.IBM-1.0.
+;	   Many changes and fixes. Hopefully all marked with "@DH".
+;
+;***KNOWN PROBLEMS:***    When the IBM and a CP/M 80 system running a
+;	   Z80 B at 6 mhz are hooked up back to back the IBM can not keep
+;	   up at baud rates faster than 1200 baud when receiving a file.
+;	   No problem at any baud rate when the IBM is sending and the Z80 B
+;	   is receiving. Everything else seems to work.
+;
+;	   HOW TO:    ASM86 MODM9IBM $PZ
+;		      GENCMD MODM9IBM 8080
+;
+;25/Nov/83 Fixed batch bugs, changed to proper speed calculations,
+;	   fixed printer support, fixed batch file name problems.
+;
+;24/Sep/83 Fixed many bugs, properly implemented command line
+;	   processor, added new USART implementations for SYS
+;	   module. Tidied up documentation and added version
+;	   lists etc. Basically made it work right!
+;	   Version 9.01.04. Bill Bolton
+;
+;08/Jul/83 Original quick translation from CP/M-80 code.
+;	   Version 9.01.02. Michael Mellinger
+;
+;	See the file MODEM-86.DOC for further details, otherwise
+;	the existing CP/M-80 MODEM901 documentation applies.
+;
+;	Clearing house for comments, changes, suggestions:
+;	(No guarantee of response and no liability assumed)
+;
+;U.S.A.		Thousand Oaks Technical RCP/M
+;		805-492-5472
+;
+;AUSTRALIA	Software Tools RCPM
+;		(02) 997-1836 (CCITT V21 standard,
+;			       Bell 103 won't work!)	
+;
+;			MODEM9
+;
+;BASED ON THE CP/M-80 MODEM PROGRAM CREATED BY WARD CHRISTENSEN
+;
+;	     ********* N O T I C E S *********
+;
+;	Revisers releasing new versions should only
+;	change the version number by the digits in
+;	the last 2 places, i.e. 9.01.??
+;
+;	This program is in the public domain, please
+;	respect the massive effort of the CP/M-86
+;	"translators" by leaving their names intact
+;	in the signon message.
+;
+;	At the same time we wish to give full credit to
+;	the many individuals who created the CP/M-80
+;	version of MODEM901, and wish to thank them for
+;	their efforts (and especially Ward for starting
+;	it all!).
+;
+;	     **********************************
+;
+;This is just a header file to give the HEX output the right name.
+;
+;
+;	INCLUDE DEFF.A86
+;	INCLUDE START.A86
+;	INCLUDE SYS.A86		;Rename your XXXXSYS.A86 to this
+;	INCLUDE MAIN.A86
+;	INCLUDE CONSOLE.A86
+;	INCLUDE	TERM.A86
+;	INCLUDE	SENDRECV.A86
+;	INCLUDE	FILES.A86
+;	INCLUDE	FINISH.A86
+;
+;		DEFF.A86
+;
+;Deffinitions for use in assembling MODEM9.xx.
+;
+TRUE	EQU	0FFH
+FALSE	EQU	0
+;
+CPM2X	EQU	TRUE	;TRUE IF CP/M 2.X
+DBUFSIZ	EQU	16	;BUFFER SIZE FOR FILE TRANSFER IN KBYTES
+CAPTURE	EQU	16	;Buffer size for text capture
+;
+ERRCRC	EQU	6	;NUMBER OF TIMES TO TRY CRC MODE BEFORE
+			;SWITCHING TO CHECKSUM
+ERRLIM	EQU	10	;NUMBER OF TIMES TO RETRY
+			;SEND/RECEIVE ERRORS BEFORE QUIT
+;
+CRC       EQU   'C'         ;USED TO REQUEST 'CRC' INSTEAD OF 'CKSUM'
+ESC	  EQU	'['-40H     ; ^[ = ESCAPE
+SOH       EQU   'A'-40H     ; ^A = START OF HEADER
+EOT       EQU   'D'-40H     ; ^D = END OF TEXT
+ACK       EQU   'F'-40H     ; ^F = ACKNOWLEDGE
+OKNMCH    EQU   'F'-40H     ; ^F = OKAY NAME MATCH
+BELL      EQU   'G'-40H     ; ^G = BELL CHARACTER
+BKSP	  EQU	'H'-40H     ; ^H = BACKSPACE
+TAB	  EQU	'I'-40H	    ; ^I = TAB
+LF        EQU   'J'-40H     ; ^J = LINEFEED
+CR        EQU   'M'-40H     ; ^M = CARRIAGE RETURN
+XON       EQU   'Q'-40H     ; ^Q = XON CHARACTER
+XOFF      EQU   'S'-40H     ; ^S = XOFF CHARACTER
+NAK       EQU   'U'-40H     ; ^U = NOT ACKNOWLEDGE
+CAN       EQU   'X'-40H     ; ^X = CANCEL SEND/RECEIVE
+EOFCHAR   EQU   'Z'-40H     ; ^Z = END OF FILE
+SPACE	  EQU	' '	    ; SPACE
+BDNMCH    EQU   75H         ; BAD NAME MATCH
+RUB	  EQU	7FH	    ; RUB
+;
+;BDOS EQUATES
+;
+RDCON	EQU	1
+WRCON	EQU	2
+LSTOUT	EQU	5
+DCONIO	EQU	6
+PRINT	EQU	9
+RDBUF	EQU	10
+CONST	EQU	11
+RESET	EQU	13
+SELDSK	EQU	14
+OPEN	EQU	15
+CLOSE	EQU	16
+SRCHF	EQU	17
+SRCHN	EQU	18
+ERASE	EQU	19
+READ	EQU	20
+WRITE	EQU	21
+MAKE	EQU	22
+REN	EQU	23
+CURDSK	EQU	25
+STDMA	EQU	26
+GETALC	EQU	27		;CP/M ALLOCATION VECTOR ADDRESS
+GETPARM	EQU	31		;CURRENT DISK PARAMETERS ADDRESS
+USER	EQU	32
+FILSIZ	EQU	35
+REIPL	EQU	0
+FCB	EQU	5CH
+FCBEXT	EQU	FCB+12
+FCBSNO	EQU	FCB+32
+FCBRNO	EQU	FCB+32
+FCB2	EQU	6CH
+;
+;			START.A86
+;
+;This file is for making changes to MODEM9.xx which are not UART/MODEM
+;specific. UART/MODEM suport is provided by the various SYS files.
+;
+;The user can make the following changes in this file:
+;
+;   	a) Set the TRUE/FALSE statements in the lookup table which
+;	   begins with BAKUPBYTE and ends with EOFSEND
+;   	b) Change the control characters that are used for local commands,
+;	   this sequence starts with EXITCHR and ends with EXTCHR
+;	c) Set STRGOK to TRUE and enter up to ten strings at location
+;	   STRINGS. These strings can be logon sequences or frequently
+;	   used commands that are sent to a remote computer
+;
+;
+STRGOK	EQU	FALSE		;change to TRUE if you want to define
+				;strings, such as logon sequences, for
+				;transmission. Up to 10 strings may be
+				;entered at location STRINGS in this file.
+;
+;*** Don't change the ORG locations in this file or in the files    ***
+;*** SETUP and MAIN. This ORG statements provide standard locations ***
+;*** for modification by overaly files or DDT.			    ***
+;
+	CSEG
+	ORG	0100H
+;
+	JMP	START
+;
+BAKUPBYTE	DB	TRUE	;true=make .BAK file
+CKSUMDFLT	DB	FALSE	;true=default to Checksum checking
+				;false=default to CRC checking
+TOGGLECRC	DB	TRUE	;true=allow toggling of Checksum to CRC
+CONVBKSP	DB	FALSE	;true=convert backspace to rub
+TOGGLEBK	DB	TRUE	;true=allow toggling of bksp to rub
+ADDLF		DB	TRUE	;true=add LF after CR
+TOGGLELF	DB	TRUE	;true=allow toggling of LF after CR
+STRLF		DB	FALSE	;true=strip LF after CR in terminal file output
+TOGSLF		DB	TRUE	;true=toggle strip LF after CR in file output
+LOCONEXTCHR	DB	FALSE	;true=local command if EXTCHR precedes
+				;false=not local command if EXTCHR precedes
+TOGGLELOC	DB	TRUE	;true=allow toggling of LOCONEXTCHR
+LSTTST		DB	TRUE	;true=allow toggling of printer on/off
+				;in terminal mode. Set to false if your
+				;printer can't keep up with the modem
+XOFFTST		DB	FALSE	;true=allow testing of XOFF from remote
+				;while transmitting a file in terminal mode
+XONWAIT		DB	FALSE	;true=wait for XON after sending CR while
+				;transmitting a file in terminal mode
+TOGXOFF		DB	TRUE	;true=allow toggling of XOFF/XON testing
+ECHWAIT		DB	FALSE	;true=wait for echo before sending next
+				;character in terminal mode file output
+EOFSEND		DB	FALSE	;true=send eof in terminal mode file output
+NAKONLY		DB	FALSE	;true=resends a record only after a valid NAK
+				;false=resends a record after any non-ACK
+				;true is intended only for use with mainframes
+				;that send, for example, xoff when buffer is
+				;full
+;
+SETUPTST	DB	SETUP
+SCRNTEST	DB	SCRNCLR
+TRANLOGON	DB	STRGOK
+DISCFLG		DB	DISCON
+CARDETFLG	DB	CARDET
+CLOCK		DB	CLKRATE
+;
+MSPEED		DB	5	;sets the display time to send a file
+				;0=110 1=300 2=450 3=600 4-1200		@DH
+				;5=2400 6=4800 7=9600 8=19200		@DH
+;				;0=110 1=300 2=600 3=1200		@DH
+;				;4=2400 5=4800 6=9600 7=19200		@DH
+BYTDLY		DB	0	;default time to send character in
+				;terminal mode file transfer
+				;0=0 delay, 1=0.02 sec, -- ,9=0.18 sec
+CRDLY		DB	0	;default time for extra wait after CR
+				;in terminal mode file transfer
+				;0=0 delay, 1=0.02 sec, -- ,9=0.18 sec
+BELRPT		DB	10	;bell repeat time = value*0.03 sec
+NOOFCOL		DB	5	;number of directory columns, currently
+				;set for 80 column screen
+;
+BAUDCHR		DB	'B'-40H ; ^B = Change baud rate 	30/DEC/84 @DH
+				;      from terminal mode		  @DH
+EXITCHR		DB	'E'-40H	; ^E = Exit without disconnect
+LOGCHR		DB	'O'-40H	; ^O = Send logon		   
+LSTCHR		DB	'P'-40H	; ^P = Toggle printer		   
+UNSAVECHR	DB	'R'-40H	; ^R = Close input text buffer	   
+TRANCHR		DB	'T'-40H ; ^T = Transmit file to remote	   
+SAVECHR		DB	'Y'-40H	; ^Y = Open input text buffer	   
+EXTCHR		DB	'^'-40H	; ^^ = Send next character
+;
+VERNUM:	CALL	ILPRT
+	DB	'E' 
+	DB	'MODEM9 by Irvin M. Hoff       '
+	DB	CR,LF   
+	DB	'CP/M-86 version by Michael Mellinger and Bill Bolton'
+	DB	CR,LF   
+	DB	'CP/M-86 IBM version by Dick Hill'
+	DB	CR,LF,LF,0
+	JMP	SYSVER
+;
+;ALL STRINGS MUST BE 31 CHARACTERS OR LESS AND MUST BE TERMINATED WITH 0
+;
+STRINGS:
+	DB	'STRING #0 at 240H',0
+	RB	(OFFSET STRINGS)-(OFFSET $)+32*1
+	DB	'STRING #1 at 260H',0
+	RB	(OFFSET STRINGS)-(OFFSET $)+32*2
+	DB	'STRING #2 at 280H',0
+	RB	(OFFSET STRINGS)-(OFFSET $)+32*3
+	DB	'STRING #3 at 2A0H',0
+	RB	(OFFSET STRINGS)-(OFFSET $)+32*4
+	DB	'STRING #4 at 2C0H',0
+	RB	(OFFSET STRINGS)-(OFFSET $)+32*5
+	DB	'STRING #5 at 2E0H',0
+	RB	(OFFSET STRINGS)-(OFFSET $)+32*6
+	DB	'STRING #6 at 300H',0
+	RB	(OFFSET STRINGS)-(OFFSET $)+32*7
+	DB	'STRING #7 at 320H',0
+	RB	(OFFSET STRINGS)-(OFFSET $)+32*8
+	DB	'STRING #8 at 340H',0
+	RB	(OFFSET STRINGS)-(OFFSET $)+32*9
+	DB	'STRING #9 at 360H',0
+;
+;
+;PHONE NUMBER LIBRARY TABLE.
+;
+;EACH DB MUST BE 32 CHARACTERS LONG FOR PROPER OPERATION.
+;LAST DB MUST BE DB 0. UP TO 26 NUMBERS ARE ALLOWED.
+;
+NUMBLIB:
+;	'----5---10---15---20---25-----32'
+DB	'A=Amrad           1-703-734-1387'	;'A'
+DB	'B=Palatine RCPM   1-312-359-8080'	;'B'
+DB	'C=CBBS Pasadena   1-213-799-1632'	;'C'
+DB	'D=PMMI            1-703-379-0303'	;'D'
+DB	'E=Tech. CBBS      1-313-846-6127'	;'E'
+DB	'F=Ron Fowler     1-313-729-1905R'	;'F'
+DB	'G=Gasnet NASA     1-301-344-9156'	;'G'
+DB	'H=Dave Hardy      1-313-846-6127'	;'H'
+DB	'I=Wayne Hammerly  1-301-953-3753'	;'I'
+DB	'J=RBBS Pasadena   1-213-356-1034'	;'J'
+DB	'K=David Kozinn    1-216-334-4604'	;'K'
+DB	'L=Program Store   1-202-337-4694'	;'L'
+DB	'M=Kelly Smith     1-805-527-9321'	;'M'
+DB	'N=SuperBrain Sys  1-617-862-0781'	;'N'
+DB	'O=R.L.Plouffe     1-703-524-2549'	;'O'
+DB	'P=K.Petersen     1-313-759-6569R'	;'P'
+DB	'Q=Bruce Ratoff    1-201-272-1874'	;'Q'
+DB	'R=Mark Pulver     1-312-789-0499'	;'R'
+DB	'S=Smokin  Silicon 1-312-941-0049'	;'S'
+DB	'T=                              '	;'T'
+DB	'U=                              '	;'U'
+DB	'V=                              '	;'V'
+DB	'W=                              '	;'W'
+DB	'X=                              '	;'X'
+DB	'Y=                              '	;'Y'
+DB	'Z=                              '	;'Z'
+DB	0					; end
+;	'----5---10---15---20---25-----32'
+;
+;			IBMSYS.A86
+;
+;	For the IBM Personal Computer communications port.
+;
+;Used 8250SYS.ASM from CP/M 80 version of MODEM9 and 8251SYS.A86 from
+;CP/M 86 version of MODEM9 to make this file. 12/24/84 - Dick Hill (AMS)
+;
+;Change the clock speed to suit your system.
+CLKRATE	EQU	8		;clock speed in MHz, 8 MHz maximum
+;
+;Do not change the next three equates.
+SETUP	EQU	TRUE
+DISCON	EQU	TRUE
+CARDET	EQU	TRUE
+SCRNCLR	EQU	TRUE
+;
+;8250 equates.
+;
+MODRCVB	EQU	01H		;bit to test for received data
+MODRCVR	EQU	MODRCVB		;change to 0 if bit is 0 when
+				;data received
+MODSNDB	EQU	020H		;bit to test for ready to send
+MODSNDR	EQU	MODSNDB		;change to 0 if bit is 0 when
+				;ready to send
+;
+MODDATP	EQU	02F8H		;Serial Port 1 data
+MODCTLP	EQU	MODDATP+5	;Serial Port 0 status
+;
+;Control and status ports.
+;
+MODDLL	EQU	MODDATP			;divisor latch low
+MODDLH	EQU	MODDATP+1		;divisor latch high
+MODIER	EQU	MODDATP+1		;interrupt enable
+;MODIIR	EQU	MODDATP+2		;interrupt ident.
+MODLCR	EQU	MODDATP+3		;modem line control reg.
+MODMCR	EQU	MODDATP+4		;modem control reg.
+;MODLSR	EQU	MODDATP+5		;line status, same as MODCTLP
+MODMSR	EQU	MODDATP+6		;modem status reg.
+;
+;Control bytes
+;
+DISABL	EQU	00H			;disable interrupts
+LOOPNODTR EQU	10H			;set loop back, DTR off 
+ACCBAUD	EQU	80H			;access baud rate divisor latches
+DTR	EQU	03H			;DTR and RTS on
+WORDLEN EQU	3			;8 bit word, 1 stop bit, no parity, no
+					;break, deaccess baud rate divisor
+					;latches
+;
+CLR1	EQU	1BH		;clear from cursor to
+CLR2	EQU	'J'		;end of screen
+CLR3	EQU	0
+CLR4	EQU	0
+;
+SCLR1	EQU	1BH		;clear entire screen
+SCLR2	EQU	'E'		;and home cursor
+SCLR3	EQU	0
+SCLR4	EQU	0
+SCLR5	EQU	0
+SCLR6	EQU	0
+SCLR7	EQU	0
+;
+CLREOS:		CALL	ILPRT
+;
+		DB	CLR1,CLR2,CLR3,CLR4,0
+		RET
+;
+CLRSCRN:	CALL	ILPRT
+;
+		DB	SCLR1,SCLR2,SCLR3,SCLR4,SCLR5,SCLR6,SCLR7,0
+		RET
+;
+INMODCTLP:	PUSH	DX
+		MOV	DX,MODCTLP
+		IN	AL,DX
+		POP	DX
+		RET
+;
+OUTMODDATP:	PUSH	DX
+		MOV	DX,MODDATP
+		OUT	DX,AL
+		POP	DX
+		RET
+;
+INMODDATP:	PUSH	DX
+		MOV	DX,MODDATP
+		IN	AL,DX
+		POP	DX
+		RET
+;
+ANIMODSNDB:	AND	AL,MODSNDB		 ;bit to test for send ready
+		RET
+;
+CPIMODSNDR:	CMP	AL,MODSNDR		 ;value of send bit when ready
+		RET
+;
+ANIMODRCVB:	AND	AL,MODRCVB		 ;bit to test for receive ready
+		RET
+;
+CPIMODRCVR:	CMP	AL,MODRCVR		 ;value of receive ready bit
+		RET
+;
+OUTMODMCR:	PUSH	DX
+		MOV	DX,MODMCR
+		OUT	DX,AL
+		POP	DX
+		RET
+;
+OUTMODLCR:	PUSH	DX
+		MOV	DX,MODLCR
+		OUT	DX,AL
+		POP	DX
+		RET
+;
+OUTMODIER:	PUSH	DX
+		MOV	DX,MODIER
+		OUT	DX,AL
+		POP	DX
+		RET
+;
+OUTMODMSR:	PUSH	DX
+		MOV	DX,MODMSR
+		OUT	DX,AL
+		POP	DX
+		RET
+;
+OUTMODDLL:	PUSH	DX
+		MOV	DX,MODDLL
+		OUT	DX,AL
+		POP	DX
+		RET
+;
+OUTMODDLH:	PUSH	DX
+		MOV	DX,MODDLH
+		OUT	DX,AL
+		POP	DX
+		RET
+;
+INMODMSR:	PUSH	DX
+		MOV	DX,MODMSR
+		IN	AL,DX
+		POP	DX
+		RET
+;
+;This is where the message goes giving the system for
+;which MODEM9 has been customized.
+;
+SYSVER:
+	CALL	ILPRT
+	DB	' Set for COM2 - 2400 baud - 8,N,1',CR,LF,0  
+	RET
+;
+;The following is used to initialize the 8250 on execution
+;of MODEM9.
+;
+INITMOD:
+	MOV	AL,DISABL
+	CALL	OUTMODIER
+	MOV	AL,LOOPNODTR
+	CALL	OUTMODMCR
+	MOV	AL,ACCBAUD
+	CALL	OUTMODLCR
+	MOV	AL,MSPEED		;value for offset into baud table
+	MOV	BX,OFFSET BDTABL	;point to baud table
+	MOV	DX,0			;initialize DX
+	ADD	AL,AL			;X2 = offset into baud table for rate
+	MOV	DL,AL			;put it in DX
+	ADD	BX,DX			;point to baud rate
+	MOV	AX,[BX]		        ;put baud divisor in AX..
+					;..AL=LSD, AH=MSD 
+	PUSH	AX			;put it on stack
+	MOV	AL,AH			;get high order of divisor
+	CALL	OUTMODDLH		;to high divisor latch
+	POP	AX			;get low order of divisor 
+	CALL	OUTMODDLL		;to low divisor latch
+	MOV	AL,WORDLEN
+PARM1	EQU	OFFSET $ - 1
+	CALL	OUTMODLCR		;to line control reg.
+	MOV	AL,DTR
+	CALL	OUTMODMCR		;to modem control reg.
+	RET
+;
+;The following are parameters/masks used in setting word length
+;stop bits and parity for the 8250.
+;
+MSKWD	EQU	03H	;word length mask
+SEVEN	EQU	02H	;receive seven bit word
+EIGHT	EQU	03H	;receive eight bit word
+MSKST	EQU	04H	;stop bit mask
+ONE	EQU	00H	;one stop bit
+TWO	EQU	04H	;two stop bits
+MSKPA	EQU	18H	;mask for parity bits
+NONE	EQU	00H	;no parity
+ODD	EQU	08H	;odd parity
+EVEN	EQU	18H	;even parity
+;
+;The following routine changes the baud rate, stop bits and parity on
+;the 8250 from the command level. Note the routine MUST modify the
+;parameters used by the INITMOD routine.
+;
+SETUPR:
+	PUSH	BX
+	CALL	CLRTST
+	CALL	ILPRT
+	DB	'              IBM/UART/Modem Control',CR,LF,LF,LF
+	DB	'Current settings -',CR,LF,0
+	CALL	SETTIM2
+	CALL	GIVEPRM
+	CALL	ILPRT
+	DB	CR,LF
+	DB	'Enter choices below - <CR> for no change',CR,LF,0
+AGAIN:
+	MOV	DX,OFFSET BAUDBUF	;point to input buffer for ILCOMP
+	CALL	ILPRT
+	DB	'Baud Rate (110, 300, 450, 600, 1200, 2400, 4800, 9600, 19200): ',0
+	CALL	INBUFF
+	MOV	DX,OFFSET BAUDBUF+2
+	CALL	ILCOMP                ;compare BAUDBUF+2 with characters below
+	DB	'110',0
+	MOV	AL,0
+	JNC	OK			;go if got match
+	CALL	ILCOMP
+	DB	'300',0
+	MOV	AL,1
+	JNC	OK
+	CALL	ILCOMP
+	DB	'450',0
+	MOV	AL,2
+	JNC	OK
+	CALL	ILCOMP
+	DB	'600',0
+	MOV	AL,3
+	JNC	OK
+	CALL	ILCOMP
+	DB	'1200',0
+	MOV	AL,4
+	JNC	OK
+	CALL	ILCOMP
+	DB	'2400',0
+	MOV	AL,5
+	JNC	OK
+	CALL	ILCOMP
+	DB	'4800',0
+	MOV	AL,6
+	JNC	OK
+	CALL	ILCOMP
+	DB	'9600',0
+	MOV	AL,7
+	JNC	OK
+	CALL	ILCOMP
+	DB	'19200',0
+	MOV	AL,8
+	JNC	OK
+	CALL	ILCOMP
+	DB	' ',0
+	JNC	AGAIN2
+	CALL	WRONG
+	JMP	AGAIN		;try again
+;
+OK:
+	MOV	MSPEED,AL
+;
+AGAIN2:
+	MOV	DX,OFFSET BAUDBUF	;point to input buffer for ILCOMP
+	CALL	ILPRT
+	DB	CR,LF
+	DB	'Word Length (7, 8): ',0
+	CALL	INBUFF
+	MOV	DX,OFFSET BAUDBUF+2
+	CALL	ILCOMP		       ;compare BAUDBUF+2 with characters below
+	DB	'7',0
+	MOV	AL,SEVEN
+	JNC	OK2
+	CALL	ILCOMP
+	DB	'8',0
+	MOV	AL,EIGHT
+	JNC	OK2
+	CALL	ILCOMP
+	DB	' ',0
+	JNC	AGAIN3
+	CALL	WRONG
+	JMP	AGAIN2
+;
+OK2:
+	MOV	WDLEN,AL
+;
+AGAIN3:
+	MOV	DX,OFFSET BAUDBUF 	      ;point to input buffer for ILCOMP
+	CALL	ILPRT
+	DB	CR,LF
+	DB	'Stop Bits (1, 2): ',0
+	CALL	INBUFF
+	MOV	DX,OFFSET BAUDBUF+2
+	CALL	ILCOMP		       ;compare BAUDBUF+2 with characters below
+	DB	'1',0
+	MOV	AL,ONE
+	JNC	OK3
+	CALL	ILCOMP
+	DB	'2',0
+	MOV	AL,TWO
+	JNC	OK3
+	CALL	ILCOMP
+	DB	' ',0
+	JNC	AGAIN4
+	CALL	WRONG
+	JMP	AGAIN3
+;
+OK3:
+	MOV	STPLN,AL
+;
+AGAIN4:
+	MOV	DX,OFFSET BAUDBUF 	      ;point to input buffer for ILCOMP
+	CALL	ILPRT
+	DB	CR,LF
+	DB	'Parity (None, Even, Odd): ',0
+	CALL	INBUFF
+	MOV	DX,OFFSET BAUDBUF+2
+	CALL	ILCOMP		       ;compare BAUDBUF+2 with characters below
+	DB	'NONE',0
+	MOV	AL,NONE
+	JNC	OK4			;go if got match
+	CALL	ILCOMP
+	DB	'EVEN',0
+	MOV	AL,EVEN
+	JNC	OK4
+	CALL	ILCOMP
+	DB	'ODD',0
+	MOV	AL,ODD
+	JNC	OK4
+	CALL	ILCOMP
+	DB	' ',0
+	JNC	GOSET
+	CALL	WRONG
+	JMP	AGAIN4			;try again
+;
+OK4:
+	MOV	PARIT,AL
+;
+GOSET:
+	MOV	AL,0
+	OR	AL,WDLEN
+	OR	AL,PARIT
+	OR	AL,STPLN
+	MOV	BYTE PTR .PARM1,AL
+	CALL	ILPRT
+	DB	CR,LF
+	DB	'New settings -',CR,LF,0
+	CALL	SETTIM2
+	CALL	GIVEPRM
+	POP	BX
+	JMP	INITMOD				;reset 8250
+;
+GIVEPRM:
+	CALL	GETPRM
+	CALL	ILPRT
+	DB	'Word length is ',0
+	MOV	AL,WDLEN
+	CMP	AL,SEVEN
+	JNZ	NOTSEV
+	CALL	ILPRT
+	DB	'seven',0
+	JMP	GIVEST
+NOTSEV:
+	CALL	ILPRT
+	DB	'eight',0
+GIVEST:
+	CALL	ILPRT
+	DB	', number of stop bits is ',0
+	MOV	AL,STPLN
+	CMP	AL,ONE
+	JNZ	NOTONE
+	CALL	ILPRT
+	DB	'one',0
+	JMP	GIVEPA
+NOTONE:
+	CALL	ILPRT
+	DB	'two',0
+GIVEPA:
+	CALL	ILPRT
+	DB	', parity is ',0
+	MOV	AL,PARIT
+	CMP	AL,NONE
+	JNZ	NOTNON
+	CALL	ILPRT
+	DB	'none',CR,LF,0
+	RET
+
+NOTNON:
+	MOV	AL,PARIT
+	CMP	AL,ODD
+	JNZ	NOTODD
+	CALL	ILPRT
+	DB	'odd',CR,LF,0
+	RET
+NOTODD:
+	CALL	ILPRT
+	DB	'even',CR,LF,0
+	RET
+;
+GETPRM:
+	MOV	AL,BYTE PTR .PARM1		;get present word length
+	AND	AL,MSKWD	
+	MOV	WDLEN,AL			;store it
+	MOV	AL,BYTE PTR .PARM1	      ;get present stop bits and parity
+	MOV	CH,AL
+	AND	AL,MSKST
+	MOV	STPLN,AL			;store stop bits
+	MOV	AL,CH
+	AND	AL,MSKPA
+	MOV	PARIT,AL			;store parity
+	RET
+;
+WRONG:
+	CALL	ILPRT	;all matches failed - tell operator
+	DB	'++ Incorrect entry ++',CR,LF,BELL,0
+	RET
+;
+;Table of baud rate parameters
+;
+BDTABL	EQU	WORD PTR $
+	DW      0417H		; 110 baud
+	DW	0180H		; 300 baud
+	DW	0100H		; 450 baud
+	DW	00C0H		; 600 baud
+	DW	0060H		; 1200 baud
+	DW	0030H		; 2400 baud
+	DW	0018H		; 4800 baud
+	DW	000CH		; 9600 baud
+	DW	0006H		; 19200 BAUD
+;
+WDLEN	DB	EIGHT
+STPLN	DB	ONE
+PARIT	DB	NONE
+;
+BAUDBUF:
+	DB	10,0
+	RB	10
+;
+;For MODEMs which disconnect from the telephone line when data terminal
+;ready (DTR) drops, the following routine will disconnect.
+;
+HANGUP	EQU	0		;HANG UP THE TELEPHONE
+;
+DISCR:
+	MOV	AL,HANGUP
+	CALL	OUTMODMCR
+	RET
+;
+;The following routine will give the carrier detect status
+;
+RLSD	EQU	80H			;RECEIVED LINE SIGNAL (CARRIER) DETECT
+;
+DETCAR:
+	MOV	AL,CARDETFLG
+	OR	AL,AL
+	JZ	DETCARRET		;RETURN IF FALSE
+	CALL	ILPRT
+	DB	'Carrier ',0
+	CALL	INMODMSR		;in modem status reg.
+	AND	AL,RLSD
+	JNZ	DETCAR1
+	CALL	ILPRT
+	DB	'not ',0
+DETCAR1:
+	CALL	ILPRT
+	DB	'present',CR,LF,0
+DETCARRET:
+	RET
+;
+;		MAIN.A86
+;
+;Main line routines for MODEM9.xx.
+;
+START:
+	MOV	AX,SS
+	MOV	SAVESS,AX
+	MOV	AX,SP
+	MOV	SAVESP,AX
+	PUSHF				;push flags in CCP stack
+	POP	AX			;save flags in AX		@DH
+	MOV	DX,DS			;set SS register to base	@DH
+	MOV	SS,DX			;set SS, SP with interrupt	@DH
+	MOV	SP,OFFSET STACKTOP	;        for 8088		@DH
+	PUSH	AX			;restore the flags		@DH
+;	POP	BX			;				@DH
+;	MOV	AX,DS			;				@DH
+;	MOV	SS,AX			;				@DH
+;	MOV	SP,STACKTOP		;				@DH
+;	PUSH	BX			;				@DH
+	POPF
+	CLD
+	CALL	INITADR		;INITIALIZE ADDRESSES
+	CALL	VERNUM		;GIVE CONFIGURATION MESSAGE
+	CALL	GETUSR		;GET USER
+	MOV	SAVUSR,AL	;SAVE FOR EXIT
+	MOV	NFILFLG,TRUE
+	MOV	SAVEFLG,FALSE
+	CALL	PROCOPT		;PROCESS CONTROL OPTIONS
+;
+RESTART:
+	MOV	AL,OPTION	;GET MAIN OPTION
+	CMP	AL,' '		;NO OPTION SPEC'D?
+	JZ	MENUJMP		;TRUE, GO MENU
+	CMP	AL,'H'		;MENU ASKED FOR?
+	JZ	MENU2JMP	;YES, GO MENU2
+	CALL	INITMOD
+	CALL	MOVEFCB
+	CALL	INMODDATP 	;GOBBLE UP GARBAGE..
+	CALL	INMODDATP 	;..CHARACTERS ON LINE
+	MOV	ECHOFLG,0	; RESET ECHO FLAG
+	MOV	LOCFLG,0	; RESET LOCAL FLAG
+	MOV	AL,OPTION	;PROCESS MAIN OPTION
+	CMP	AL,'E'		;ECHO MODE?
+	JNZ	NOECH		;JUMP IF NOT
+	MOV	ECHOFLG,TRUE	;SET ECHO TO TRUE
+	JMP	DSKSAVE
+;
+MENU2JMP:
+	JMP	MENU2
+;
+NOECH:	CMP	AL,'L'		;LOCAL ECHO MODE
+	JNZ	NOLOC
+	MOV	AL,TRUE
+	MOV	LOCFLG,AL
+	JMP	DSKSAVE
+
+NOLOC:
+	CMP	AL,'T'		;TERMINAL MODE?
+	JNZ	NOLOC1
+	JMP	DSKSAVE		;YES
+
+NOLOC1:
+	CMP	AL,'S'		;SEND A FILE?
+	JNZ	NOLOC2
+	JMP	SENDFIL		;YES
+
+NOLOC2:
+	CMP	AL,'R'		;RECEIVE A FILE?
+	JNZ	NOLOC3
+	JMP	RCVFIL		;YES
+
+NOLOC3:
+	CALL	NOTVLDMSG	;SAY NOT A VALID OPTION
+MENUJMP:
+	JMP	MENU		;NO VALID OPTION SPEC'D, GO MENU
+;
+INITADR:
+	JMP	INITMOD			;RETURN DONE FROM THIS ROUTINE..
+;
+; CHECK OPTIONS, PUT 0 IN APPROPRIATE PLACES IN OPTION TABLE
+; IF OPTION SELECTED
+;
+PROCOPT:
+	MOV	DX,OFFSET FCB+1
+	XCHG	BX,DX
+	MOV	AL,BYTE PTR [BX]
+	XCHG	BX,DX
+	MOV	OPTION,AL
+OPTLP:
+	INC	DX
+	XCHG	BX,DX
+	MOV	AL,BYTE PTR [BX]
+	XCHG	BX,DX
+	CMP	AL,' '
+	JZ	ENDOPT
+	MOV	BX,OFFSET OPTBL
+	MOV	CH,OFFSET OPTBE- OFFSET OPTBL
+OPTCK:
+	CMP	AL,BYTE PTR [BX]
+	JNZ	OPTNO
+	CMP	AL,'B'
+	JNZ	OPTCK1
+	MOV	AL,OPTION
+	CMP	AL,'S'
+	JZ	OPTCK1
+	CMP	AL,'R'
+	JNZ	OPTNO1
+OPTCK1:
+	MOV	BYTE PTR [BX],0
+	JMP	OPTLP
+;
+OPTNO:
+	INC	BX
+	DEC	CH
+	JNZ	OPTCK
+OPTNO1:
+	CALL	NOTVLDMSG
+	POP	AX			;PRESERVE STACK
+	JMP	MENU
+;
+ENDOPT:
+	MOV	AL,VSEEFLG
+	OR	AL,AL
+	JNZ	ENDOPTRT
+	MOV	QFLG,AL			;IF VIEWING SUPPRESS ALL ELSE
+ENDOPTRT:
+	RET
+;
+MOVEFCB:
+	MOV	BX,OFFSET FCB+16
+	MOV	DX,OFFSET FCB
+	MOV	CH,16
+	CALL	MOVE
+	MOV	BYTE PTR .FCBSNO,0
+	MOV	BYTE PTR .FCBEXT,0
+	RET
+;
+PRTMSG:
+	MOV	CL,PRINT
+	INT	224
+	RET
+;
+EXIT:
+	MOV	DL,SAVUSR
+	CALL	SETUSR
+	MOV	DX,OFFSET 80H
+	MOV	CL,STDMA
+	INT	224
+	CALL	CKMODM		;CATCH ANY GARBAGE CHARACTERS (is this safe?)
+COLDBOOT:
+	PUSHF			;Must keep the flags in a register
+	POP	BX		; as the current stack is about to blow
+	MOV	AX,SAVESS	;Restore the original stack segment
+	MOV	SS,AX
+	MOV	AX,SAVESP	; and pointer
+	MOV	SP,AX
+	PUSH	BX
+	POPF			;Restore the flags
+	MOV	CX,0		;Exit is via BDOS call 0
+	MOV	DX,0
+	INT	224		;We're off to see the wizard....
+;
+;INITIALIZES CP/M FILE CONTROL BLOCKS AT 5CH AND 6CH
+;
+SETFCB:
+	MOV	DX,OFFSET CMDBUF
+	MOV	BX,OFFSET FCB
+	CALL	CPMLINE
+	CALL	PROCOPT
+CHECKNM:
+	MOV	AL,BYTE PTR .FCB+1	;CHECK ON THE PRIMARY OPTION
+	CMP	AL,'E'			;RETURN IF ECHO OPTION
+	JZ	CHECKNMRT
+	CMP	AL,'H'			;RETURN IF HELP OPTION
+	JZ	CHECKNMRT
+	CMP	AL,'L'			;RETURN IF LOCAL ECHO OPTION
+	JZ	CHECKNMRT
+	CMP	AL,'T'
+	JNZ	L@103
+	JMP	TERMSEL
+L@103:
+	CMP	AL,'S'
+	JNZ	L@104
+	JMP	CKFILE
+L@104:
+	CMP	AL,'R'
+	JNZ	BDOPT
+	MOV	AL,BATCHFLG	 	;IF MULT FILE MODE, THEN..
+	OR	AL,AL		 	;..RECV OPT DOES NOT NEED..
+	JNZ	CKFILE
+CHECKNMRT:
+	RET
+;
+BDOPT:
+	CALL	ILPRT
+	DB	CR,LF,'++ Bad Option ++',CR,LF,0
+	JMP	REENT
+
+CKFILE:
+	MOV	AL,BYTE PTR .FCB+17	;IF OPTION THAT NEEDS FILE NAME,..
+	CMP	AL,' '			;..THEN CHECK TO SEE IF NAME..
+	JNZ	CHECKNMRT		;...EXISTS. IF NOT..
+REENT:
+	CALL	ILPRT			;..DO EVERYTHING OVER.
+	DB	CR,LF,'Re-enter PRIMARY option and file name only: ',BELL,0
+	MOV	DX,OFFSET CMDBUF
+	CALL	INBUFF
+	JMP	SETFCB
+;
+TERMSEL:
+	CMP	BYTE PTR .FCB+17,' '
+	JNZ	SAVAGN
+	MOV	SAVEFLG,FALSE
+	MOV	NFILFLG,TRUE
+	RET
+;
+SAVAGN:
+	MOV	NFILFLG,FALSE
+	RET
+;
+;
+;ADJUSTS LOOP COUNTERS FOR VARIOUS CLOCK SPEEDS
+;
+FIXCNT:
+	MOV	AL,CLOCK
+	CMP	AL,1
+	JZ	FIXCNTRT
+	PUSH	DX
+	PUSH	BX
+	POP	DX
+CNTMUL:
+	ADD	BX,DX
+	DEC	AL
+	JNZ	CNTMUL
+	POP	DX
+FIXCNTRT:
+	RET
+;
+MOVE128:
+	MOV	CH,128
+;
+MOVE:
+	MOV	SI,BX
+	PUSH	DS
+	POP	ES
+	MOV	DI,DX
+MOVE001:
+	MOVS	BYTE PTR [DI], BYTE PTR [SI]
+	DEC	CH
+	JNZ	MOVE001
+	MOV	BX,SI
+	MOV	DX,DI
+	RET
+;
+MENU0:
+	TEST	NFILFLG,0FFH
+	JZ	MENU1
+	JMP	MENU			;GO IF NO FILE ACTIVE
+
+MENU1:
+	CALL	ILPRT			;ELSE PRINT MESSAGE
+	DB	CR,LF,LF
+	DB	'** There may be text in the memory buffer **',CR,LF
+	DB	'** It will be lost unless NOL or WRT commands are used **'
+	DB	CR,LF,BELL,0
+	MOV	CH,2			;2 MORE BELLS
+BLOOP:
+	MOV	AL,BELRPT		;GET TIME
+	MOV	CL,AL
+BCLOOP:
+	MOV	BX, 1000		;ABOUT 0.03 SECONDS
+	CALL	FIXCNT
+BILOOP:
+	MOV	AL,BL
+	OR	AL,BH
+	DEC	BX
+	JNZ	BILOOP
+	DEC	CL
+	JNZ	BCLOOP
+	MOV	AL,BELL
+	CALL	TIPE
+	DEC	CH
+	JNZ	BLOOP
+;
+MENU:
+	MOV	BX,OFFSET RESTSN  		     ;RESTORE SECTOR NUMBERS..
+	MOV	DX,OFFSET SECTNOB 		     ;..FOR NEW FILE TRANSFER.
+	MOV	CH,OFFSET SECTNOE- OFFSET SECTNOB
+	CALL	MOVE
+	MOV	BX,OFFSET RESTROPT 		     ;RESTORE OPTION TABLE
+	MOV	DX,OFFSET OPTBL
+	MOV	CH,OFFSET OPTBE- OFFSET OPTBL
+	CALL	MOVE
+	MOV	AL,0
+	MOV	MFFLG1,AL			  ;RESET MFACCESS ROUTINE..
+	NOT	AL				  ;..AND MULTI TRANS IN CASE..
+	MOV	FSTFLG,AL			  ;..OF ABORT.
+	JMP	XPRT
+;
+MENU2:
+	CALL	CLRTST
+	CALL    ILPRT
+	DB	'               Single Letter Commands',CR,LF,LF
+	DB	' H  - Display this information',CR,LF
+	DB	' ?  - Display current settings',CR,LF,LF
+	DB      ' T  - Terminal mode',CR,LF
+	DB      ' E  - Terminal mode with echo',CR,LF
+	DB	' L  - Terminal mode with local echo',CR,LF
+	DB	'     For capturing text use T(or E or L) FILENAME.TYP and'
+	DB	CR,LF
+	DB	'     Start & Stop toggles described on subsequent screen.'
+	DB	CR,LF,LF
+	DB      ' R  - Receive CP/M file using Christensen Protocol',CR,LF
+	DB      ' S  - Send CP/M file using Christensen Protocol',CR,LF
+	DB	'     Command is: R(or S) FILENAME.TYP',CR,LF
+	DB	'     R and S can use the following subcommands:',CR,LF
+	DB	'          B  - Bulk transfer using wildcards (e.g. *.*)',CR,LF
+	DB	'          Q  - Quiet mode (no messages to console)',CR,LF
+	DB	'          T  - Return to terminal mode after transfer',CR,LF
+	DB	'          V  - View bytes transferred on console',CR,LF,LF
+	DB	'The single letter commands may also be used on the',CR,LF
+	DB	'command line when the program is initially executed.'
+	DB	CR,LF,LF,0
+;
+	CALL	NXTSCRN
+;
+	CALL	ILPRT
+	DB	'               Three Letter Commands',CR,LF,LF
+	DB      'CPM - Exit from this program to CP/M',CR,LF
+	DB      'DIR - List directory and space free (may specify drive)'
+	DB	CR,LF
+	DB	'ERA - Erase file (may specify drive)',CR,LF
+	DB	'LOG - Change default drive/user (specify drive/user)'
+	DB	CR,LF
+	DB	'      and reset disks.  e.g. LOG A0, LOG B (user unchanged)'
+	DB	CR,LF
+	DB	'FOP - Display commands for setting terminal mode file',CR,LF
+	DB	'      output parameters',CR,LF,0
+;
+	TEST	DISCFLG,0FFH
+	JZ	NODISC
+	CALL	ILPRT
+	DB	'DSC - Disconnect the modem from the telephone line',CR,LF,0
+;
+NODISC:
+	TEST	SETUPTST,0FFH
+	JNZ	NOTIME
+	CALL	ILPRT
+	DB	'TIM - Set S mode time-to-send message',CR,LF,0
+;
+NOTIME:
+	MOV	AL,TOGGLECRC
+	OR	AL,AL
+	JZ	NOTOGCRC
+	CALL	ILPRT
+	DB	'TCC - Toggle Checksum/CRC mode on receive',CR,LF,0
+;
+NOTOGCRC:
+	TEST	TOGGLEBK,0FFH
+	JZ	NOTOGBK
+	CALL	ILPRT
+	DB	'TBR - Toggle backspace to rub conversion',CR,LF,0
+;
+NOTOGBK:
+	TEST	TOGGLELOC,0FFH
+	JZ	NOTOGLOC
+	CALL	ILPRT
+	DB	'TLC - Toggle  1) local command immediate',CR,LF
+	DB	'              2) local command after ',0
+	MOV	AL,EXTCHR
+	CALL	SHFTYPE
+	DB	CR,LF,0
+;
+NOTOGLOC:
+	MOV	AL,TOGGLELF
+	OR	AL,AL
+	JZ	NOTOGLF
+	CALL	ILPRT
+	DB	'TLF - Toggle send linefeed after carriage return',CR,LF,0
+;
+NOTOGLF:
+	CALL	ILPRT
+	DB	'NUM - List remote systems',CR,LF,0
+	MOV	AL,SETUPTST
+	OR	AL,AL
+	JZ	NOSETUP
+	CALL	ILPRT
+	DB	'SET - Set communication ports',CR,LF,0
+;
+NOSETUP:
+	MOV	AL,LF
+	CALL	TIPE
+	CALL	ILPRT
+	DB	'    The following are terminal text buffer commands:'
+	DB	CR,LF,0
+	CALL	ILPRT
+	DB      'DEL - Delete memory buffer and file',CR,LF
+	DB      'NOL - Return to terminal mode - no loss of data in buffer'
+	DB	CR,LF
+	DB      'WRT - Write memory buffer to disk file',CR,LF,LF,0
+	CALL	NXTSCRN
+;
+	CALL	ILPRT
+	DB	'      Local Commands while in Terminal Mode',CR,LF,LF,0
+	MOV	AL,BAUDCHR		;				@DH
+	CALL	SHFTYPE			;				@DH
+	DB	'  - Change baud rate from terminal mode',CR,LF,LF,0 ;	@DH
+	MOV	AL,EXITCHR
+	CALL	SHFTYPE
+	DB	'  - Exit to command mode',CR,LF,LF,0
+	MOV	AL,TRANLOGON
+	OR	AL,AL
+	JZ	NOTRANLOG
+	MOV	AL,LOGCHR
+	CALL	SHFTYPE
+	DB	'  - Transmit string',CR,LF
+	DB	'     Must be followed by number of string (0-9)',CR,LF
+	DB	'     or L to display list of strings',CR,LF,LF,0
+;
+NOTRANLOG:
+	TEST	LSTTST,0FFH
+	JZ	NOLST2
+	MOV	AL,LSTCHR
+	CALL	SHFTYPE
+	DB	'  - Toggle printer',CR,LF,0
+;
+NOLST2:
+	MOV	AL,LF
+	CALL	TIPE
+	MOV	AL,SAVECHR
+	CALL	SHFTYPE
+	DB	'  - Start copy into buffer',CR,LF,0
+	MOV	AL,UNSAVECHR
+	CALL	SHFTYPE
+	DB      '  - Stop copy into buffer',CR,LF
+	DB	'     Start & Stop may be toggled as often as desired.',CR,LF
+	DB	'     A ":" at start of line indicates buffer is open.',CR,LF
+	DB	'     XOFF automatically used to stop input when writing',CR,LF
+	DB	'     full buffer to disk, XON sent to resume.',CR,LF,LF,0
+	MOV	AL,TRANCHR
+	CALL	SHFTYPE
+	DB	'  - Transfer ASCII file to remote',CR,LF,LF,0
+	MOV	AL,LOCONEXTCHR
+	OR	AL,AL
+	MOV	AL,EXTCHR
+	JNZ	REMDFLT
+	CALL	SHFTYPE
+	DB	'  - Send local control character to remote',CR,LF,0
+	JMP	XPRT
+REMDFLT:
+	CALL	SHFTYPE
+	DB	'  - Next character will be used for local control',CR,LF,0
+;
+XPRT:
+	CALL	ILPRT
+	DB	CR,LF,'Drive ',0
+	MOV	CL,CURDSK			;CURRENT DISK FUNCTION
+	INT	224
+	ADD	AL,'A'				;MAKE ASCII
+	CALL	TIPE
+	CALL	GETUSR				;GET CURRENT USER NUMBER
+	CMP	AL,0
+	JZ	SR3B				;SKIP IF USER 0
+	PUSH	AX
+	CALL	ILPRT
+	DB	', User ',0
+	POP	AX
+	MOV	BH,0
+	MOV	BL,AL
+	CALL	DECOUT				;REPORT USER
+;
+SR3B:
+	CALL	CRLF
+	TEST	NFILFLG,0FFH
+	JNZ	NOBUFMSG
+	CALL	GETSPC
+	CALL	ILPRT
+	DB	' bytes of buffer free',CR,LF,0
+NOBUFMSG:	
+	CALL	ILPRT
+	DB	'COMMAND (H for Help): ',0
+GETCMD:
+	MOV	DX,OFFSET CMDBUF		;ENTER COMMAND
+	CALL	INBUFF
+	CALL	CRLF
+	MOV	DX,OFFSET CMDBUF+2 		;POINT TO COMMAND
+	CALL	ILCOMP
+	DB	'CPM',0
+	JC	GETCMD1
+	JMP	EXIT
+
+GETCMD1:
+	CALL	ILCOMP
+	DB	'LOG',0
+	JC	GETCMD2
+	JMP	LOGNEW
+
+GETCMD2:
+	CALL	ILCOMP
+	DB	'DIR',0
+	JC	GETCMD3
+	JMP	DIR
+
+GETCMD3:
+	CALL	ILCOMP
+	DB	'ERA',0
+	JC	GETCMD4
+	JMP	ERASEF
+
+GETCMD4:
+	CALL	ILCOMP
+	DB	'DSC',0
+	JC	GETCMD5
+	JMP	DISC
+
+GETCMD5:
+	CALL	ILCOMP
+	DB	'?',0
+	JC	GETCMD6
+	JMP	CURPAR
+
+GETCMD6:
+	CALL	ILCOMP
+	DB	'SPD',0
+	JC	GETCMD7
+	JMP	SETSPD
+
+GETCMD7:
+	CALL	ILCOMP
+	DB	'FOP',0
+	JC	GETCMD8
+	JMP	TFOMENU
+
+GETCMD8:
+	CALL	ILCOMP
+	DB	'TIM',0
+	JC	GETCMD9
+	JMP	SETTIM
+
+GETCMD9:
+	CALL	ILCOMP
+	DB	'TCC',0
+	JC	GETCMD10
+	JMP	TOGCRC
+
+GETCMD10:
+	CALL	ILCOMP
+	DB	'TBR',0
+	JC	GETCMD11
+	JMP	TOGBKSP
+
+GETCMD11:
+	CALL	ILCOMP
+	DB	'TLC',0
+	JC	GETCMD12
+	JMP	TOGLOC
+
+GETCMD12:
+	CALL	ILCOMP
+	DB	'TLF',0
+	JC	GETCMD13
+	JMP	TOGLF
+
+GETCMD13:
+	CALL	ILCOMP
+	DB	'TSL',0
+	JC	GETCMD14
+	JMP	TOGSTL
+
+GETCMD14:
+	CALL	ILCOMP
+	DB	'TXF',0
+	JC	GETCMD15
+	JMP	TOGTXOFF
+
+GETCMD15:
+	CALL	ILCOMP
+	DB	'TXN',0
+	JC	GETCMD16
+	JMP	TOGTXON
+
+GETCMD16:
+	CALL	ILCOMP
+	DB	'TWE',0
+	JC	GETCMD17
+	JMP	TOGWECH
+
+GETCMD17:
+	CALL	ILCOMP
+	DB	'TEF',0
+	JC	GETCMD18
+	JMP	TOGTEOF
+
+GETCMD18:
+	CALL	ILCOMP
+	DB	'NUM',0
+	JC	GETCMD19
+	JMP	NUMPRN
+
+GETCMD19:
+	MOV	AL,SETUPTST
+	OR	AL,AL
+	JZ	NOSETUP2
+	CALL	ILCOMP
+	DB	'SET',0
+	JC	NOSETUP2
+	JMP	SETUPENT
+
+NOSETUP2:
+	CALL	ILCOMP
+	DB	'NOL',0
+	JC	NXTOPT1		;CARRY SET = NO MATCH
+	MOV	AL,NFILFLG
+	OR	AL,AL
+	JZ	NOSETUP3
+	JMP	NOFILOPN	;GO TELL OPERATOR IF NO FILE OPEN
+
+NOSETUP3:
+	CALL	BUFMSG
+	MOV	BX,HLSAVE	;RETURN TO TERMINAL..
+	JMP	TERM		;..MODE WITH SAVE OPTION..
+				;..IF PREVIOUSLY ENABLED.
+;
+NXTOPT1:
+	CALL	ILCOMP
+	DB	'WRT',0
+	JC	NXTOPT2
+	JMP	WRTFIL
+
+NXTOPT2:
+	CALL	ILCOMP
+	DB	'DEL',0
+	JC	NXTOPT3
+	JMP	NEWFILE
+
+NXTOPT3:
+	PUSH	BX
+	MOV	AL,CMDBUF+2
+	MOV	BX,OFFSET COMPLIST
+	CALL	COMPARE			;COMPARES LIST POINTED TO BY HL..
+	POP	BX			;..TO CHAR IN A-REG.
+	JC	NOTVLD			;CARRY SET = NO MATCH
+DOOPT:
+	PUSH	BX			;LOAD ORIGINAL FCB WITH TRANSFER..
+	CALL	SETFCB			;..CMDS AND GO TO BEGINNING OF..
+	POP	BX			;..PROGRAM. WILL FOLLOW SAME LOGIC..
+	JMP	RESTART			;..AS IF PROGRAM WERE CALLED WITH..
+					;..CP/M COMMAND LINE.
+;
+NOTVLD:
+	CALL	NOTVLDMSG
+	JMP	XPRT
+;
+NOTVLDMSG:
+	CALL	ILPRT
+	DB	'++ Invalid Command ++',CR,LF,BELL,0
+	RET
+;
+DIR:
+	MOV	CL,CURDSK
+	INT	224
+	MOV	DISKSAV,AL
+	CALL	DIRLST
+	MOV	DL,DISKSAV
+	MOV	CL,SELDSK
+	INT	224
+	JMP	XPRT
+;
+LOGNEW:
+	TEST	NFILFLG,0FFH
+	JNZ	LOGNEW1
+	JMP	NORESET
+
+LOGNEW1:
+	MOV	AL,CMDBUF+6
+	CMP	AL,' '
+	JNZ	SPECIFD
+	MOV	CL,CURDSK
+	INT	224
+	ADD	AL,'A'
+SPECIFD:
+	SUB	AL,'A'
+	MOV	DISKSAV,AL
+	CMP	AL,16
+	JC	SPECIFD1
+	JMP	NOTVLD
+
+SPECIFD1:
+	MOV	AL,CMDBUF+7	;GET NEW USER NUMBER
+	CMP	AL,' '		;CHECK FOR SPACE
+	JZ	SR7A		;EXIT IF NO NEW USER NUMBER SPECIFIED
+	CALL	NUMCHK		;CHECK TO SEE IF IT IS A NUMBER
+	MOV	CH,AL		;SAVE
+	MOV	AL,CMDBUF+8	;GET SECOND DIGIT
+	CMP	AL,' '
+	JZ	SR7B		;GO IF SPACE
+	CALL	NUMCHK
+	MOV	CL,AL		;SAVE
+	MOV	AL,CH		;GET SAVED FIRST DIGIT
+	ADD	AL,AL		; X2
+	ADD	AL,AL		; X4
+	ADD	AL,AL		; X8
+	ADD	AL,CH		; X9
+	ADD	AL,CH		; X10
+	ADD	AL,CL
+	CMP	AL,16		;CHECK FOR < 16
+	JC	SPECIFD2
+	JMP	NOTVLD		;GO IF NOT
+
+SPECIFD2:
+	MOV	CH,AL
+SR7B:
+	PUSH	CX
+	CALL	GETUSR
+	POP	CX		;RESTORE SELECTED USER
+	CMP	AL,CH		;AND COMPARE THEM
+	JZ	SR7A		;EXIT IF UNCHANGED
+	MOV	DL,CH		;ELSE SET NEW USER
+	CALL	SETUSR
+;
+SR7A:
+	CALL	ILPRT
+	DB	'Insert disk for drive ',0
+	MOV	AL,DISKSAV
+	ADD	AL,'A'
+	CALL	TIPE
+NOTCR:
+	CALL	ILPRT
+	DB	CR,LF,'Hit return when ready',0
+	CALL	KEYIN
+	CMP	AL,CR
+	JNZ	NOTCR
+	CALL	CRLF
+	MOV	CL,RESET
+	INT	224	
+	MOV	DL,DISKSAV
+	MOV	CL,SELDSK
+	INT	224
+	JMP	XPRT
+;
+GETUSR:
+	MOV	DL,0FFH		;GET CURRENT USER
+SETUSR:
+	MOV	CL,USER		;SET-UP FUNCTION CALL
+	INT	224		;NUMBER IN RETURNED IN A
+	RET
+;
+NORESET:
+	CALL	ILPRT
+	DB	'++      Terminal mode file open      ++',CR,LF
+	DB	'++ Use WRT or DEL before LOG command ++',CR,LF
+	DB	CR,LF,LF,BELL,0
+	XOR	AL,AL
+	JMP	XPRT
+;
+ERASEF:
+	MOV	DX,OFFSET CMDBUF 		;PUT CMD LINE INTO FCB AT HL
+	MOV	BX,OFFSET FCB
+	CALL	CPMLINE
+	CALL	MOVEFCB				;MOVE FCB+16 TO FCB
+	CMP	BYTE PTR .FCB+1,' '
+	JNZ 	ERASEF1
+	JMP	NOTVLD				;GO IF NO FILE SPECIFIED
+
+ERASEF1:
+	MOV	DX,OFFSET FCB
+	MOV	CL,SRCHF
+	INT	224
+	INC	AL				;0 IF FILE NOT FOUND
+	JNZ	ERAFILE 			;OK, GO ERASE
+	CALL	ILPRT
+	DB	'++ File not found ++',CR,LF,BELL,0
+	JMP	XPRT
+;
+ERAFILE:
+	MOV	DX,OFFSET FCB
+	MOV	CL,ERASE
+	INT	224
+	CALL	ILPRT
+	DB	'File erased',CR,LF,0
+	JMP	XPRT
+;
+DISC:
+	MOV	AL,DISCFLG
+	OR	AL,AL
+	JNZ	DISC1
+	JMP	NOTVLD
+
+DISC1:
+	CALL	DISCR
+	CALL	ILPRT
+	DB	'** Disconnected **',CR,LF,BELL,0
+	JMP	XPRT
+;
+SETSPD:
+	CALL	ILPRT
+	DB	'Enter character output delay [0(none) - 9(longest delay)]: ',0
+	CALL	NUMGET
+	JNC	NOCHG1
+	MOV	BYTDLY,AL
+NOCHG1:
+	CALL	SPDMSG
+	CALL	ILPRT
+	DB	CR,LF,'Enter additional delay after <CR> [0-9]: ',0
+	CALL	NUMGET
+	JNC	NOCHG2
+	ROL	AL,1		;X2
+	ROL	AL,1		;X4
+	MOV	CRDLY,AL
+NOCHG2:
+	CALL	CRDLYMSG
+	JMP	XPRT
+;
+NUMGET:
+	MOV	DX,OFFSET CMDBUF
+	CALL	INBUFF
+	MOV	AL,CMDBUF+2 	;GET NUMBER
+	CMP	AL,' '
+	JZ	NUMCHKRT
+NUMCHK:
+	SUB	AL,'0'
+	CMP	AL,10
+	JC	NUMCHKRT
+	POP	AX		;PRESERVE STACK
+	JMP	NOTVLD
+
+NUMCHKRT:
+	RET
+;
+SPDMSG:
+	CALL	ILPRT
+	DB	'Terminal mode file output delay is 0.',0
+	MOV	AL,BYTDLY
+	CALL	GIVNUM
+	CALL	ILPRT
+	DB	' seconds per character',CR,LF,0
+	RET
+;
+CRDLYMSG:
+	CALL	ILPRT
+	DB	'Additional delay after <CR> is 0.',0
+	MOV	AL,CRDLY
+	CALL	GIVNUM
+	CALL	ILPRT
+	DB	' seconds',CR,LF,0
+	RET
+;
+GIVNUM:
+	ADD	AL,AL		;2X
+	CMP	AL,10
+	MOV	CH,AL
+	JNC	NOZERO
+	MOV	AL,'0'
+	CALL	TIPE
+	MOV	AL,CH
+NOZERO:
+	PUSH	BX
+	MOV	BL,AL
+	MOV	BH,0
+	CALL	DECOUT
+	POP	BX
+	RET
+;
+;Routine to change baud rate from terminal mode       30/DEC/84		@DH
+;
+BAUDCHG:				;				@DH
+	PUSH	BX			;				@DH
+	PUSH	DX			;				@DH
+	PUSH	CX			;				@DH
+	PUSH	AX			;				@DH
+	CALL	CLRSCRN			;				@DH
+	CALL	ILPRT			;				@DH
+	DB	CR,LF,LF		;				@DH
+	DB	'  Select 0 - 8 for new baud rate'	;		@DH
+	DB	CR,LF,LF		;				@DH
+	DB	'  0 = 110 bps          5 = 2400 bps',CR,LF,LF	;	@DH
+	DB	'  1 = 300 bps          6 = 4800 bps',CR,LF,LF	;	@DH
+	DB	'  2 = 450 bps          7 = 9600 bps',CR,LF,LF	;	@DH
+	DB	'  3 = 600 bps          8 = 19200 bps',CR,LF,LF	;	@DH
+	DB	'  4 = 1200 bps',CR,LF,LF			;	@DH
+	DB	'  Enter selection (0 - 8 or <CR> for no change): ',0;	@DH
+;
+	CALL	NUMGET
+	CMP	AL,' '			;				@DH
+	JNZ	BAUD0			;				@DH
+	JMP	RETURN			;				@DH
+;
+BAUD0:	CMP	AL,9			;				@DH
+;	CMP	AL,8			;				@DH
+	JC	BAUD1			;				@DH
+	JMP	BAUDCHG			;				@DH
+;
+BAUD1:					;				@DH
+	MOV	MSPEED,AL		;				@DH
+	CALL	CLRSCRN			;				@DH
+	CALL	ILPRT			;				@DH
+	DB	CR,LF,LF		;				@DH
+	DB	'New Modem speed is ',0	;				@DH
+	CALL	BAUDPRT			;				@DH
+	CALL	INITMOD			;				@DH
+	JMP	RETURN			;				@DH
+;
+SETTIM:
+	MOV	AL,SETUPTST
+	OR	AL,AL
+	JZ	SETTIM1
+	JMP	NOTVLD
+
+SETTIM1:
+	CALL	CLRSCRN			;				@DH
+	CALL	ILPRT
+	DB	CR,LF,LF			;				@DH
+	DB	'Use 0-8 to give baud rate for S mode time-to-send message,'
+	DB	CR,LF
+	DB	'where 0=110, 1=300, 2=450, 3=600, 4=1200, 5=2400',CR,LF ;@DH
+	DB	'6=4800, 7=9600 and 8=19200 baud',CR,LF,LF,'Enter value: ',0;@DH
+;	DB	'where 0=110, 1=300, 2=600, 3=1200, 4=2400',CR,LF	;@DH
+;	DB	'5=4800, 6=9600 and 7=19200 baud',CR,LF,LF,'Enter value: ',0;@DH
+	CALL	NUMGET
+	CMP	AL,9			;				@DH
+;	CMP	AL,8			;				@DH
+	JC	SETTIM1A
+	JMP	NOTVLD
+;
+SETTIM1A:
+	MOV	MSPEED,AL
+	CALL	SETTIM2
+	JMP	XPRT
+;
+SETTIM2:
+	MOV	AL,SETUPTST
+	OR	AL,AL
+	JNZ	SETTIM3
+	CALL	ILPRT
+	DB	'Rate for the S mode time-to-send message is set to ',0
+	JMP	SETTIM4
+;
+SETTIM3:
+	CALL	ILPRT
+	DB	'Modem speed is ',0
+SETTIM4:
+	CALL	BAUDPRT
+	RET
+;
+;Shows baud rates set for 'time to send' file transfer.
+;
+BAUDPRT:
+	MOV	BX,OFFSET BAUDSPD
+	MOV	DH,0
+	MOV	AL,MSPEED		;GET BAUD RATE CODE
+	ADD	AL,AL			;X2
+	MOV	DL,AL
+	ADD	BX,DX			;POINT TO CORRECT RATE
+	MOV	AL,BYTE PTR [BX]	 ; GET FIRST DIGIT
+	CALL	TIPE
+	INC	BX
+	MOV	AL,BYTE PTR [BX] 	; GET SECOND DIGIT
+	CALL	TIPE
+	MOV	AL,MSPEED
+;	CMP	AL,7			;				@DH
+	CMP	AL,8			;FOR ADDITION OF 19200 BAUD RATE @DH
+	JC	NOTFAST
+	INC	BX
+	MOV	AL,Byte Ptr [BX] 	;Get third digit
+	CALL	TIPE
+NOTFAST:
+	MOV	AL,MSPEED		;CHECK FOR GREATER THAN 1000
+	CMP	AL,4			;FOR ADDITION OF 450 BAUD RATE	@DH
+;	CMP	AL,3			;				@DH
+	JC	NOTHOU			;GO IF LESS
+	MOV	AL,'0'			;PRINT EXTRA 0
+	CALL	TIPE
+NOTHOU:
+	CALL	ILPRT
+	DB	'0 baud',CR,LF,0
+	RET
+;					;added 450 and 19200 baud rates @DH
+BAUDSPD		DB	'11','30','45','60','12','24','48','96','192';  @DH  
+;BAUDSPD	DB	'11','30','60','12','24','48','96','192';	@DH
+;
+TOGCRC:
+	MOV	AL,TOGGLECRC
+	OR	AL,AL
+	JNZ	TOGCRC1
+	JMP	NOTVLD
+TOGCRC1:
+	MOV	AL,CKSUMDFLT
+	NOT	AL
+	MOV	CKSUMDFLT,AL
+	CALL	TOGCRC2
+	JMP	XPRT
+;
+TOGCRC2:
+	OR	AL,AL
+	JNZ	CHEKMSG
+	CALL	ILPRT
+	DB	'CRC mode set',CR,LF,0
+	RET
+;
+CHEKMSG:
+	CALL	ILPRT
+	DB	'Checksum mode set',CR,LF,0
+	RET
+;
+TOGBKSP:
+	MOV	AL,TOGGLEBK
+	OR	AL,AL
+	JNZ	TEMP8
+	JMP	NOTVLD
+TEMP8:
+	MOV	AL,CONVBKSP
+	NOT	AL
+	MOV	CONVBKSP,AL
+	CALL	TOGBKSP2
+	JMP	XPRT
+;
+TOGBKSP2:
+	TEST	CONVBKSP,0FFH
+	JZ	NORUBMSG
+	CALL	ILPRT
+	DB	'Backspace is rub',CR,LF,0
+	RET
+;
+NORUBMSG:
+	CALL	ILPRT
+	DB	'Backspace is backspace',CR,LF,0
+	RET
+;
+TOGLOC:
+	MOV	AL,TOGGLELOC
+	OR	AL,AL
+	JNZ	TOGLOC1
+	JMP	NOTVLD
+
+TOGLOC1:
+	NOT	LOCONEXTCHR
+	CALL	TOGLOC2
+	JMP	XPRT
+;
+TOGLOC2:
+	CALL	ILPRT
+	DB	'Use ',0
+	MOV	AL,LOCONEXTCHR
+	OR	AL,AL
+	MOV	AL,EXTCHR
+	JZ	LOCMSG
+	CALL	SHFTYPE
+	DB	' before local command',CR,LF,0
+	RET
+;
+LOCMSG:
+	CALL	SHFTYPE
+	DB	' to send local command to remote',CR,LF,0
+	RET
+;
+TOGLF:
+	MOV	AL,TOGGLELF
+	OR	AL,AL
+	JNZ	TOGLF1
+	JMP	NOTVLD
+
+TOGLF1:
+	NOT	ADDLF
+	CALL	TOGLF2
+	JMP	XPRT
+;
+TOGLF2:
+	CALL	ILPRT
+	DB	'Linefeed ',0
+	MOV	AL,ADDLF
+	OR	AL,AL
+	JNZ	LFMSG
+	CALL	ILPRT
+	DB	'NOT ',0
+LFMSG:
+	CALL	ILPRT
+	DB	'sent after <CR>',CR,LF,0
+	RET
+;
+TOGSTL:
+	MOV	AL,TOGSLF
+	OR	AL,AL
+	JNZ	TOGSTL1
+	JMP	NOTVLD
+
+TOGSTL1:
+	NOT	STRLF
+	CALL	TOGSTL2
+	JMP	XPRT
+;
+TOGSTL2:
+	CALL	ILPRT
+	DB	'Linefeed ',0
+	MOV	AL,STRLF
+	OR	AL,AL
+	JZ	SLFMSG
+	CALL	ILPRT
+	DB	'NOT ',0
+SLFMSG:
+	CALL	ILPRT
+	DB	'sent after <CR> in terminal mode file output',CR,LF,0
+	RET
+;
+TOGTXOFF:
+	MOV	AL,TOGXOFF
+	OR	AL,AL
+	JNZ	TOGTXOFF1
+	JMP	NOTVLD
+
+TOGTXOFF1:
+	CALL	ILPRT
+	DB	'Use XOFF testing? (Y/N): ',0
+	CALL	GETANS
+	JC	NOCHG3
+	MOV	XOFFTST,AL
+NOCHG3:
+	CALL	XOFFMSG
+	MOV	AL,XOFFTST
+	OR	AL,AL
+	JNZ	NOCHG3A
+	JMP	XPRT
+
+NOCHG3A:
+	NOT	AL
+	MOV	XONWAIT,AL
+	MOV	ECHWAIT,AL
+	CALL	THEREF
+	CALL	XONMSG
+	CALL	ECHMSG
+	JMP	XPRT
+;
+TOGTXON:
+	CALL	ILPRT
+	DB	'Use XON waiting after <CR> (Y/N): ',0
+	CALL	GETANS
+	JC	NOCHG4
+	MOV	XONWAIT,AL
+NOCHG4:
+	CALL	XONMSG
+	MOV	AL,XONWAIT
+	OR	AL,AL
+	JNZ	NOCHG4A
+	JMP	XPRT
+
+NOCHG4A:
+	NOT	AL
+	MOV	XOFFTST,AL		;DON'T ALLOW BOTH
+	MOV	ECHWAIT,AL
+	CALL	THEREF
+	CALL	XOFFMSG
+	CALL	ECHMSG
+	JMP	XPRT
+;
+TOGWECH:
+	CALL	ILPRT
+	DB	'Use echo waiting before transmitting next character (Y/N): ',0
+	CALL	GETANS
+	JC	NOCHG5
+	MOV	ECHWAIT,AL
+NOCHG5:
+	CALL	ECHMSG
+	MOV	AL,ECHWAIT
+	OR	AL,AL
+	JNZ	NOCHG5A
+	JMP	XPRT
+
+NOCHG5A:
+	NOT	AL
+	MOV	XOFFTST,AL
+	MOV	XONWAIT,AL
+	CALL	THEREF
+	CALL	XOFFMSG
+	CALL	XONMSG
+	JMP	XPRT
+;
+ECHMSG:	CALL	ILPRT
+	DB	'Waiting for character echo ',0
+	MOV	AL,ECHWAIT
+	OR	AL,AL
+	JNZ	ECHMSG2
+	CALL	ILPRT
+	DB	'NOT ',0
+ECHMSG2:
+	CALL	ILPRT
+	DB	'used in terminal mode file output',CR,LF,0
+	RET
+;
+GETANS:
+	MOV	DX,OFFSET CMDBUF
+	CALL	INBUFF
+	MOV	AL,CMDBUF+2 			;GET ANSWER
+	CMP	AL,' '
+	CMC
+	JZ	GETANSRT
+	MOV	CH,AL
+	CMP	AL,'N'
+	MOV	AL,FALSE
+	JZ	GETANSRT
+	MOV	AL,CH
+	CMP	AL,'Y'
+	MOV	AL,TRUE
+	JZ	GETANSRT
+	POP	AX			;PRESERVE STACK
+	JMP	NOTVLD
+GETANSRT:
+	RET
+;
+THEREF:
+	CALL	ILPRT
+	DB	'Therefore -',CR,LF,0
+	RET
+;
+XOFFMSG:
+	CALL	ILPRT
+	DB	'XOFF testing ',0
+	MOV	AL,XOFFTST
+	OR	AL,AL
+	JNZ	XOTSTON
+	CALL	ILPRT
+	DB	'NOT ',0
+XOTSTON:
+	CALL	ILPRT
+	DB	'used',0
+XONMSG3:
+	CALL	ILPRT
+	DB	' in terminal mode file output',CR,LF,0
+	RET
+;
+XONMSG:
+	CALL	ILPRT
+	DB	'XON ',0
+	MOV	AL,XONWAIT
+	OR	AL,AL
+	JNZ	XONMSG2
+	CALL	ILPRT
+	DB	'NOT ',0
+XONMSG2:
+	CALL	ILPRT
+	DB	'automatically tested after <CR>',0
+	JMP	XONMSG3
+;
+SETUPENT:
+	MOV	AL,SETUPTST
+	OR	AL,AL
+	JNZ	SETUPENT1
+	JMP	NOTVLD
+SETUPENT1:
+	CALL	SETUPR
+	JMP	XPRT
+;
+NEWFILE:
+	MOV	AL,NFILFLG
+	OR	AL,AL
+	JNZ	NOFILOPN	
+	MOV	AL,FCB3+1		;CHECK THAT FILE WAS REQUESTED
+	CMP	AL,' '
+	JZ	NOFILOPN		;IF NO FILE, DON'T ERASE
+	MOV	DX,OFFSET FCB3
+	MOV	CL,ERASE
+	CALL	BDOSRT
+	MOV	AL,TRUE			;DO NOT ALLOW TERMINAL..
+	MOV	NFILFLG,AL		;..SAVE SINCE NO FILE..
+	NOT	AL			;..SPECIFIED.
+	MOV	SAVEFLG,AL
+	MOV	BX,OFFSET FCB3
+	CALL	INITFCBS
+	MOV	BX,OFFSET BOTTRAM
+	MOV	HLSAVE,BX
+	JMP	XPRT
+;
+WRTFIL:
+	CMP	NFILFLG,TRUE
+	JZ	NOFILOPN
+	MOV	AL,FCB3+1		;CHECK THAT FILE WAS REQUESTED
+	CMP	AL,' '
+	JZ	NOFILOPN
+	MOV	BX,HLSAVE
+	CALL	NUMRECS			;DISK WRITE ROUTINE AS USED IN..
+	CALL	WRTDSK			;..IN THE INTDSKSV ROUTINE.
+	CALL	CLOSE3
+	MOV	NFILFLG,TRUE
+	MOV	SAVEFLG,FALSE
+	MOV	BX,OFFSET FCB3
+	CALL	INITFCBS	 		;BLANK OUT FCB SO WRITTEN..
+						;..FILE CAN'T BE ERASED
+	MOV	BX,OFFSET BOTTRAM
+	MOV	HLSAVE,BX
+	JMP	XPRT
+;
+NOFILOPN:
+	CALL	ILPRT
+	DB	'++ No File Open ++',CR,LF,BELL,0
+	JMP	XPRT
+;
+COMPARE:
+	MOV	CH,BYTE PTR [BX]	;COMPARES A-REG WITH LIST..
+COMPLP:
+	INC	BX			;..ADDRESSED BY HL. FIRST ELEMENT..
+	CMP	AL,BYTE PTR [BX]	;..OF LIST MUST BE NUMBER OF ELEMENTS..
+	JZ	VALID			;..BEING COMPARED. RETURNS WITH..
+	DEC	CH			;..CARRY SET IF A-REG DOES NOT..
+	JNZ	COMPLP			;.. CONTAIN AN ELEMENT IN LIST.
+	STC
+VALID:
+	RET
+;
+NXTSCRN:
+	CALL    ILPRT
+	DB	'HIT any KEY to CONTINUE',0
+NOKEY1:
+	CALL	STAT				;GET KEYBOARD STATUS
+	JZ	NOKEY1				;KEEP LOOPING UNTIL KEYPRESS
+	CALL	KEYIN				;GOBBLE UP KEYPRESS
+	CALL	CLRTST
+	RET
+;
+CLRTST:
+	TEST	SCRNTEST,0FFH
+	JZ	LOTSALF
+	CALL	CLRSCRN
+	RET
+;
+LOTSALF:
+	MOV	AL,CR
+	CALL	TIPE
+	MOV	CH,12
+	MOV	AL,LF
+LFLOOP:
+	CALL	TIPE
+	DEC	CH
+	JNZ	LFLOOP
+	RET	
+;
+CURPAR:
+	CALL	CLRTST
+	CALL	ILPRT
+	DB	'                Current Settings',CR,LF,LF,LF,0
+	MOV	AL,CKSUMDFLT
+	CALL	TOGCRC2
+	MOV	AL,LSTTST
+	OR	AL,AL
+	JZ	NOLST3
+	CALL	LSTMSG
+NOLST3:
+	CALL	DETCAR
+	CALL	SETTIM2
+	CALL	TOGBKSP2
+	CALL	TOGLF2
+	CALL	TOGLOC2
+	CALL	ILPRT
+	DB	'Terminal mode file buffer is ',0
+	TEST	NFILFLG,0FFH
+	JZ	ACTIVE
+	CALL	ILPRT
+	DB	'in',0
+ACTIVE:
+	CALL	ILPRT
+	DB	'active',CR,LF,'Unused portion of buffer is ',0
+	CALL	GETSPC
+	CALL	ILPRT
+	DB	' bytes',CR,LF,0
+	TEST	SETUPTST,0FFH
+	JZ	NOSETP
+	CALL	GIVEPRM
+NOSETP:
+	CALL	TOGSTL2
+	CALL	TOGTEOF2
+	CALL	XOFFMSG
+	CALL	XONMSG
+	CALL	ECHMSG
+	CALL	SPDMSG
+	CALL	CRDLYMSG
+	CALL	CRLF
+	JMP	XPRT
+;
+GETSPC:
+	CALL	GETMAX
+	MOV	CH,AL
+	MOV	BX,HLSAVE
+	STC
+	CMC
+	MOV	AL,0
+	SBB	AL,BL
+	MOV	BL,AL
+	MOV	AL,CH
+	SBB	AL,BH
+	MOV	BH,AL
+	CALL	DECOUT
+	RET
+;
+TFOMENU:
+	CALL	CLRTST
+	CALL	ILPRT
+	DB	'     Commands for Setting Terminal Mode File Output'
+	DB	' Parameters',CR,LF,LF,LF
+	DB	'SPD - Set speed of file output',CR,LF
+	DB	'TEF - Toggle transmission of end-of-file character',CR,LF,0
+	MOV	AL,TOGSLF
+	OR	AL,AL
+	JZ	NOTOGSLF
+	CALL	ILPRT
+	DB	'TSL - Toggle stripping linefeeds',CR,LF
+	DB	'TWE - Toggle wait for character echo',CR,LF,0
+;
+NOTOGSLF:
+	TEST	TOGXOFF,0FFH
+	JZ	NOTOGXOFF
+	CALL	ILPRT
+	DB	'TXF - Toggle XOFF testing',CR,LF
+	DB	'TXN - Toggle XON waiting after <CR>',CR,LF,LF,LF,0
+;
+NOTOGXOFF:
+	JMP	XPRT
+;	
+TOGTEOF:
+	NOT	EOFSEND
+	CALL	TOGTEOF2
+	JMP	XPRT
+;
+TOGTEOF2:
+	CALL	ILPRT
+	DB	'End-of-file character ',0
+	TEST	EOFSEND,0FFH
+	JNZ	EOFMSG
+	CALL	ILPRT
+	DB	'NOT ',0
+EOFMSG:
+	CALL	ILPRT
+	DB	'sent in terminal mode file output',CR,LF,0
+	RET
+;
+;
+;THIS ROUTINE DISPLAYS THE PHONE NUMBERS IN THE LIBRARY
+;
+NUMPRN:
+	PUSH	BX
+	CALL	CLRTST
+	CALL	ILPRT
+	DB	'           Library of Phone Numbers of Remote Systems',0
+	MOV	CL,13       			;NUMBER OF LINES TO MOVE
+	MOV	BX,OFFSET NUMBLIB  		;ADDRESS OF SOURCE MEMORY
+	MOV	DX,OFFSET DBUF     		;ADDRESS OF TARGET MEMORY
+	CALL	NEWLINE    			;START WITH CRLF
+	XCHG	BX,DX
+	MOV	BYTE PTR [BX],AL		;+LF
+	XCHG	BX,DX
+	INC	DX   			       ;AND BUMP IT
+NUMPRN1:
+	INC	BX		;SKIP PMMI DIALING LETTER
+	INC	BX		;AND EQUAL SIGN
+	MOV	CH,30		;NUMBER OF BYTES TO MOVE
+	CALL	MOVE		;MOVE TO BUFFER
+	CALL	SPACES		;2 ENTRIES + 3 SPACES = 63 CHARACTERS
+	INC	BX
+	INC	BX
+	MOV	CH,30
+	CALL	MOVE
+	CALL	NEWLINE
+	DEC	CL			;NUMBER OF LINES TO PRINT
+	JZ	NUMPRN2
+	JMP	NUMPRN1
+;
+NEWLINE:				;PUTS CR-LF AT MEMORY POINTED BY 'DE'
+	MOV	AL,CR			;CR
+	XCHG	BX,DX
+	MOV	BYTE PTR [BX],AL
+	MOV	AL,LF			;LF
+	INC	BX			;BUMP POINTER
+	MOV	BYTE PTR [BX],AL	;STORE LF
+	XCHG	BX,DX
+	INC	DX			;BUMP POINTER
+	RET
+;
+SPACES:
+	MOV	AL,20H	;SPACE
+	XCHG	BX,DX
+	MOV	BYTE PTR [BX],AL	;1
+	INC	BX
+	MOV	BYTE PTR [BX],AL	;2
+	INC	BX
+	MOV	BYTE PTR [BX],AL	;3
+	INC	BX
+	XCHG	BX,DX
+	RET
+;
+NUMPRN2:
+	MOV	AL,'$'
+	XCHG	BX,DX
+	MOV	BYTE PTR [BX],AL
+	XCHG	BX,DX
+	MOV	CL,PRINT
+	MOV	DX,OFFSET DBUF		;POINT TO TABLE OF NUMBERS TO PRINT
+	INT	224
+	CALL	CRLF
+	CALL	CRLF
+	POP	BX
+	JMP	XPRT
+;
+;
+;		CONSOLE.A86
+;
+DBIOS		EQU	50	;Access BIOS through BDOS
+DCONSTAT	EQU	2	;BIOS console status
+DCONIN		EQU	3	;BIOS console input
+DCONOUT		EQU	4	;BIOS console out
+DLIST		EQU	5	;BIOS list out
+DLISTST		EQU	15	;BIOS list status
+;	
+;Console I/O routines for MODEM9.xx.
+;
+SHOW:
+	CMP	AL,LF
+	JZ	CTYPE
+	CMP	AL,CR
+	JZ	CTYPE
+	CMP	AL,9
+	JZ	CTYPE
+	CMP	AL,' '
+	JC	SHOWHEX
+	CMP	AL,7FH
+	JC	CTYPE
+SHOWHEX:
+	PUSH	AX
+	MOV	AL,'('
+	CALL	CTYPE
+	POP	AX
+	CALL	HEXO
+	MOV	AL,')'
+	JMP	CTYPE
+;
+CTYPE:
+	PUSH	CX
+	PUSH	DX
+	PUSH	BX
+	MOV	DL,AL
+	MOV	CL,WRCON
+	INT	224
+	POP	BX
+	POP	DX
+	POP	CX
+	RET
+;
+CRLF:
+	PUSH	AX
+	MOV	AL,CR
+	CALL	TIPE
+	MOV	AL,LF
+	CALL	TIPE
+	POP	AX
+	RET
+;
+TIPE:
+	PUSH	SI
+	PUSH	CX
+	PUSH	DX
+	PUSH	BX
+	MOV	Byte Ptr TBLOCK1,AL
+	MOV	CL,DBIOS
+	MOV	DX,Offset TIPEBLOCK
+	INT	224
+	POP	BX
+	POP	DX
+	POP	CX
+	POP	SI
+	RET
+;
+TIPEBLOCK	DB	DCONOUT
+TBLOCK1		DW	0
+		DW	0	
+;
+STAT:
+	PUSH	CX
+	PUSH	DX
+	PUSH	BX
+	MOV	CL,DBIOS
+	MOV	DX,Offset STATBLOCK
+	INT	224
+	POP	BX
+	POP	DX
+	POP	CX
+	OR	AL,AL
+	RET
+;
+STATBLOCK:
+	DB	DCONSTAT
+	DW	0
+	DW	0
+;
+KEYIN:
+	PUSH	CX
+	PUSH	DX
+	PUSH	BX
+KEYIN1:
+	MOV	CL,DBIOS
+	MOV	DX,Offset KEYBLOCK
+	INT	224
+	POP	BX
+	POP	DX
+	POP	CX
+	RET
+;
+KEYBLOCK:
+	DB	DCONIN
+	DW	0
+	DW	0
+;
+LISTER:
+	PUSH	CX
+	PUSH	DX
+	PUSH	BX
+	MOV	CH,0			; MJM 9.01.05
+	MOV	LBLOCK1,CX		; MJM 9.01.05
+	MOV	DX,Offset LSTBLOCK
+	MOV	CL,DBIOS
+	INT	224
+	POP	BX
+	POP	DX
+	POP	CX
+	RET
+;
+LSTBLOCK	DB	DLIST
+LBLOCK1		DW	0
+		DW	0
+;
+LSTSTAT:
+	PUSH	CX
+	PUSH	DX
+	PUSH	BX
+	MOV	DX, OFFSET LSTSTATBLOCK
+	MOV	CL,DBIOS
+	INT	224
+	POP	BX
+	POP	DX
+	POP	CX
+	OR	AL,AL
+	RET
+
+LSTSTATBLOCK:
+	DB	DLISTST
+	DW	0
+	DW	0
+;
+;
+UCASE:
+	CMP	AL,61H		;CHANGES LOWER CASE CHARACTER..
+	JC	UCASERET	;..IN 'AL' REG TO UPPER CASE.
+	CMP	AL,7BH
+	JNC	UCASERET
+	AND	AL,5FH
+UCASERET:
+	RET
+;
+DECOUT:
+	PUSH	AX
+	PUSH	CX
+	PUSH	DX
+	PUSH	BX
+	MOV	CX, -10
+	MOV	DX, -1
+DECOU2:
+	ADD	BX,CX
+	INC	DX
+	JC	DECOU2
+	MOV	CX,OFFSET 10
+	ADD	BX,CX
+	XCHG	BX,DX
+	MOV	AL,BH
+	OR	AL,BL
+	JZ	DECOU3
+	CALL	DECOUT
+DECOU3:
+	MOV	AL,DL
+	ADD	AL,'0'
+	CALL	CTYPE
+	POP	BX
+	POP	DX
+	POP	CX
+	POP	AX
+	RET
+;
+;---->	DHXOUT: - DOUBLE PRECISION HEX OUTPUT ROUTINE.
+;
+DHXOUT:
+	PUSH	BX
+	PUSH	AX
+	MOV	AL,BH		;GET MS BYTE
+	CALL	HEXO		;OUTPUT HIGH ORDER BYTE
+	MOV	AL,BL		;GET LS BYTE
+	CALL	HEXO		;OUTPUT LOW ORDER BYTE
+	POP	AX
+	POP	BX
+	RET
+;
+HEXO:
+	PUSH	AX
+	RCR	AL,1
+	RCR	AL,1
+	RCR	AL,1
+	RCR	AL,1
+	CALL	NIBBL
+	POP	AX
+NIBBL:
+	AND	AL,0FH
+	CMP	AL,10
+	JC	ISNUM
+	ADD	AL,7
+ISNUM:
+	ADD	AL,'0'
+	JMP	TIPE
+;
+SHFTYPE:
+	PUSH	AX
+	CALL	ILPRT
+	DB	'ctrl-',0
+	POP	AX
+	ADD	AL,40H
+	CALL	TIPE
+;
+;WRITE A STRING OF CHARACTERS
+;
+ILPRT:
+	POP	SI
+ILPLP:
+	LODS	BYTE PTR [SI]
+	OR	AL,AL
+	JZ	ILPRET
+;	CALL	TIPE			;				@DH
+	CALL	CTYPE			;CTYPE expands tabs		@DH
+	JMPS	ILPLP
+ILPRET:
+	PUSH	SI
+	RET
+;
+;WRITE A STRING OF CHARACTERS EXCEPT IN QUIET MODE
+;
+ILPRTQ:
+	POP	SI
+ILPLPQ:
+	LODS	BYTE PTR [SI]
+	OR	AL,AL
+	JZ	ILPRETQ
+	TEST	QFLG,0FFH
+	JZ	ILPLPQ1
+;	CALL	TIPE			;				@DH
+	CALL	CTYPE			;CTYPE expands tabs		@DH
+ILPLPQ1:
+	JMPS	ILPLPQ
+ILPRETQ:
+	PUSH	SI
+	RET
+;
+
+;
+;Duplicates 'read buffer' routine same as CP/M function 10,
+;but does not use CTL-C (reason for the routine).  Does
+;allow controls U, R, E and H (backspace).  Outputs bell if
+;the input is greater than the buffer.
+;
+INBUFF:
+	LAHF
+	XCHG	AL,AH
+	PUSH	AX
+	XCHG	AL,AH
+	PUSH	BX
+	PUSH	CX
+	PUSH	DX			;'DX' REGISTERS MUST BE PUSHED LAST
+ISTART:
+	CALL	CLEAR			;CLEAR THE BUFFER AREA
+	POP	DX			;GET ADDRESS OF BUFFER ON RETRIES
+	PUSH	DX			;RESTORE STACK
+	XOR	AL,AL
+	LAHF				;ADDRESS COUNT FIELD
+	INC	DX
+	SAHF
+	MOV	SI,DX			;INITIALIZE WITH A ZERO IN COUNT BYTE
+	MOV	[SI],AL
+	LAHF
+	INC	DX
+	SAHF
+	XCHG	BX,DX			;ADDRESS FIRST BUFFER BYTE WITH 'BX'
+INBUFA:
+	CALL	CONIN
+	CMP	AL,CR			;IS IT A RETURN?
+	JNZ	INBUFA_1	
+	JMP	INBUFR			;IF SO, THEN RETURN
+INBUFA_1:
+	CMP	AL,7FH			;IS IT A DELETE?
+	JZ	DELETE
+	CMP	AL,8			;CTL-H WILL BACKSPACE..
+	JZ	DELETE			;..OVER DELETED CHAR.
+	CMP	AL,'U'-40H		;IS IT A CTL-U
+	JNZ	INBUFA_2	
+	JMP	INBUFO			;OUTPUT # CR-LF AND START OVER
+INBUFA_2:
+	CMP	AL,'R'-40H		;CTL-R RETYPES LINE
+	JNZ	INBUFA_3	
+	JMP	RETYPE
+INBUFA_3:
+	CMP	AL,'E'-40H
+	JNZ	INBUFA_4	
+	JMP	CRLF
+INBUFA_4:
+	CMP	AL,' '			;NO CONTROL CHARACTERS OTHER..
+	JB	INBUFA			;..THAN ABOVE ALLOWED.
+	MOV	CH,AL			;SAVE INPUTTED CHARACTER
+	XCHG	BX,DX			;SAVE 'BX' IN 'DX'
+	POP	BX			;GET ADDRESS OF BUFFER IN 'BX'
+	PUSH	BX			;RESTORE STACK
+	INC	BX			;ADDRESS COUNT BYTE
+	INC	Byte Ptr [BX]		;INCREASE COUNT BYTE
+	DEC	BX			;ADDRESS MAXIMUM
+	MOV	AL,Byte Ptr [BX]	;PUT MAXIMUM IN 'AL'
+	INC	BX			;ADDRESS COUNT
+	CMP	AL,Byte Ptr [BX]	;COMPARE COUNT TO MAXIMUM
+	JNB	INBUFA_5	
+	JMP	ALERT			;IF MAXIMUM, RING BELL AND WAIT FOR CR
+INBUFA_5:
+	XCHG	BX,DX			;RESTORE BUFFER POINTER TO 'BX'
+	MOV	Byte Ptr [BX],CH	;PUT INPUTTED CHARACTER IN BUFFER
+	MOV	AL,CH			;OUTPUT IT
+	CALL	TIPE
+	LAHF				;BUMP POINTER
+	INC	BX
+	SAHF
+	JMPS	INBUFA			;GET NEXT CHARACTER
+;
+DELETE:
+	XCHG	BX,DX			;SAVE BUFFER POINTER IN 'DX'
+	POP	BX			;ADDRESS BEGINNING OF BUFFER
+	PUSH	BX			;RESTORE STACK
+	INC	BX			;ADDRESS COUNT FIELD
+	MOV	CH,AL			;SAVE DELETE CHAR - 7FH OR 08H
+	MOV	AL,Byte Ptr [BX]
+	SUB	AL,1			;DECREASE COUNT
+	MOV	Byte Ptr [BX],AL
+	JB	NODEL			;DON'T DELETE PAST BEGINING OF BUFFER.
+	XCHG	BX,DX			;RESTORE BUFFER POINTER TO 'BX'
+	DEC	BX			;POINT TO LAST BYTE INPUTTED
+	MOV	AL,CH			;GET BACK EITHER 7FH OR 08H
+	MOV	CH,Byte Ptr [BX]	;GET CHARACTER BEING DELETED
+	MOV	Byte Ptr [BX],' '	;RESTORE BLANK
+	CMP	AL,8
+	JZ	BKSPC
+	CMP	AL,7FH
+	JZ	BKSPC0
+	JMP	INBUFA			;GET NEXT CHARACTER
+;
+NODEL:
+	INC	Byte Ptr [BX]		;DON'T LEAVE COUNT NEGATIVE
+	XCHG	BX,DX			;RESTORE POINTER TO 'BX'
+	JMP	INBUFA
+;
+BKSPC0:
+	MOV	AL,08H
+BKSPC:
+	CALL	TIPE			;TRUE ERASE IF 08H
+	MOV	AL,' '
+	CALL	TIPE
+	MOV	AL,8
+	CALL	TIPE
+	JMP	INBUFA
+;
+INBUFO:
+	MOV	AL,'#'
+	CALL	TIPE
+	CALL	CRLF
+	JMP	ISTART
+;
+RETYPE:
+	POP	DX
+	PUSH	DX
+	LAHF				;POINT TO CURRENT NUMBER..
+	INC	DX
+	SAHF
+	MOV	SI,DX			;..OF CHARACTERS.
+	MOV	AL,[SI]
+	MOV	CH,AL
+	MOV	AL,'#'
+	CALL	TIPE
+	CALL	CRLF
+	MOV	AL,CH			;TEST IF ZERO INPUT
+	OR	AL,AL
+	JNZ	CTLRLP	
+	JMP	INBUFA
+CTLRLP:
+	LAHF
+	INC	DX
+	SAHF
+	MOV	SI,DX
+	MOV	AL,[SI]
+	CALL	TIPE
+	DEC	CH
+	JNZ	CTLRLP
+	JMP	INBUFA
+;	
+ALERT:
+	MOV	AL,7
+	CALL	TIPE
+	DEC	Byte Ptr [BX]
+	XCHG	BX,DX
+	JMP	INBUFA
+;
+PCRLF:
+	CALL	CRLF
+	JMP	INBUFA
+;
+INBUFR:
+	CALL	CRLF
+	POP	DX
+	POP	CX
+	POP	BX
+	POP	AX
+	XCHG	AL,AH
+	SAHF
+	RET
+;
+CLEAR:
+	POP	DX			;ACCOUNTS FOR CALL
+	POP	BX			;ADDRESS BUFFER IN 'BX'
+	PUSH	BX			;RESTORE..
+	PUSH	DX			;..STACK
+	MOV	CH,Byte Ptr [BX]	;SAVE MAXIMUM IN 'CH'
+	LAHF				;POINT TO FIRST..
+	INC	BX
+	SAHF
+	LAHF				;..BUFFER BYTE.
+	INC	BX
+	SAHF
+	MOV	AL,' '
+CLEARL:
+	MOV	Byte Ptr [BX],AL
+	LAHF
+	INC	BX
+	SAHF
+	DEC	CH
+	JNZ	CLEARL
+	RET
+;
+CONIN:
+	CALL	KEYIN
+	CMP	AL,61H			;CHANGE TO UPPER..
+	JB	NOUCASE			;..CASE SINCE CP/M..
+	CMP	AL,7BH			;..DOES THE SAME.
+	JNB	NOUCASE
+	AND	AL,5FH
+NOUCASE:
+	RET
+;
+;Parses a CP/M buffer into format same as CP/M command line.
+;
+;Loads a command line addressed by 'DX' registers (max # characters in
+;line in 'DX', number of characters in the line in 'DX'+1, line starts
+;in 'DX'+2) into FCB addressed by 'BX' registers.  The FCB should be at
+;least 33 bytes in length.  The command line buffer must have a maximum
+;length of at least one more than the greatest number of characters
+;that will be needed.
+;
+CPMLINE:
+	PUSH	AX
+	PUSH	CX
+	PUSH	DX
+	PUSH	BX
+	CALL	CINIT			;FILLS FCBS WITH BLANKS AND NULLS
+	XCHG	BX,DX			;GET START OF COMMAND LINE IN 'BX'
+	INC	BX			;ADDRESS # BYTES IN CMD LINE
+	MOV	DL,BYTE PTR [BX] 	;LOAD 'DX' PAIR WITH # BYTES
+	MOV	DH,0
+	INC	BX
+	ADD	BX,DX			;POINT TO BYTE AFTER LAST CHAR..
+	MOV	BYTE PTR [BX],CR 	;..IN CMD LINE AND STORE DELIMITER
+	POP	BX			;RESTORE 'BX' AND 'DX'
+	POP	DX
+	PUSH	DX
+	PUSH	BX
+	INC	DX			;ADDRESS START OF COMMAND
+	INC	DX
+	CALL	DRIVE
+NAME1:
+	MOV	CL,8		;TRANSFER FIRST FILENAME TO FCB
+	CALL	TRANS
+	CMP	AL,CR
+	JZ	CDONE
+	CMP	AL,' '		;IF SPACE, THEN START OF..
+	JZ	NAME2		;..SECOND FILENAME.
+TYPE1:
+	POP	BX		;FILETYPE MUST BE AFTER..
+	PUSH	BX		;..EIGHTH BYTE OF NAME
+	MOV	CX, 9
+	ADD	BX,CX
+	MOV	CL,3		;TRANSFER TYPE OF FIRST FILE
+	CALL	TRANS
+	CMP	AL,CR
+	JZ	CDONE
+NAME2:
+	XCHG	BX,DX
+	MOV	AL,BYTE PTR [BX]	;EAT MULTIPLE SPACES..
+	XCHG	BX,DX
+	CMP	AL,' '			;..BETWEEN NAMES
+	JNZ	NAME2C
+	INC	DX
+	JMP	NAME2
+NAME2C:
+	POP	BX		;SECOND NAME STARTS IN 16TH BYTE
+	PUSH	BX		;POINT 'BX' TO THIS BYTE
+	MOV	CX, 16
+	ADD	BX,CX
+	CALL	DRIVE
+	MOV	CL,8
+	CALL	TRANS
+	CMP	AL,CR
+	JZ	CDONE
+TYPE2:
+	POP	BX			;SECOND TYPE STARTS IN 25TH BYTE.
+	PUSH	BX
+	MOV	CX,OFFSET 25
+	ADD	BX,CX
+	MOV	CL,3
+	CALL	TRANS
+CDONE:
+	POP	BX
+	PUSH	BX
+	INC	BX		;POINT TO 1ST CHAR OF 1ST NAME IN FCB
+	CALL	CSCAN		;CHECK FOR * (AMBIGUOUS NAMES).
+	POP	BX
+	PUSH	BX
+	MOV	CX,OFFSET 17	;POINT TO 1ST CHAR OF 2ND NAME IN FCB.
+	ADD	BX,CX
+	CALL	CSCAN
+	POP	BX
+	POP	DX
+	POP	CX
+	POP	AX
+	RET
+;
+CINIT:
+	PUSH	BX		;INITIALIZES FCB WITH 1 NULL (FOR 1ST DRIVE),..
+	PUSH	CX		;..11 BLANKS, 4 NULLS, 1 NULL (FOR 2ND DRIVE)..
+	MOV	BYTE PTR [BX],0	  ;..11 BLANKS, AND 4 NULLS
+	INC	BX
+	MOV	CH,11
+	MOV	AL,' '
+	CALL	INITFILL
+	MOV	CH,5
+	MOV	AL,0
+	CALL	INITFILL
+	MOV	CH,11
+	MOV	AL,' '
+	CALL	INITFILL
+	MOV	CH,4
+	MOV	AL,0
+	CALL	INITFILL
+	POP	CX
+	POP	BX
+	RET
+;
+INITFILL:
+	MOV	BYTE PTR [BX],AL
+	INC	BX
+	DEC	CH
+	JNZ	INITFILL
+	RET
+;
+DRIVE:
+	INC	DX			;CHECK 2ND BYTE OF FILENAME. IF IT..
+	XCHG	BX,DX
+	MOV	AL,BYTE PTR [BX]	;..IS A ":", THEN DRIVE WAS SPECIFIED
+	XCHG	BX,DX
+	DEC	DX
+	CMP	AL,':'
+	JNZ	DEFDR		;ELSE ZERO FOR DEFAULT DRIVE ('INIT' PUT ZERO)
+	XCHG	BX,DX
+	MOV	AL,BYTE PTR [BX]
+	XCHG	BX,DX
+	AND	AL,5FH
+	SUB	AL,40H			;CALCULATE DRIVE (A=1, B=2,...)..
+	MOV	BYTE PTR [BX],AL	;..AND PLACE IT IN FCB
+	INC	DX			;ADDRESS FIRST BYTE OF..
+	INC	DX			;..IN CMD LINE..
+DEFDR:
+	INC	BX			;..AND NAME FIELD IN FCB
+DEFDRRET:
+	RET
+;
+TRANS:
+	XCHG	BX,DX
+	MOV	AL,BYTE PTR [BX]
+	XCHG	BX,DX			;TRANSFER FROM CMD LINE TO FCB..
+	INC	DX			;..UP TO NUMBER OF CHARS SPECIFIED..
+	CMP	AL,CR			;..BY 'CL' REG. KEEP SCANNING FIELD..
+	JZ	DEFDRRET	       ;..WITHOUT TRANSFER UNTIL A DELIMITING..
+	CMP	AL,'.'			;..FIELD CHAR SUCH AS '.', BLANK, OR..
+	JZ	DEFDRRET		;..C/R (FOR END OF CMD LINE)
+	CMP	AL,' '
+	JZ	DEFDRRET
+	DEC	CL
+	JB	TRANS		;ONCE 'CL' REG IS LESS THAN '0' KEEP READING
+	MOV	BYTE PTR [BX],AL	;..CMD LINE BUT DO NOT TRANSFER TO FCB
+	INC	BX
+	JMP	TRANS
+;
+CSCAN:
+	MOV	CH,8			;SCAN FILE NAME ADDRESSED BY 'BX'
+TSTNAM:
+	MOV	AL,BYTE PTR [BX]
+	CMP	AL,'*'			;IF '*' FOUND, FILL IN REST OF FIELD..
+	JZ	FILL1			;..WITH '?' FOR AMBIGUOUS NAME
+	INC	BX
+	DEC	CH
+	JNZ	TSTNAM
+	JMP	TSTTYP
+;
+FILL1:
+	CALL	FILL
+TSTTYP:
+	MOV	CH,3			;SCAN AND FILL TYPE FIELD FOR NAME..
+TSTTYPL:
+	MOV	AL,BYTE PTR [BX]	;..SPECIFIED ABOVE
+	CMP	AL,'*'
+	JZ	FILL2
+	INC	BX
+	DEC	CH
+	JZ	FILL2RET
+	JMP	TSTTYPL
+;
+FILL2:
+	CALL	FILL
+FILL2RET:
+	RET
+;
+FILL:
+	MOV	BYTE PTR [BX],'?'	;ROUTINE TRANSFERS '?'
+	INC	BX
+	DEC	CH
+	JNZ	FILL
+	RET
+;
+;
+;In-line compare.  Compares string addressed by 'DX' pair to string af-
+;the call (ends with '0').  Return with carry set means strings not the
+;same.  All registers (except 'AL') are unaffected.
+;
+ILCOMP:
+	POP	SI			; POINT 'SI' TO 1ST CHARACTER
+	PUSH	BX
+	MOV	BX,SI
+	PUSH	DX
+ILCOMPL:
+	MOV	AL,BYTE PTR [BX] 	;'BX' POINTS TO IN-LINE STRING
+	OR	AL,AL			;END OF STRING IF ZERO
+	JZ	SAME
+	XCHG	BX,DX
+	MOV	AL,BYTE PTR [BX]
+	XCHG	BX,DX
+	CMP	AL,BYTE PTR [BX]
+	JNZ	NOTSAME
+	INC	BX
+	INC	DX
+	JMP	ILCOMPL
+;
+NOTSAME:
+	MOV	AL,0			;IF NOT SAME, FINISH THRU..
+NSLP:
+	INC	BX			;..STRING SO RETURN WILL..
+	CMP	AL,BYTE PTR [BX]	;..GO TO INSTRUCTION AFTER..
+	JNZ	NSLP			;..STRING AND NOT REMAINDER OF STRING
+	STC
+SAME:
+	POP	DX
+	INC	BX			;AVOIDS A NOP INSTRUCTION..
+	MOV	SI,BX			;..WHEN RETURNING
+	POP	BX
+	PUSH	SI
+	RET
+;
+;
+;		TERM.A86
+;
+;Terminal routines with text file I/O for MODEM9.xx.
+;
+DSKSAVE:
+	CALL	CKMODM
+	MOV	AL,BYTE PTR .FCB+1	;FIRST CHAR OF FILENAME
+	CMP	AL,' '			;FILE SPEC'D
+	JNZ	GOODNM			;YES, GOOD NAME
+	MOV	NFILFLG,TRUE
+	MOV	SAVEFLG,FALSE
+	JMP	TERM
+;
+GOODNM:
+	CALL	ERASFIL
+	CALL	MOVE2
+	MOV	DX,OFFSET FCB3
+	MOV	CL,MAKE
+	INT	224
+	MOV	DX,OFFSET FCB3
+	MOV	CL,OPEN
+	INT	224
+	MOV	BX,OFFSET BOTTRAM
+	MOV	HLSAVE,BX
+	MOV	NFILFLG,0
+	MOV	LISTMOR,0		;STOP ANY BUFFERED PRINTER OUTPUT
+TERM:
+	TEST	LISTMOR,0FFH		;ANY BUFFERED PRINTER OUTPUT?
+	JZ	TERM1
+	CALL	GOLIST			;GO IF SO
+TERM1:
+	CALL	STAT			;KEYPRESS?
+	JNZ	TERM2
+	JMP	TERML			;NO, CHECK LINE
+
+TERM2:
+	CALL	KEYIN			;GET CHAR FROM KBD
+	CMP	AL,' '
+	JC	TERM3
+	JMP	NOTOG			;GO IF NOT CONTROL CHARACTER
+
+TERM3:
+	MOV	CH,AL			;SAVE
+	CMP	AL,BKSP			;TEST FOR BACKSPACE
+	JNZ	NOBKSP
+	TEST	CONVBKSP,0FFH		;CONVERT BACKSPACE TO RUB?
+	JZ	NOBKSP			;GO IF NO CONVERSION
+	MOV	AL,RUB
+	JMP	NOTOG
+
+NOBKSP:
+	TEST	EXACFLG,0FFH		; EXACT ?
+	MOV	EXACFLG,0		;CLR FOR NEXT TIME
+	JZ	NOTEXAFLG		;GO OF EXAFLG FALSE
+	TEST	LOCONEXTCHR,0FFH	;SHOULD WE SEND ON EXAFLG?
+	MOV	AL,CH
+	JNZ	NOBKSP1
+	JMP	NOTOG			;YES, IF LOCONEXTCHR FALSE
+
+NOBKSP1:
+	MOV	AL,EXTCHR		;WE WANT TO SEND EXTCHR IN ANY CASE
+	CMP	AL,CH
+	MOV	AL,CH
+	JNZ	NOBKSP2
+	JMP	NOTOG			;SEND IF EXTCHR
+
+NOBKSP2:
+	JMP	LOCCHK			;OTHERWISE DO LOCAL STUFF
+
+NOTEXAFLG:
+	MOV	AL,EXTCHR		;TREAT NEXT CHARACTER IN SPECIAL WAY?
+	CMP	AL,CH
+	JNZ	NOTEXA1
+	JMP	EXTFLG			;YES, SET EXAFLG FOR NEXT CHAR
+
+NOTEXA1:
+	MOV	AL,LOCONEXTCHR
+	OR	AL,AL			;SHOULD WE SEND IF NOT EXAFLG
+	MOV	AL,CH
+	JZ	LOCCHK
+	JMP	NOTOG			;YES, IF LOCONEXTCHR TRUE
+
+LOCCHK:
+	MOV	AL,EXITCHR		;RETURN TO MENU?
+	CMP	AL,CH
+	JNZ	LOCCHK1
+	JMP	EXITMEN			;YES, RETURN TO MENU
+
+LOCCHK1:
+	MOV	AL,TRANCHR		;OUTPUT TEXT FILE TO REMOTE?
+	CMP	AL,CH
+	JNZ	LOCCHK1A		;				@DH
+;	JNZ	LOCCHK2			;				@DH
+	CALL	TRANSFER		;SEND-A-FILE (BLIND SEND)
+LOCCHK1A:				;				@DH
+	MOV	AL,BAUDCHR		;change baud rate.. 30/DEC/84	@DH
+	CMP	AL,CH			;..from terminal mode		@DH 
+	JNZ	LOCCHK2			;				@DH
+	CALL	BAUDCHG			;				@DH
+LOCCHK2:
+	JNZ	LOCCHK3
+	JMP	TERM			;LOOP
+
+LOCCHK3:
+	MOV	AL,TRANLOGON
+	OR	AL,AL
+	JZ	SKPLOGON
+	MOV	AL,LOGCHR		;SEND LOGON?
+	CMP	AL,CH
+	JNZ	SKPLOGON
+	JMP	SENDLOG
+
+SKPLOGON:
+	MOV	AL,LSTTST
+	OR	AL,AL
+	JZ	NOLST
+	MOV	AL,LSTCHR
+	CMP	AL,CH
+	JNZ	NOLST
+	MOV	AL,LISTFLG
+	NOT	AL
+	MOV	LISTFLG,AL
+	CALL	CRLF
+	CALL	CRLF
+	CALL	LSTMSG
+	CALL	CRLF
+	JMP	TERML
+
+NOLST:
+	MOV	AL,UNSAVECHR		;CLOSE INPUT BUFFER?
+	CMP	AL,CH
+	JZ	S2A			;IF YES, DISABLE COPY
+	MOV	AL,SAVECHR		;OPEN INPUT BUFFER?
+	CMP	AL,CH
+	MOV	AL,CH			;RESTORE CHARACTER TYPED
+	JZ	NOLST1
+	JMP	NOTOG
+
+NOLST1:
+	MOV	AL,NFILFLG		;DO NOT ALLOW SAVE IF..
+	CMP	AL,TRUE			;..THIS FLAG IS SET.
+	JNZ 	NOLST1A
+	JMP	TERML
+
+NOLST1A:
+	MOV	AL,TRUE		;0FFH -- ALLOW COPY INTO FILE
+	JMP	S2B
+
+S2A:
+	MOV	AL,FALSE	;0 -- STOP COPY INTO FILE
+S2B:
+	MOV	SAVEFLG,AL
+	CALL	BUFMSG
+	JMP	TERML
+;
+BUFMSG:
+	CALL	ILPRT
+	DB	CR,LF,LF,'** Memory buffer ',0
+	TEST	SAVEFLG,0FFH
+	JZ	BUFMSG2
+	CALL	ILPRT
+	DB	'open **',CR,LF,LF,':',BELL,0
+	RET
+;
+BUFMSG2:
+	CALL	ILPRT
+	DB	'closed **',CR,LF,LF,BELL,0
+	RET
+;
+EXITMEN:
+	CALL	CRLF
+	CALL	CLREOS		;CLEAR TO END OF SCREEN TO CLEAN UP ANY MESS
+	JMP	MENU0
+;
+SENDREADY:
+	CALL	INMODCTLP
+	CALL	ANIMODSNDB
+	CALL	CPIMODSNDR
+	RET
+;
+SENDLF:
+	CALL	SENDREADY
+	JNZ	NOLFYET		;GO IF NOT READY FOR OUTPUT YET
+	MOV	AL,LF
+	JMP	NOTOG		;SEND LF
+
+NOLFYET:
+	CALL	EXITTEST
+	JNC	EXITMEN		;GO IF SO, SO DON'T GET HUNG UP
+	JMP	SENDLF		;ELSE KEEP TRYING TO SEND LF
+;
+SENDLOG:
+	PUSH	BX
+SNDLG2:
+	CALL	STAT
+	JZ	SNDLG2
+	CALL	KEYIN
+	CALL	UCASE
+	CMP	AL,'L'		;TEST IF LIST OF STRINGS REQUESTED
+	JZ	GIVESTRS
+	SUB	AL,'0'
+	CMP	AL,10
+	JNC	ENDLOG
+	ADD	AL,AL		;X2
+	ADD	AL,AL		;X4
+	ADD	AL,AL		;X8
+	ADD	AL,AL		;X16
+	MOV	DL,AL
+	MOV	DH,0
+	PUSH	DX
+	POP	BX
+	ADD	BX,DX			;X32 IN HL
+	MOV	DX,OFFSET STRINGS	;DE POINTS TO START OF STRINGS
+	ADD	BX,DX
+LOGLP:
+	CALL	SENDREADY
+	JNZ	NOSENDLOG		;GO IF NOT READY
+	MOV	AL,BYTE PTR [BX]	;GET LOGON BYTE
+	INC	BX
+	CMP	AL,0			;IS IT THE END?
+	JZ	ENDLOG			;GO IF SO
+	CALL	OUTMODDATP
+	JMP	LOGLP
+
+NOSENDLOG:
+	CALL	EXITTEST		;TEST SO DON'T GET HUNG UP
+	JNC	EXITLOG			;GO IF OPERATOR WANTS EXIT
+	JMP	LOGLP
+;
+ENDLOG:
+	POP	BX
+	JMP	TERML
+;
+EXITLOG:
+	POP	BX
+	JMP	EXITMEN
+;
+EXITTEST:
+	CALL	STAT			;KEYPRESS?
+	JZ	NOKEY
+	CALL	KEYIN	
+	MOV	CH,AL
+	MOV	AL,EXITCHR		;SEE IF OPERATOR WANTS EXIT
+	CMP	AL,CH
+	JNZ	NOKEY			;GO IF WRONG KEY		
+	STC
+	CMC				;RESET FOR EXIT
+	RET
+
+NOKEY:
+	STC				;SET FOR NO KEY OR WRONG KEY
+	RET
+;
+GIVESTRS:
+	CALL	ILPRT
+	DB	CR,LF,'    List of Strings',CR,LF,LF,LF,0
+	MOV	BX,OFFSET STRINGS
+	MOV	STRSAVE,BX
+	MOV	CH,'0'
+GVSTRS1:
+	MOV	AL,CH
+	CALL	TIPE
+	CALL	ILPRT
+	DB	'  =  ',0
+	MOV	BX,STRSAVE
+	MOV	AL,BYTE PTR [BX]
+	CMP	AL,0
+	JNZ	NONULL
+	CALL	ILPRT
+	DB	'* null string *',0
+	JMP	GVSTRS2
+
+NONULL:
+	MOV	BX,STRSAVE
+NONUL2:
+	MOV	AL,BYTE PTR [BX]
+	CMP	AL,0
+	JZ	GVSTRS2
+	CMP	AL,CR
+	JZ	NONUL3
+	CALL	TIPE
+NONUL3:
+	JNZ	NOTACR
+	PUSH	BX
+	CALL	ILPRT
+	DB	'<CR>',0
+	POP	BX
+NOTACR:
+	INC	BX
+	JMP	NONUL2
+;
+GVSTRS2:
+	MOV	AL,'9'
+	CMP	AL,CH
+	JZ	GVSTRS3
+	INC	CH
+	MOV	BX,STRSAVE
+	MOV	DX,OFFSET 32
+	ADD	BX,DX
+	MOV	STRSAVE,BX
+	CALL	CRLF
+	JMP	GVSTRS1
+;
+GVSTRS3:
+	CALL	ILPRT
+	DB	CR,LF,LF,'Enter number to transmit string',CR,LF,0
+	POP	BX
+	JMP	SENDLOG
+;
+EXTFLG:
+	MOV	AL,TRUE
+	MOV	EXACFLG,AL
+	JMP	TERML
+;
+RCVREADY:
+	CALL	INMODCTLP
+	CALL	ANIMODRCVB
+	CALL	CPIMODRCVR
+	RET
+;
+LSTMSG:
+	MOV	AL,LISTFLG
+	OR	AL,AL
+	JZ	LSTMSG2
+	CALL	ILPRT
+	DB	'Printer is on',CR,LF,0
+	RET
+
+LSTMSG2:
+	CALL	ILPRT
+	DB	'Printer is off',CR,LF,0
+	RET
+;
+NOTOG:
+	PUSH	AX
+NOTOG1:
+	CALL	SENDREADY
+	JNZ	NOTOG1
+	POP	AX
+	CALL	OUTMODDATP
+	MOV	CH,AL
+	MOV	AL,LOCFLG
+	OR	AL,AL
+	JNZ	LTYPE
+	MOV	AL,ECHOFLG
+	OR	AL,AL
+	JZ	CHKCR
+LTYPE:
+	MOV	AL,CH
+	CALL	TIPE
+	CALL	CHKSAVE		;TO STORE LOCAL IF BUFFER OPEN
+	CALL	CHKPRNT
+CHKCR:
+	MOV	AL,CR
+	CMP	AL,CH
+	JNZ	TERML
+	MOV	AL,ADDLF
+	OR	AL,AL
+	JZ	TERML
+	JMP	SENDLF
+;
+TERML:
+	CALL	RCVREADY	;TEST FOR RECEIVED CHARACTER
+	JZ	TERML1
+	JMP	TERM
+
+TERML1:
+	CALL	INMODDATP
+	AND	AL,7FH		;STRIP PARITY
+	JNZ	GIVLF
+	JMP	TERM	
+
+GIVLF:
+	MOV	CH,AL
+;	CALL	TIPE			;				@DH
+	CALL	CTYPE			;CTYPE EXPANDS TABS		@DH
+	CALL	CHKSAVE
+	CALL	CHKPRNT
+	MOV	AL,ECHOFLG
+	OR	AL,AL
+	JZ	NOECHO
+	MOV	AL,CH
+	CALL	OUTMODDATP
+NOECHO:
+	MOV	AL,CR
+	CMP	AL,CH
+	JZ	NOECHO1
+	JMP	TERM
+
+NOECHO1:
+	MOV	AL,ADDLF
+	JNZ	NOECHO2
+	JMP	TERM
+
+NOECHO2:
+	MOV	AL,ECHOFLG
+	OR	AL,AL
+	JZ	NOECHO3
+	JMP	SENDLF
+
+NOECHO3:
+	MOV	AL,LF
+	JMP	GIVLF
+;
+CHKSAVE:
+	MOV	AL,SAVEFLG
+	OR	AL,AL
+	JNZ	CHKSAVE1
+	RET
+
+CHKSAVE1:
+	MOV	BYTE PTR [BX],CH
+	INC	BX
+	MOV	HLSAVE,BX		;MENU COMMAND DESTROYS HL-REG..
+	MOV	AL,LF
+	CMP	AL,CH
+	JNZ	NOCOLON			;..TYPE ":" AFTER EACH LINE FEED..
+	MOV	AL,':'			;..WHEN MEMORY SAVE ACTIVE.
+	CALL	TIPE
+NOCOLON:
+	CALL	GETMAX
+	CMP	AL,BH
+	PUSH	CX
+	JNZ	NOCOLON1
+	CALL	INTDSKSV
+NOCOLON1:
+	POP	CX
+	RET
+;
+GETMAX:
+	MOV	AL,XAST SHR 8		;END OF RESERVED BUFFER HAS BEEN
+	RET				;..REACHED AND DISKSAVE IS NEEDED.
+;
+CHKPRNT:
+	TEST	LISTFLG,0FFH	;OUT TO PRINTER?
+	JNZ	CHKPRNT1
+	RET			;RETURN IF NOT
+
+CHKPRNT1:
+	TEST	NFILFLG,0FFH	;IS BUFFER USED FOR FILE?
+	JZ	NOBUFF		;DON'T BUFFER PRINTER IF SO, HOWEVER CHARACTERS
+				;WILL BE LOST IF PRINTER IS SLOWER THAN MODEM
+	CALL	GETMAX		;GET MAXIMUM FOR BUFFER
+	MOV	BX,HLSAVE1	
+	CMP	AL,BH			;ARE WE THERE?
+	JNZ	NOTMAX			;GO IF NOT
+	MOV	BX,OFFSET BOTTRAM	;FLUSH BUFFER
+	MOV	HLSAVE1,BX
+	MOV	HLSAVE2,BX
+NOTMAX:	
+	MOV	BYTE PTR [BX],CH	;SAVE CHARACTER IN BUFFER
+	INC	BX			;INCREMENT END OF BUFFER
+	MOV	HLSAVE1,BX
+	MOV	AL,TRUE			;SET FLAG FOR PRINTER OUTPUT
+	MOV	LISTMOR,AL
+	RET
+;
+NOBUFF:
+	CALL	LSTSTAT	
+	JNZ	NOBUFF1
+	RET			;RETURN IF PRINTER BUSY
+
+NOBUFF1:
+	MOV	CL,CH		;ELSE PRINT CHARACTER
+	CALL	LISTER
+	RET
+;
+GOLIST:
+	CALL	LSTSTAT
+	JNZ	GOLIST1
+	RET			;RETURN IF PRINTER BUSY
+
+GOLIST1:
+	MOV	BX,HLSAVE2	       ;GET LOCATION OF NEXT CHARACTER TO PRINT
+	MOV	CL,BYTE PTR [BX]	;GET CHARACTER
+	INC	BX			;INCREMENT POINTER
+	MOV	HLSAVE2,BX
+	CALL	CMPBUFF			;CHECK FOR END OF BUFFER
+	CALL	LISTER			;PRINT
+	RET
+;
+;ROUTINE CHECKS FOR END OF BUFFER, RESETS BUFFER IF SO AND STOPS
+;PRINTER OUTPUT
+;
+CMPBUFF:
+	MOV	BX,HLSAVE2
+	CMP	BX,HLSAVE1
+	JZ	CMPBUFF1
+	RET
+
+CMPBUFF1:
+	MOV	BX,OFFSET BOTTRAM
+	MOV	HLSAVE1,BX
+	MOV	HLSAVE2,BX
+	MOV	LISTMOR,0
+	RET
+;
+INTDSKSV:
+	MOV	AL,XOFF			;SEND A CTRL-S TO STOP..
+	CALL	OUTMODDATP  		;..REMOTE COMPUTER OUTPUT.
+	MOV	DH,0        	 	;D IS THE BUFFER COUNT
+	CALL	INMODEM			;GET LAST BYTES SENT..
+	MOV	LASTBYT1,AL		;..AFTER CTRL-S.
+	CALL	INMODEM			;ADD MORE CALLS TO INMODEM..
+	MOV	LASTBYT2,AL		;..AND STA LASTBYT# IF YOU ARE..
+	PUSH	DX
+	CALL	NUMREC1
+	CALL	WRTDSK			;WRITE THE RECORDS
+	POP	DX
+	MOV	BX,OFFSET BOTTRAM
+	INC	DH
+	DEC	DH			;TEST BUFFER COUNT FOR ZERO
+	JZ	CTRLQ
+	MOV	AL,LASTBYT1		;GET THE LAST BYTES THAT WERE..
+	MOV	BYTE PTR [BX],AL	;..SAVED AND PUT THEM IN..
+	INC	BX			;..BOTTRAM.
+	CALL	TIPE
+	DEC	DH
+	JZ	CTRLQ
+	MOV	AL,LASTBYT2
+	MOV	BYTE PTR [BX],AL
+	INC	BX
+	CALL	TIPE
+CTRLQ:
+	MOV	AL,XON			;SEND START CHARACTER..
+	CALL	OUTMODDATP		;..TO REMOTE COMPUTER.
+	RET
+;
+;THIS SUBROUTINE WILL LOOP UNTIL THE MODEM RECEIVES A CHARACTER
+;OR 100 MILLISECONDS. IF A CHARACTER IS RECEIVED, A FLAG IS SET
+;TO STORE THE CHARACTER. A MAXIMUM OF TWO CHARACTERS ARE STORED,
+;BUT MORE MAY BE STORED IF DESIRED (SEE COMMENT IN "INTDSKSV"
+;ABOVE).
+;
+INMODEM:
+	PUSH	BX
+	MOV	BX,OFFSET 625
+	CALL	FIXCNT
+	PUSH	BX
+	POP	CX
+	POP	BX
+TIMERL:
+	CALL	RCVREADY
+	JZ	GETBYTE
+	DEC	CX
+	MOV	AL,CH
+	OR	AL,CL
+	JNZ	TIMERL
+	RET
+;
+GETBYTE:
+	CALL	INMODDATP
+	INC	DH
+	RET
+;
+NUMRECS:
+	MOV	BYTE PTR [BX],EOFCHAR
+	INC	BX
+	MOV	DX,OFFSET 127
+	ADD	BX,DX
+NUMREC1:
+	MOV	DX,-(OFFSET BOTTRAM)
+	ADD	BX,DX
+	MOV	AL,BL			;DIVIDE HL BY 128..
+	RCL	AL,1			;High bit set if sector to save
+	MOV	AL,0			;Save in carry
+	RCL     AL,1			;Now see if needed
+	MOV	BL,BH			;..NUMBER OF SECTORS
+	MOV	BH,0
+	PUSH	AX
+	ADD	BX,BX
+	POP	AX
+	ADC	AL,BL
+	MOV	BL,AL			;RETURNS WITH NUMBER OF..
+	RET				;..128 BYTE RECORDS IN HL.
+;
+WRTDSK:
+	MOV	DX,OFFSET BOTTRAM
+NEXTWRT:
+	MOV	CL,STDMA
+	CALL	BDOSRT
+	PUSH	DX
+	MOV	DX,OFFSET FCB3
+	MOV	CL,WRITE
+	CALL	BDOSRT
+	POP	DX
+	ADD	DX,128
+	DEC	BX
+	JNZ	NEXTWRT
+	RET
+;
+CLOSE3:
+	MOV	DX,OFFSET FCB3
+	MOV	CL,CLOSE
+	INT	224
+	RET
+;
+BDOSRT:
+	PUSH	CX
+	PUSH	DX
+	PUSH	BX
+	PUSH	AX
+	INT	224
+	POP	AX
+	POP	BX
+	POP	DX
+	POP	CX
+	RET
+;
+MOVE2:
+	MOV	BX,OFFSET FCB3
+	CALL	INITFCBS
+	MOV	BX,OFFSET FCB
+	MOV	DX,OFFSET FCB3
+	MOV	CH,12
+	CALL	MOVE
+	RET
+;
+;FILE TRANSFER ROUTINE - CALLED WITH 
+;CONTROL-T FROM TERMINAL ROUTINE.
+;TRANSFER MAY BE CANCELLED WHILE SENDING BY USING CONTROL-X.
+;
+TRANSFER:
+	PUSH	BX
+	PUSH	DX
+	PUSH	CX
+	PUSH	AX
+	MOV	BX,OFFSET FCB4
+	CALL	INITFCBS 		;INITIALIZES FCBS POINTED..
+	MOV	BX,OFFSET FCB+16	 ;..TO BY HL REG.
+	CALL	INITFCBS
+GET:
+	CALL	GETNAME
+	MOV	AL,CMDBUF+2 		;WAS FILE ENTERED
+	CMP	AL,20H
+	JZ	TRANSL2
+	CALL	MOVE4
+	CALL	OPEN4
+	CMP	AL,0FFH			;RETURN WITH 0FFH MEANS
+	JNZ	CONTIN			;FILE DOES NOT EXIST
+TRANSL1:
+	CALL	ILPRT
+	DB	CR,LF,'++ File does not exist ++',CR,LF,0
+TRANSL2:
+	CALL	ILPRT
+	DB	'Type "R" to return to modem',CR,LF
+	DB	'Type "A" to re-enter name: ',BELL,0
+	CALL	KEYIN
+	CALL	UCASE
+	PUSH	AX
+	CALL	TIPE			;ECHO RESPONSE
+	CALL	CRLF
+	POP	AX
+	CMP	AL,'A'
+	JNZ	TRANSL3
+	JMP	GET
+
+TRANSL3:
+	CMP	AL,'R'
+	JNZ	TRANSL2
+	JMP	RETURN
+;
+CONTIN:
+	MOV	DX,OFFSET 80H
+	MOV	CL,STDMA
+	INT	224
+READMR:
+	CALL	READ80
+	CMP	AL,1		;END OF FILE
+	JZ	RETURNS
+	CMP	AL,2		;BAD READ
+	JZ	RETURNU
+	CALL	SEND80C
+	CMP	AL,EOFCHAR	;END OF FILE - OMIT IF OBJECT..
+	JZ	RETURNS		;..CODE IS TO BE SENT.
+	CMP	AL,CAN		;CANCELLATION?
+	JZ	TRANCAN
+	JMP	READMR
+;
+RETURNS:
+	CALL	ILPRT
+	DB	CR,LF,'File transfer completed',CR,LF,BELL,0
+	JMP	RETURN
+;
+RETURNU:
+	CALL	ILPRT
+	DB	CR,LF,'++ File transfer unsuccessful ++',CR,LF,BELL,0
+	JMP	RETURN
+;
+TRANCAN:
+	CALL	ILPRT
+	DB	CR,LF,LF,'++ Transfer cancelled ++',CR,LF,BELL,0
+RETURN:
+	POP	AX
+	POP	CX
+	POP	DX
+	POP	BX
+	RET
+;
+INITFCBS:				;ENTRY AT +2 WILL LEAVE..
+	MOV	BYTE PTR [BX],0		;..DRIVE NO. INTACT.
+					;see comments at label GETFN:	@DH
+					;..about drive			@DH
+	INC	BX			;WILL INITIALIZE AN FCB..
+	MOV	CH,11			;..POINTED TO BY HL-REG. FILLS 1ST POS
+LOOP10:
+	MOV	BYTE PTR [BX],' '	;..WITH 0, NEXT 11 WITH..
+	INC	BX			;..WITH BLANKS, AND LAST..
+	DEC	CH			;..21 WITH NULLS.
+	JNZ	LOOP10
+	MOV	CH,21
+LOOP11:
+	MOV	BYTE PTR [BX],0
+	INC	BX
+	DEC	CH
+	JNZ	LOOP11
+	RET
+;
+GETNAME:
+	CALL	ILPRT
+	DB	CR,LF,'Enter file name to be transferred -  <CR> TO QUIT: ',0
+	MOV	DX,OFFSET CMDBUF
+	CALL	INBUFF
+	CALL	CRLF
+	RET
+;
+MOVE4:
+	MOV	DX,OFFSET CMDBUF
+	MOV	BX,OFFSET FCB4
+	CALL	CPMLINE
+	RET
+;
+OPEN4:
+	MOV	DX,OFFSET FCB4
+	MOV	CL,OPEN
+	INT	224
+	RET
+;
+READ80:
+	MOV	DX,OFFSET FCB4
+	MOV	CL,READ
+	INT	224
+	RET
+;
+SEND80C:
+	MOV	CH,80H
+	MOV	BX,OFFSET 80H
+SENDCH1:
+	PUSH	DX
+	CALL	SPEED
+	POP	DX
+	MOV	AL,BYTE PTR [BX]
+	CMP	AL,EOFCHAR
+	JNZ	SENDCH3
+	MOV	AL,EOFSEND
+	OR	AL,AL
+	JNZ	SENDCH2
+	RET
+
+SENDCH2:
+	MOV	AL,BYTE PTR [BX]
+SENDCH3:
+	CALL	MODOUT
+	CMP	AL,EOFCHAR
+	JNZ	SENDCH4
+	RET
+
+SENDCH4:
+	CALL	STAT		;TEST TO SEE IF
+	OR	AL,AL		;CANCELLATION REQUESTED
+	JZ	SKIP12
+	CALL	KEYIN
+	CMP	AL,CAN
+	JNZ	SKIP12
+	RET
+
+SKIP12:
+	INC	BX
+	DEC	CH
+	JNZ	SENDCH1
+	RET
+;
+MODOUT:
+	PUSH	AX
+MODOUTL:
+	MOV	AL,XOFFTST
+	OR	AL,AL
+	JZ	MODOUTL1
+	CALL	TXOFF
+MODOUTL1:
+	CALL	SENDREADY
+	JNZ	MODOUTL
+	MOV	AL,STRLF
+	OR	AL,AL
+	JZ	NOLFTST
+	POP	AX
+	PUSH	AX
+	CMP	AL,LF
+	JZ	NOTMOUT
+NOLFTST:
+	POP	AX
+	PUSH	AX
+	MOV	SAVEOUT,AL	;SAVE OUTPUT FOR POSSIBLE ECHO TEST
+	CALL	OUTMODDATP
+	MOV	AL,ECHWAIT	;DO WE WANT TO TEST FOR ECHOED CHAR?
+	OR	AL,AL
+	JZ	NOTMOUT
+	CALL	WAITECHO	;GO IF SO
+NOTMOUT:
+	POP	AX
+;	CALL	TIPE		;					@DH
+	CALL	CTYPE		;CTYPE EXPANDS TABS			@DH
+	CMP	AL,CR
+	JZ	DLYCR
+	RET
+;
+DLYCR:
+	MOV	AL,XONWAIT	;WAIT FOR XON AFTER CR?
+	OR	AL,AL
+	JNZ	WAITXON
+	MOV	AL,CRDLY	;EXTRA DELAY AFTER CR
+	JMP	DLYCR2
+;
+SPEED:
+	MOV	AL,BYTDLY	;GET SPEED VALUE (0-9)
+				;DELAY IS FROM 0.02 SEC FOR SPDVAL = 1
+				;TO 0.18 SEC FOR SPDVAL	= 9
+DLYCR2:
+	OR	AL,AL
+	JNZ	DLYCR3
+	RET			;RETURN IF 0
+
+DLYCR3:
+	MOV	CL,AL
+SPDLP:
+	CALL	SPD1		;OUTER LOOP
+	DEC	CL
+	JNZ	SPDLP
+	RET
+;
+SPD1:
+	PUSH	BX
+	MOV	BX,OFFSET 357	;ABOUT 0.02 SEC
+	MOV	AL,XOFFTST
+	OR	AL,AL
+	JZ	SPD2
+	MOV	BX,OFFSET 102	;ADJUST FOR XOFF TESTING
+	MOV	AL,ECHOFLG
+	OR	AL,AL
+	JZ	SPD2
+	MOV	AL,LOCFLG
+	OR	AL,AL
+	JZ	SPD2
+	MOV	BX,OFFSET 76	;ADJUST AGAIN FOR REMOTE ECHO
+SPD2:
+	CALL	FIXCNT
+	PUSH	BX
+	POP	DX
+	POP	BX
+SPDLP1:
+	DEC	DX			;INNER LOOP
+	MOV	AL,XOFFTST
+	OR	AL,AL
+	JZ	SPDLP2
+	CALL	TXOFF
+SPDLP2:
+	MOV	AL,DL
+	OR	AL,DH
+	JNZ	SPDLP1
+	RET
+;
+TXOFF:
+	CALL	RCVREADY
+	JZ	TXOFF1
+	RET
+
+TXOFF1:
+	CALL	INMODDATP
+	AND	AL,7FH
+	CMP	AL,XOFF
+	JNZ	TXOFF2
+	CALL	WAITXON
+TXOFF2:
+	RET
+;
+WAITXON:
+	CALL	RCVREADY
+	JNZ	WTXON2
+	CALL	INMODDATP
+	AND	AL,7FH
+	CMP	AL,XON
+	JNZ	WTXON2
+	RET
+
+WTXON2:
+	CALL	STAT		;TEST TO SEE IF
+	OR	AL,AL		;CANCELLATION REQUESTED
+	JZ	WAITXON		;SO DON'T GET HUNG UP
+	CALL	KEYIN
+	CMP	AL,CAN
+	JNZ	WAITXON
+ 	RET
+;
+WAITECHO:
+	MOV	AL,50		;1 SECOND MAXIMUM DELAY WAITING FOR ECHO
+	MOV	MECHDLY,AL
+WTECH1:
+	CALL	RCVREADY	;IS THERE INPUT?
+	JNZ	WTECH2		;GO IF NOT
+	CALL	INMODDATP	;GET INPUT
+	AND	AL,7FH
+	MOV	CL,AL		;SAVE INPUT
+	MOV	AL,SAVEOUT	;GET OUTPUT
+	CMP	AL,CL		;ARE THEY THE SAME?
+	JNZ	WTECH1A
+	RET			;RETURN IF SO
+
+WTECH1A:
+	MOV	AL,SAVEOUT	;GET OUTPUT
+	CMP	AL,TAB		;CHECK IF TAB
+	JNZ	WTECH2		;GO IF NOT
+	MOV	AL,SPACE	;MAYBE REMOTE CONVERTS TABS TO SPACES
+	CMP	AL,CL		
+	JNZ	WTECH2
+	RET			;RETURN IF SPACE ECHOED ON TAB OUTPUT
+
+WTECH2:
+	MOV	AL,MECHDLY	;LOOP FOR 1 SECOND
+	DEC	AL
+	MOV	MECHDLY,AL
+	JNZ	WTECH3
+	RET
+
+WTECH3:
+	MOV	AL,1		;0.02 SECOND
+	CALL	DLYCR2
+	JMP	WTECH1
+;	
+; Check for any garbage characters on line.
+;
+CKMODM:
+	CALL	RCVREADY	;ANY CHARACTERS READY TO RECEIVE?
+	JZ	CKMODM1
+	RET			;IF NOT, RETURN
+
+CKMODM1:
+	CALL	INMODDATP	;OTHERWISE GET THE CHARACTER AND IGNORE
+	JMP	CKMODM		;CHECK FOR ANY ADDITIONAL CHARACTERS
+;
+;
+;		SENDRECV.A86
+;
+;Christensen protocol routines for MODEM9.xx.
+;
+;SEND A CP/M FILE
+;
+SENDFIL:
+	MOV	CKSUMFLG,TRUE	  ;ALWAYS FORCE CHECKSUM MODE INITIALLY ON SEND
+	CALL	CKMODM			;REMOVE GARBAGE FROM LINE
+SENDFIL1:
+	TEST	BATCHFLG,0FFH		;CHECK IF MULTIPLE FILE..
+	JNZ	SENDC1
+	CALL	ILPRT
+	DB	'Ready to send in the batch mode',CR,LF,0
+	MOV	SENDFLG,TRUE			;INDICATE SEND FOR BATCH MODE
+	MOV	AL,FSTFLG			;IF FIRST TIME THRU..
+	OR	AL,AL				;..SCAN THE COMMAND LINE..
+	JZ	SENDFIL2
+	CALL	TNMBUF				;..FOR MULTIPLE NAMES.
+SENDFIL2:
+	CALL	SENDFN				;SENDS FILE NAME TO RECEIVER
+	JNC	SENDC2				;CARRY SET MEANS NO MORE FILES.
+	MOV	BATCHFLG,'B'	 		;STOP BATCH ....MODE OPTION.
+	MOV	AL,EOT				;FINAL XFER END
+	CALL	SEND
+	JMP	DONE
+;
+SENDC1:
+	CMP	BYTE PTR .FCB+1,' '
+	JNZ	SENDC2
+	JMP	BLKFILE
+
+SENDC2:
+	CALL	CNREC				;GET NUMBER OF RECORDS
+	CALL	OPENFIL
+	MOV	DL,80
+	CALL	WAITNAK
+
+SENDLP:
+	CALL	CKABORT			;WANT TO TERMINATE WHLE SENDING FILE?
+	CALL	RDSECT
+	JC	SENDEOF
+	CALL	INCRSNO
+	MOV	ERRCT,1
+SENDRPT:
+	CALL	CKABORT			;WANT TO TERMINATE WHILE SENDING FILE?
+	CALL	SENDHDR
+	CALL	SENDSEC
+	MOV	AL,CKSUMFLG
+	OR	AL,AL
+	JNZ	SENDRPT1
+	CALL	SENDCRC
+	JMPS	SENDRPT2
+
+SENDRPT1:
+	CALL	SENDCKS
+SENDRPT2:
+	CALL	GETACK
+	JC	SENDRPT
+	JMP	SENDLP
+;
+SENDEOF:
+	MOV	AL,EOT
+	CALL	SEND
+	CALL	GETACK
+	JC	SENDEOF
+	JMP	DONE
+;
+;RECEIVE A FILE
+;
+RCVFIL:
+	MOV	AL,CKSUMDFLT	;GET MODE REQUESTED BY OPERATOR
+	MOV	CKSUMFLG,AL	;STORE IT
+	CALL	CKMODM		;CATCH ANY GARBAGE CHARACTERS
+RCVFIL1:
+	MOV	AL,BATCHFLG	;CHECK IF MULT..
+	OR	AL,AL		;..FILE MODE.
+	JNZ	RCVC1
+	MOV	AL,FALSE	;FLAG WHERE TO RETURN..
+	MOV	SENDFLG,AL	;..FOR NEXT FILE TRANS.
+	CALL	GETFN		;GET THE FILE NAME.
+	JNC	RCVC2		;CARRY SET MEANS NO MORE FILES.
+	MOV	AL,'B'		;STOP BATCH..
+	MOV	BATCHFLG,AL 	;..MODE OPTION.
+	JMP	DONE
+;
+RCVC1:
+	MOV	AL,BYTE PTR .FCB+1	;MAKE SURE FILE IS NAMED
+	CMP	AL,' '
+;	JNZ	RECV1A			;				@DH
+	JNZ	RCVC2			;				@DH
+	JMP	BLKFILE
+
+;RECV1A:				;				@DH
+;	JMP	RCVC3			;				@DH
+;
+RCVC2:
+	CALL	CKCPM2
+	CALL	CKBAKUP
+RCVC3:
+	CALL	ERASFIL
+	CALL	MAKEFIL
+	MOV	AL,BATCHFLG		;DON'T PRINT MSG IF IN BATCH
+	OR	AL,AL
+	JZ	RCVFST
+	CALL	ILPRTQ
+	DB	'File open, ready to receive',CR,LF,0
+RCVFST:
+	MOV	AL,CKSUMFLG
+	OR	AL,AL
+	MOV	AL,NAK
+	JNZ	RCVFIL2
+	MOV	AL,CRC
+RCVFIL2:
+	CALL	SEND
+	MOV	AL,CKSUMFLG
+	OR	AL,AL
+	JNZ	RCVNAKM				;IF IN CRC MODE
+	CALL	ILPRTQ				;THEN SAY SO
+	DB	'CRC in effect',CR,LF,0
+	JMP	RCVLP
+
+RCVNAKM:
+	CALL	ILPRTQ				;ELSE SAY CHECKSUM MODE
+	DB	'Checksum in effect',CR,LF,0
+RCVLP:
+	CALL	RCVSECT
+	JC	RCVEOT
+	CALL	WRSECT
+	CALL	INCRSNO
+	CALL	SENDACK
+	JMP	RCVLP
+;
+RCVEOT:
+	CALL	WRBLOCK
+	CALL	SENDACK
+	CALL	CLOSFIL
+	JMP	DONE
+;	
+;SUBROUTINES
+;
+SENDFN:
+	CALL	ILPRTQ
+	DB	'Awaiting name NAK',CR,LF,0
+	MOV	DL,80
+	CALL	WAITNLP
+	MOV	AL,ACK				;GOT NAK, SEND ACK
+	CALL	SEND
+	MOV	BX,OFFSET FILECT
+	DEC	BYTE PTR [BX]
+	JS	NOMRNM
+	MOV	BX,NBSAVE			;GET FILE NAME..
+	MOV	DX,OFFSET FCB			;..IN FCB
+	MOV	CH,12
+	CALL	MOVE
+	MOV	NBSAVE,BX
+	CALL	SENDNM				;SEND IT
+	OR	AL,AL				;CLEAR CARRY
+	RET
+;
+NOMRNM:
+	MOV	AL,EOT
+	CALL	SEND
+	STC
+	RET
+;
+SENDNM:
+	PUSH	BX
+SENDNM1:
+	MOV	DH,11			;COUNT CHARS IN NAME
+	MOV	CL,0			;INIT CHECKSUM
+	MOV	AL,CL
+	MOV	FTYCNT,AL		;INITIATE FILE TYPE COUNT
+	MOV	BX,OFFSET FCB+1		;ADDRESS NAME
+NAMLPS:
+	MOV	AL,BYTE PTR [BX]	;SEND NAME
+	AND	AL,07FH			;STRIP HIGH ORDER BIT SO CP/M 2..
+	CALL	SEND			;..WON'T SEND R/O FILE DESIGNATION.
+	MOV	AL,QFLG			;SHOW NAME IF..
+	OR	AL,AL			;..QFLG NOT SET.
+	MOV	AL,BYTE PTR [BX]
+	JZ	ACKLP
+	CALL	FTYTST			;TYPE CHARACTER ETC.
+ACKLP:
+	PUSH	CX			;SAVE CKSUM
+	MOV	CH,1			;WAIT FOR RECEIVER..
+	CALL	RECV			;..TO ACKNOWLEDGE..
+	POP	CX			;..GETTING LETTER.
+	JC	SCKSER
+	CMP	AL,ACK
+	JNZ	ACKLP
+	INC	BX			;NEXT CHAR
+	DEC	DH
+	JNZ	NAMLPS
+	MOV	AL,EOFCHAR		;TELL RECEIVER END OF NAME
+	CALL	SEND
+	MOV	AL,QFLG
+	OR	AL,AL
+	JZ	ACKLP1
+	CALL	CRLF
+ACKLP1:
+	MOV	DH,CL				;SAVE CHECKSUM
+	MOV	CH,1
+	CALL	RECV				;GET CHECKSUM..
+	CMP	AL,DH				;..FROM RECEIVER.
+	JZ	NAMEOK
+SCKSER:	MOV	AL,BDNMCH			;BAD NAME-TELL RECEIVER
+	CALL	SEND
+	CALL	ILPRTQ
+	DB	'Checksum error',CR,LF,0
+	MOV	DL,80				;DO HANDSHAKING OVER
+	CALL	WAITNLP				;DON'T PRINT "AWAITING NAK" MSG
+	MOV	AL,ACK
+	CALL	SEND
+	JMP	SENDNM1
+;
+NAMEOK:
+	MOV	AL,OKNMCH		;GOOD NAME, TELL RECEIVER
+	CALL	SEND
+	POP	BX
+	RET	
+;
+					;fix for batch mode to save..	@DH
+					;drive and handle file name..	@DH
+					;properly. call to initfcb+2..	@DH
+					;left the byte ptr set wrong..	@DH
+GETFN:	MOV	AL,BYTE PTR .FCB	;save drive number		@DH
+	MOV	DISKNO,AL		;				@DH
+	MOV	BX,OFFSET FCB		;blank out file control block   @DH
+	CALL	INITFCBS		;				@DH
+	MOV	AL,DISKNO		;put drive number back		@DH
+	MOV	BYTE PTR .FCB,AL	;				@DH
+;GETFN:	MOV	BX,OFFSET FCB		;				@DH
+;	CALL	INITFCBS+2		;DOES NOT INITIALIZE DRIVE	@DH
+	CALL	ILPRTQ
+	DB	'Awaiting file name',CR,LF,0
+GNAMELP:
+	CALL	HSNAK
+	CALL	GETNM		;GET THE NAME
+	CMP	AL,EOT		;IF EOT, THEN NO MORE FILES
+	JZ	NOMRNMG
+	OR	AL,AL		;CLEAR CARRY
+	RET
+;
+NOMRNMG:
+	STC
+	RET
+;
+GETNM:
+	PUSH	BX
+GETNM1:
+	MOV	CL,0				;INIT CHECKSUM
+	MOV	AL,CL
+	MOV	FTYCNT,AL			;INITIATE COUNT FOR FILE TYPE
+	MOV	BX,OFFSET FCB+1
+NAMELPG:
+	MOV	CH,5
+	CALL	RECV				;GET CHAR
+	JNC	GETNM3
+	CALL	ILPRTQ
+	DB	'Time out receiving filename',CR,LF,0
+	JMP	GCKSER
+;
+GETNM3:
+	CMP	AL,EOT				;IF EOT, THEN NO MORE FILES
+	JNZ	GETNM4
+	JMP	GNRET
+
+GETNM4:
+	CMP	AL,EOFCHAR			;GOT END OF NAME
+	JZ	ENDNAME
+	MOV	BYTE PTR [BX],AL		;PUT NAME IN FCB
+	MOV	AL,QFLG				;CAN TYPE IT IF NO QFLG
+	OR	AL,AL
+	JZ	SKPTYP
+	CALL	FTYTST
+SKPTYP:
+	PUSH	CX		;SAVE CKSUM
+	MOV	AL,ACK		;ACK GETTING LETTER
+	CALL	SEND
+	POP	CX
+	INC	BX		;GET NEXT CHAR
+	MOV	AL,BL		;DON'T LET NOISE...
+	CMP	AL,7FH		;..CAUSE OVERFLOW..
+	JZ	GCKSER		;..INTO PROGRAM AREA.
+	JMP	NAMELPG
+;
+FTYTST:
+	INC	FTYCNT
+	CMP	FTYCNT,9	; ARE WE AT THE FILE TYPE?
+	JZ	SPCTST		;GO IF SO
+ENDSPT:
+	MOV	AL,BYTE PTR [BX]
+	CMP	AL,' '			;TEST FOR SPACE
+	JZ	ENDSPT1
+	CALL	TIPE			;TYPE IF NOT
+ENDSPT1:
+	RET
+;
+SPCTST:
+	MOV	AL,BYTE PTR [BX]
+	CMP	AL,' '		       ;TEST FOR SPACE IN FIRST FILE TYPE BYTE
+	JZ	ENDSPT1			;DON'T OUTPUT PERIOD IF SPACE
+					; MJM 9.01.05 WAS JMPS
+	MOV	AL,'.'	
+	CALL	TIPE
+	JMP	ENDSPT			;OUTPUT FIRST FILE TYPE BYTE
+;
+ENDNAME:
+	MOV	AL,QFLG
+	OR	AL,AL
+	JZ	ENDNAME1
+	CALL	CRLF
+ENDNAME1:
+	MOV	AL,CL				;SEND CHECKSUM
+	CALL	SEND
+	MOV	CH,1
+	CALL	RECV				;CHECKSUM GOOD?
+	CMP	AL,OKNMCH			;YES IF OKNMCH SENT..
+	JZ	GNRET				;..ELSE DO OVER.
+GCKSER:
+	MOV	BX,OFFSET FCB			;CLEAR FCB (EXCEPT DRIVE)..
+	CALL	INITFCBS+2		 	;..SINCE IT MIGHT BE DAMAGED..
+	CALL	ILPRTQ
+	DB	CR,LF,'++ Checksum error ++',CR,LF,0
+	CALL	HSNAK					;DO HANDSHAKING OVER
+	JMP	GETNM1
+;
+GNRET:
+	POP	BX
+	RET
+;
+HSNAK:
+	MOV	DL,180		;3-MINUTE MAXIMUM WAIT FOR A FILE NAME
+HSNAK1:
+	CALL	CKABORT		;WANT TO ABORT?
+	MOV	AL,NAK		;SEND NAK UNTIL RECEIVING ACK
+	CALL	SEND
+	MOV	CH,1		;WAIT UP TO 1 SECOND FOR A CHARACTER
+	CALL	RECV
+	CMP	AL,ACK		;'ACK' IS WHAT WE WERE WAITING FOR
+	JNZ	HSNAK2
+	RET
+
+HSNAK2:
+	DEC	DL		;ONE LESS TO TRY
+	JNZ	HSNAK1
+	JMP	ABORT		;TIMED OUT, ABORT BACK TO COMMAND LINE
+;
+TNMBUF:
+	MOV	AL,FALSE	;CALL FROM SENDFIL ONLY ONCE.
+	MOV	FSTFLG,AL
+	MOV	FILECT,AL
+	CALL	SCAN
+	MOV	BX,OFFSET NAMEBUF
+	MOV	NBSAVE,BX		;SAVE ADDR OF 1ST NAME
+TNLP1:
+	CALL	TRTOBUF
+	MOV	BX,OFFSET FCB
+	MOV	DX,OFFSET FCBBUF
+	CALL	CPMLINE			;PARSE NAME TO CP/M FORMAT
+TNLP2:
+	CALL	MFNAME			;SEARCH FOR NAMES (* FORMAT)
+	JC	NEXTNM
+	MOV	AL,BYTE PTR .FCB+10	;IF CP/M 2 $SYS FILE..
+	AND	AL,80H			;..DON'T SEND
+	JNZ	TNLP2
+	MOV	BX,NBSAVE		;GET NAME
+	MOV	DX,OFFSET FCB		;MOVE IT TO FCB
+	XCHG	BX,DX
+	MOV	CH,12
+	CALL	MOVE
+	XCHG	BX,DX
+	MOV	NBSAVE,BX		;ADDR OF NEXT NAME
+	MOV	BX,OFFSET FILECT	;COUNT FILES FOUND
+	INC	BYTE PTR [BX]
+	JMP	TNLP2
+;
+NEXTNM:
+	MOV	BX,OFFSET SNAMECT	 ;COUNT NAMES FOUND
+	DEC	BYTE PTR [BX]
+	JNZ	TNLP1
+	MOV	BX,OFFSET NAMEBUF	  ;SAVE START OF BUFFER
+	MOV	NBSAVE,BX
+	MOV	AL,FILECT
+	CMP	AL,65				;NO MORE THAN 64 TRANSFERS
+	JNC	NEXTNM1
+	RET
+
+NEXTNM1:
+	MOV	AL,64				;ONLY X'FER FIRST 64
+	MOV	FILECT,AL
+	RET
+;
+;SCANS CMDBUF COUNTING NAMES AND PUTTING DELIMITER (SPACE)
+;AFTER LAST NAME
+;
+SCAN:
+	PUSH	BX
+	MOV	BX,OFFSET SNAMECT
+	MOV	BYTE PTR [BX],0
+	MOV	BX,OFFSET CMDBUF+1  		;FIND END OF CMD LINE..
+	MOV	CL,BYTE PTR [BX]  		;..AND PUT SPACE THERE.
+	MOV	CH,0
+	MOV	BX,OFFSET CMDBUF+2
+	ADD	BX,CX
+	MOV	BYTE PTR [BX],20H
+	MOV	BX,OFFSET CMDBUF+1
+	MOV	CH,BYTE PTR [BX]
+	INC	CH
+	INC	CH
+SCANLP1:
+	INC	BX
+	DEC	CH
+	JZ	DNSCAN
+	MOV	AL,BYTE PTR [BX]
+	CMP	AL,20H
+	JNZ	SCANLP1
+SCANLP2:
+	INC	BX			;EAT EXTRA SPACES
+	DEC	CH
+	JZ	DNSCAN
+	MOV	AL,BYTE PTR [BX]
+	CMP	AL,20H
+	JZ	SCANLP2
+	MOV	BGNMS,BX		;SAVE START OF NAMES IN CMDBUF
+	INC	CH
+	DEC	BX
+SCANLP3:
+	INC	BX
+	DEC	CH
+	JZ	DNSCAN
+	MOV	AL,BYTE PTR [BX]
+	CMP	AL,20H
+	JNZ	SCANLP3
+	MOV	AL,SNAMECT		;COUNTS NAMES
+	INC	AL
+	MOV	SNAMECT,AL
+SCANLP4:
+	INC	BX			;EAT SPACES
+	DEC	CH
+	JZ	DNSCAN
+	MOV	AL,BYTE PTR [BX]
+	CMP	AL,20H
+	JZ	SCANLP4
+	JMP	SCANLP3
+;
+DNSCAN:
+	MOV	BYTE PTR [BX],20H	;SPACE AFTER LAST CHAR
+	POP	BX
+	RET
+;
+;PLACES NEXT NAME IN BUFFER SO 'CPMLINE' MAY PARSE IT
+;
+TRTOBUF:
+	MOV	BX,BGNMS
+	MOV	CH,0
+	MOV	DX,OFFSET FCBBUF+2
+TBLP:
+	MOV	AL,BYTE PTR [BX]
+	CMP	AL,20H
+	JZ	TRBFEND
+	XCHG	BX,DX
+	MOV	BYTE PTR [BX],AL
+	XCHG	BX,DX
+	INC	BX
+	INC	DX
+	INC	CH			;COUNT CHARS IN NAME
+	JMP	TBLP
+;
+TRBFEND:
+	INC	BX
+	MOV	AL,BYTE PTR [BX]	;EAT EXTRA SPACES
+	CMP	AL,20H
+	JZ	TRBFEND
+	MOV	BGNMS,BX
+	MOV	BX,OFFSET FCBBUF+1 	;PUT # CHARS BEFORE NAME
+	MOV	BYTE PTR [BX],CH
+	RET
+;
+RCVSECT:
+	MOV	AL,1
+	MOV	ERRCT,AL
+RCVRPT:
+	CALL	CKABORT			;WANT TO STOP RECEIVING FILE?
+	MOV	AL,QFLG
+	OR	AL,AL
+	JZ	RCVSQ
+	CALL	ILPRT
+	DB	CR,'Awaiting # ',0
+	PUSH	BX			;SAVE IT
+	MOV	BX,SECTNO		;GET SECTOR NUMBER
+	INC	BX			;BUMP IT
+	CALL	DECOUT			;PRINT SECTOR NUMBER IN DECIMAL
+	CALL	ILPRT
+	DB	' (', 0
+	CALL	DHXOUT			;16 BIT HEX CONVERSION & OUTPUT
+	CALL	ILPRT
+	DB	'H)',0
+	MOV	AL,BL			;ONLY LOW BYTE USED BY PROGRAM
+	POP	BX			;RESTORE IT
+RCVSQ:					;WAIT FOR SOH OR EOT
+	MOV	CH,10			;10 SECONDS
+	CALL	RECV
+	JNC	RCVSQ1
+	JMP	RCVSTOT
+
+RCVSQ1:
+	CMP	AL,SOH
+	JNZ	RCVSQ2
+	JMP	RCVSOH
+
+RCVSQ2:
+	OR	AL,AL
+	JZ	RCVSQ
+	CMP	AL,EOT
+	STC
+	JNZ	RCVSQ3
+	RET
+
+RCVSQ3:
+	MOV	CH,AL
+	MOV	AL,QFLG
+	OR	AL,AL
+	JZ	RCVSERR
+RCVSEH:
+	MOV	AL,CH
+	CALL	CRLF
+	CALL	HEXO
+	CALL	ILPRT
+	DB	'H received not SOH - ',0
+RCVPRN:
+	CALL	SHOWERR				;DISPLAY ERROR COUNT
+RCVSERR:
+	MOV	CH,1			;WAIT FOR 1 SEC..
+	CALL	RECV			;..WITH NO CHARS
+	JNC	RCVSERR		 	;LOOP UNTIL SENDER DONE
+	CALL	CKABORT			;WANT TO STOP RECEIVING NOW?
+	MOV	AL,CKSUMFLG		;GET CHECKSUM FLAG
+	OR	AL,AL			;CRC IN EFFECT?
+	MOV	AL,NAK			;PUT NAK IN ACCUM
+	JNZ	RCVSER2			;NO, SEND THE NAK
+	MOV	AL,FIRSTME 		;GET FIRST TIME SWITCH
+	OR	AL,AL			;HAS FIRST SOH BEEN RECEIVED?
+	MOV	AL,NAK			;PUT NAK IN ACCUM
+	JZ	RCVSER2			;YES, THEN SEND NAK
+	MOV	AL,CRC			;TELL SENDER CRC IS IN EFFECT
+RCVSER2:
+	CALL	SEND			;..THE NAK or CRC request
+	MOV	AL,ERRCT		;ABORT IF..
+	INC	AL			;..WE HAVE REACHED..
+	MOV	ERRCT,AL		;..THE ERROR..
+	CMP	AL,ERRLIM		;..LIMIT?
+	JNC	RCVSER3
+	JMP	RCVRPT			;..NO, TRY AGAIN
+
+RCVSER3:
+	MOV	AL,QFLG
+	OR	AL,AL
+	JZ	RCVSABT
+RCVCKQ:
+	CALL	CKQUIT
+	JNZ	RCVSABT
+	JMP	RCVSECT
+
+RCVSABT:
+	CALL	CLOSFIL			;CLOSE THE PARTIAL FILE
+	CALL	NOASK			;DELETE PARTIAL FILE
+	CALL	ILPRT
+	DB	CR,LF,LF
+	DB	'++ File receive cancelled and unfinished file deleted ++'
+	DB	BELL,CR,LF,0
+	JMP	DONETCA
+;
+RCVSTOT:
+	MOV	AL,QFLG
+	OR	AL,AL
+RCVSPT:	CALL	ILPRT
+	DB	CR,LF,'++ Timeout ',0
+	CALL	SHOWERR
+RCVSCRC:
+	CALL	RCVSCRC2
+	JMP	RCVSERR
+;
+;ROUTINE WILL SWITCH FROM CRC TO CHECKSUM IF ERCNT REACHES ERRCRC
+;AND FIRSTME IS TRUE
+;
+RCVSCRC2:
+	MOV	AL,ERRCT
+	CMP	AL,ERRCRC
+	JNZ	RCVSCRC3
+	MOV	AL,FIRSTME
+	OR	AL,AL
+	JZ	RCVSCRC3
+	MOV	AL,CKSUMFLG
+	OR	AL,AL
+	JNZ	RCVSCRC3
+	NOT	AL
+	MOV	CKSUMFLG,AL
+	MOV	CKSUMDFLT,AL
+	CALL	ILPRTQ
+	DB	'++ Switching to Checksum mode ++',CR,LF
+	DB	'++ Sender may not be CRC capable ++',CR,LF,BELL,0
+RCVSCRC3:
+	RET
+;
+;Got SOH - get block #, block # complemented
+;
+RCVSOH:
+	XOR	AL,AL			;ZERO ACCUM
+	MOV	FIRSTME,AL		;INDICATE FIRST SOH RECV'D
+	MOV	CH,1			;TIMEOUT = 1 SEC
+	CALL	RECV			;GET SECTOR
+	JNC	RCVSOH1
+	JMP	RCVSTOT			;GOT TIMEOUT
+
+RCVSOH1:
+	MOV	DH,AL
+	MOV	CH,1
+	CALL	RECV
+	JNC	RCVSOH2
+	JMP	RCVSTOT
+
+RCVSOH2:
+	NOT	AL
+	CMP	AL,DH
+	JZ	RCVDATA
+	MOV	AL,QFLG
+	OR	AL,AL
+	JNZ	RCVBSE
+	JMP	RCVSERR
+
+RCVBSE:
+	CALL	ILPRT
+	DB	CR,LF,'++ Bad sector # in Header ',0
+	JMP	RCVPRN
+;
+RCVDATA:
+	MOV	AL,DH
+	MOV	RCVSNO,AL
+	MOV	AL,1
+	MOV	DATAFLG,AL
+	MOV	CL,0
+	CALL	CLRCRC			;CLEAR CRC COUNTER
+	MOV	BX,OFFSET 80H
+RCVCHR:
+	MOV	CH,1
+	CALL	RECV
+	JNC	RCVCHR1
+	JMP	RCVSTOT
+
+RCVCHR1:
+	MOV	BYTE PTR [BX],AL
+	INC	BL
+	JNZ	RCVCHR
+	MOV	AL,CKSUMFLG
+	OR	AL,AL
+	JZ	RCVCRC
+	MOV	DH,CL			; 9.01.02 MJM 7/8/83
+	XOR	AL,AL
+	MOV	DATAFLG,AL
+	MOV	CH,1
+	CALL	RECV
+	JNC	RCVCHR2
+	JMP	RCVSTOT
+
+RCVCHR2:
+	CMP	AL,DH
+	JNZ	RCVCERR
+CHKSNUM:
+	MOV	AL,RCVSNO
+	MOV	CH,AL
+	MOV	AX,SECTNO
+	CMP	AL,CH
+	JZ	RECVACK
+	INC	AL
+	CMP	AL,CH
+	JZ	CHKSNUM1
+	JMP	ABORT
+
+CHKSNUM1:
+	RET
+;
+RCVCRC:
+	MOV	DL,2			;NUMBER OF CRC BYTES
+RCVCRC2:
+	MOV	CH,1
+	CALL	RECV
+	JNC	RCVCRC3
+	JMP	RCVSTOT
+
+RCVCRC3:
+	DEC	DL
+	JNZ	RCVCRC2
+	CALL	CHKCRC
+	OR	AL,AL
+	JZ	CHKSNUM
+	MOV	AL,QFLG
+	OR	AL,AL
+	JNZ	RCVCRER
+	JMP	RCVSERR
+
+RCVCRER:
+	CALL	ILPRT
+	DB	CR,LF,'++ CRC error ',0
+	JMP	RCVPRN
+;
+RCVCERR:
+	MOV	AL,QFLG
+	OR	AL,AL
+	JNZ	RCVCPR
+	JMP	RCVSERR
+
+RCVCPR:
+	CALL	ILPRT
+	DB	CR,LF,'++ Checksum error ',0
+	JMP	RCVPRN
+;
+RECVACK:
+	CALL	SENDACK
+	JMP	RCVSECT
+;
+SENDACK:
+	MOV	AL,ACK
+	CALL	SEND
+	RET
+;
+SENDHDR:
+	MOV	AL,QFLG
+	OR	AL,AL
+	JZ	SENDHNM
+	CALL	ILPRT
+	DB	CR,'Sending # ',0
+	PUSH	BX
+	MOV	BX,SECTNO		;GET SECTOR NUMBER
+	CALL	DECOUT			;PRINT IT IN DECIMAL
+	CALL	ILPRT
+	DB	' (',0
+	CALL	DHXOUT			;16 BIT HEX CONVERSION & OUTPUT
+	CALL	ILPRT
+	DB	'H)',0
+	POP	BX
+SENDHNM:
+	MOV	AL,SOH
+	CALL	SEND
+	MOV	AX,SECTNO
+	CALL	SEND
+	MOV	AX,SECTNO
+	NOT	AL
+	CALL	SEND
+	RET
+;
+SENDSEC:
+	MOV	AL,1
+	MOV	DATAFLG,AL
+	MOV	CL,0
+	CALL	CLRCRC
+	MOV	BX,OFFSET 80H
+SENDC:
+	MOV	AL,BYTE PTR [BX]
+	CALL	SEND
+	INC	BL
+	JNZ	SENDC
+	XOR	AL,AL
+	MOV	DATAFLG,AL
+	RET
+;
+SENDCKS:
+	MOV	AL,CL
+	CALL	SEND
+	RET
+;
+SENDCRC:
+	CALL	FINCRC
+	MOV	AL,DH
+	CALL	SEND
+	MOV	AL,DL
+	CALL	SEND
+	XOR	AL,AL
+	RET
+;
+;
+;After a record is sent, a character is returned telling if it was re-
+;ceived properly or not.  An ACK allows the next record to be sent.  A
+;NAK sends an error message and the current record is again repeated.
+;This occurs until the error limit has been reached.  If the first NAK
+;is missed, it waits up to 12 seconds before declaring a 2nd error.
+;This insures there is no collision with the station attempting to send
+;the NAK, since it waits only 10 seconds.
+;
+GETACK:
+	MOV	CH,12			;12 SECONDS
+	CALL	RECVDG			;WAIT FOR ACK OR NAK
+	JNC	GETACK1
+	JMP	GETATOT			;NO CHARACTER, TIMED OUT
+
+GETACK1:
+	CMP	AL,ACK
+	JNZ	NOTACK
+	RET				;IF ACK RETURN AND SEND NEXT RECORD
+
+NOTACK:
+;
+;If the ACKNAK option is FALSE it will resend the sector when any char-
+;acter other than ACK is received (including NAK).
+;
+	MOV	CH,AL
+	MOV	AL,NAKONLY
+	OR	AL,AL
+	JZ	ALLOTH
+	CMP	AL,NAK			;WAS IT AN AUTHENTIC 'NAK'?
+	JNZ	GETACK			;IGNORE IF NEITHER 'ACK' NOR 'NAK'
+					;WILL EVENTUALLY TIME OUT
+ALLOTH:
+	MOV	AL,QFLG
+	OR	AL,AL
+	JZ	ACKERR
+	CALL	ILPRT
+	DB	CR,LF,'++ ',0
+	MOV	AL,CH
+	CMP	AL,NAK			;IS IT A 'NAK'?
+	JZ	GETACK2			;SHOW 'NAK' IN THAT CASE
+	CALL	HEXO
+	MOV	AL,'H'
+	CALL	TIPE
+	JMP	GETACK3
+GETACK2:
+	CALL	ILPRT
+	DB	'NAK',0	
+GETACK3:
+	CALL	ILPRT				;PRINT THE ERROR MESSAGE
+	DB	' received not ACK - ',0
+	CALL	SHOWERR				;SHOW THE ERROR NUMBER
+ACKERR:
+	MOV	AL,ERRCT
+	INC	AL
+	MOV	ERRCT,AL
+	DEC	AL
+	CMP	AL,ERRLIM
+	JNC	ACKERR1
+	RET
+
+ACKERR1:
+	MOV	AL,QFLG
+	OR	AL,AL
+	JZ	CSABORT
+GACKV:
+	CALL	CKQUIT
+	STC
+	JNZ	CSABORT
+	RET
+CSABORT:
+	CALL	ERXIT
+	DB	CR,LF,'Can''t send sector -- Aborting',CR,LF,'$'
+GETATOT:
+	MOV	AL,QFLG
+	OR	AL,AL
+	JZ	ACKERR
+	CALL	ILPRT
+	DB	CR,LF,'++ Timeout on ACK - ',0
+	CALL	SHOWERR					;DISPLAY ERROR COUNT
+	JMP	ACKERR
+;
+CKABORT:
+;	MOV	AL,QFLG			;SO CTRL X..			@DH
+;	OR	AL,AL			;..WILL WORK..			@DH
+;	JNZ	CKABGO			;..EVEN IF IN..			@DH
+;	RET				;..QUIET MODE.			@DH
+
+CKABGO:
+	CALL	STAT
+	JNZ	CKABGO1
+	RET
+
+CKABGO1:
+	CALL	KEYIN
+	CMP	AL,CAN
+	JZ	ABORT
+	RET
+
+ABORT:	
+	MOV	CH,1
+	CALL	RECV
+	JNC	ABORT
+	MOV	AL,CAN
+	CALL	SEND
+ABORTW:
+	MOV	CH,1
+	CALL	RECV
+	JNC	ABORTW
+	MOV	AL,' '
+	CALL	SEND
+	MOV	AL,'B'     		;TURN MULTI-FILE MODE..
+	MOV	BATCHFLG,AL		;..OFF SO ROUTINE ENDS.
+	MOV	AL,OPTION		;RECEIVING A FILE NOW?
+	CMP	AL,'R'
+	JNZ	ABORTW1
+	JMP	RCVSABT			;IF YES, CANCEL THE UNFINISHED FILE
+
+ABORTW1:
+	CALL	ILPRT
+ 	DB	CR,LF,LF,'++ File send cancelled ++',CR,LF,BELL,0
+	JMP	DONETCA
+;
+INCRSNO:
+	INC	SECTNO			; INCREMENT SECTOR NUMBER
+	MOV	AX,SECTNO	   ; NEED IT IN LOW BYTE, DON'T CARE ABOUT HIGH
+	RET
+;
+;---->	RECV: Receive a character
+;
+;Timeout time is in B, in seconds. Entry via 'RECVDG' deletes garbage
+;characters on the line. For example, having just sent a sector, calling
+;RECVDG will delete any line noise induced characters LONG before the
+;ACK/NAK would be received.
+;
+RECVDG:
+	CALL	CKMODM			;CATCH ANY GARBAGE CHARACTERS
+RECV:
+	PUSH	DX
+MSEC:
+	PUSH	BX
+	MOV	BX,OFFSET 5000
+	CALL	FIXCNT
+	PUSH	BX
+	POP	DX
+	POP	BX
+	CALL	CKABORT
+MWTI:
+	CALL	RCVREADY
+	JZ	MCHAR
+	DEC	DL
+	JNZ	MWTI
+	DEC	DH
+	JNZ	MWTI
+	DEC	CH
+	JNZ	MSEC
+	POP	DX
+	STC
+	RET
+;
+MCHAR:
+	CALL	INMODDATP
+	POP	DX
+	PUSH	AX
+	CALL	UPDCRC      		;CALCULATE CRC
+	ADD	CL,AL
+	MOV	AL,RSEEFLG
+	OR	AL,AL
+	JZ	MONIN
+	MOV	AL,VSEEFLG
+	OR	AL,AL
+	JNZ	NOMONIN
+	MOV	AL,DATAFLG
+	OR	AL,AL
+	JZ	NOMONIN
+MONIN:
+	POP	AX
+	PUSH	AX
+	CALL	SHOW
+NOMONIN:
+	POP	AX
+	OR	AL,AL
+	RET
+;
+SEND:
+	PUSH	AX
+	MOV	AL,SSEEFLG
+	OR	AL,AL
+	JZ	MONOUT
+	MOV	AL,VSEEFLG
+	OR	AL,AL
+	JNZ	NOMONOT
+	MOV	AL,DATAFLG
+	OR	AL,AL
+	JZ	NOMONOT
+MONOUT:
+	POP	AX
+	PUSH	AX
+	CALL	SHOW
+NOMONOT:
+	POP	AX
+	PUSH	AX
+	CALL	UPDCRC			;CALCULATE CRC
+	ADD	CL,AL
+SENDW:
+	CALL	SENDREADY
+	JNZ	SENDW
+	POP	AX
+	CALL	OUTMODDATP
+	RET
+;
+WAITNAK:
+	CALL	ILPRTQ
+	DB	'Awaiting initial NAK',CR,LF,0
+WAITNLP:
+	CALL	CKABORT
+	MOV	CH,1
+	CALL	RECV
+	CMP	AL,NAK
+	JNZ	WAITNLP1
+	RET
+
+WAITNLP1:
+					;CTRL X FIX			@DH
+	CMP	AL,CAN			;ABORT REQUEST?			@DH
+	JNZ	WAITNLP0		;NO..				@DH
+	JMP	ABORT			;YES ABORT			@DH
+WAITNLP0:				;				@DH
+	CMP	AL,CRC			;CRC REQUEST?
+	JZ	WAITCRC			;YES, GO SET CRC FLAG
+;	CMP	AL,CAN			;				@DH
+;	JNZ	WAITNLP2		;				@DH
+;	JMP	ABORT			;				@DH
+
+WAITNLP2:
+	DEC	DL
+	JNZ	WAITNLP
+	JMP	ABORT
+;
+WAITCRC:
+	CALL	ILPRTQ
+	DB	'CRC request received',CR,LF,0
+	XOR	AL,AL
+	MOV	CKSUMFLG,AL
+	RET
+;
+;RETURNS W/ ZERO SET IF RETRY ASKED. IF MULTI-FILE MODE, THEN
+;NO QUESTIONS ASKED, JUST QUIT
+;
+CKQUIT:
+	MOV	AL,BATCHFLG
+	OR	AL,AL
+	JNZ	CKQTASK			;ASK FOR RETRY
+	INC	AL			;RESET ZERO FLG
+	RET
+;
+CKQTASK:
+	MOV	ERRCT,1
+	CALL	ILPRT
+	DB	CR,LF,'Multiple errors encountered.',CR,LF
+	DB	'Type Q to quit, R to retry:  ',BELL,0
+	CALL	KEYIN
+	CALL	CRLF
+	CALL	UCASE			;INSTEAD OF "ANI 5FH"
+	CMP	AL,'R'
+	JZ	CKQTASK1
+	CMP	AL,'Q'
+	JNZ	CKQUIT
+	OR	AL,AL
+CKQTASK1:
+	RET
+;
+;Get the error count and display on CRT
+;
+SHOWERR:
+	PUSH	BX			;SAVE THE CURRENT ADDRESS
+	MOV	BL,ERRCT		;GET THE CURRENT ERROR NUMBER
+	MOV	BH,0			;ONLY A 8-BIT NUMBER, NOW IN 'L' REG.
+	CALL	DECOUT			;DISPLAY THE ERROR IN DECIMAL
+	POP	BX			;RESTORE THE CURRENT ADDRESS
+	CALL	ILPRT
+	DB	' ++',CR,LF,0		;FINISH THE ERROR MESSAGE
+	RET
+;
+ERXIT:
+	POP	DX
+	CALL	PRTMSG
+	MOV	AL,BELL
+	CALL	TIPE
+	MOV	AL,BATCHFLG
+	OR	AL,AL
+	JZ	ERXIT1
+	JMP	DONETCA
+
+ERXIT1:
+	MOV	AL,'Q'			;RESET QFLG
+	MOV	QFLG,AL
+	JMP	ABORT			;ABORT OTHER COMPUTER
+;
+DONE:
+	MOV	AL,BATCHFLG
+	OR	AL,AL
+	JZ	DONE1
+	JMP	DONETC
+
+DONE1:
+	MOV	AL,QFLG
+	OR	AL,AL
+	JZ	NMSTRNS
+	MOV	CH,12			;ZERO OUT FTRNMSG
+	MOV	BX,OFFSET FTRNMSG
+ZEROLP:
+	MOV	BYTE PTR [BX],' ' 	; mjm 9.01.05 FIX BATCH NAME REPORT
+	INC	BX
+	DEC	CH
+	JNZ	ZEROLP
+	MOV	CH,12			;PUT FILE NAME IN FTRNMSG
+	MOV	BX,OFFSET FCB+1		
+	MOV	DX,OFFSET FTRNMSG
+LOADMSG:
+	MOV	AL,4			;START OF FILE TYPE?
+	CMP	AL,CH
+	JZ	PERIOD			;PUT IN PERIOD IF SO
+	MOV	AL,BYTE PTR [BX]	
+	CMP	AL,' '			;DON'T PUT IN SPACE
+	JZ	SKPSP	
+	XCHG	BX,DX
+	MOV	BYTE PTR [BX],AL	;STORE IN FTRNMSG
+	XCHG	BX,DX
+	INC	DX
+SKPSP:
+	INC	BX
+	DEC	CH
+	MOV	AL,CH
+	OR	AL,AL			;END OF FILE NAME?
+	JZ	FTRNMSG0		;DISPLAY FILE NAME
+	JMP	LOADMSG			;LOOP FOR ANOTHER CHARACTER
+;
+PERIOD:
+	MOV	AL,BYTE PTR [BX]
+	CMP	AL,' '			;IS FILE TYPE EMPTY?
+	JZ	FTRNMSG0		;GO IF SO
+	MOV	AL,'.'			;ELSE PUT PERIOD IN MESSAGE
+	XCHG	BX,DX
+	MOV	BYTE PTR [BX],AL
+	XCHG	BX,DX
+	INC	DX
+	DEC	CH
+	JMP	LOADMSG	
+;
+FTRNMSG0:
+	CALL	ILPRT
+	DB	CR,LF
+FTRNMSG	RB	12
+	DB	0
+	CALL	ILPRT
+	DB	' Transferred',CR,LF,LF,0
+NMSTRNS:
+	MOV	AL,BYTE PTR .FCB			;SAVE DRIVE NO.
+	MOV	DISKNO,AL
+	MOV	BX,OFFSET FCB			;BLANK OUT FILE CONTROL BLOCKS
+	CALL	INITFCBS
+	MOV	AL,DISKNO			;PUT DRIVE NUMBER BACK
+	MOV	BYTE PTR .FCB,AL
+	MOV	BX,OFFSET RESTSN		 ;RESTORE SECTOR NUMBERS..
+	MOV	DX,OFFSET SECTNOB		 ;..FOR NEW FILE TRANSFER.
+	MOV	CH,OFFSET SECTNOE-OFFSET SECTNOB    ;ROUTINE ALSO DONE IN MENU.
+	CALL	MOVE
+	CALL	CKMODM				;CATCH ANY GARBAGE CHARACTERS
+	MOV	AL,SENDFLG			;GOES TO EITHER SEND OR..
+	OR	AL,AL				;..RECEIVE FILE, DEPENDING..
+	JZ	NMSTRNS1
+	JMP	SENDFIL1			;..UPON WHICH ROUTINE SET..
+
+NMSTRNS1:
+	JMP	RCVFIL1				;..THE FLAG IN MULTI-FILE MODE.
+;
+DONETC:
+	CALL	CKABORT				;SLIGHT DELAY FOR NEXT MESSAGE
+	CALL	ILPRT
+	DB	CR,LF,'All transfers completed',CR,LF,BELL,0
+DONETCA:
+	MOV	AL,TRUE
+	MOV	FIRSTME,AL			;SET FIRST-TIME FLAG
+	MOV	FSTFLG,AL			;RESET MULTIFILE TRANS
+	MOV	NFILFLG,AL			;..USED IN TERMINAL ROUTINE
+	NOT	AL
+	MOV	SAVEFLG,AL		;STOP MEMORY SAVE IN TERM ROUTINE
+	MOV	LISTMOR,AL		;STOP ANY BUFFERED OUTPUT TO PRINTER
+	MOV	BX,OFFSET BOTTRAM	;RESET PRINTER BUFFER POINTERS
+	MOV	HLSAVE1,BX
+	MOV	HLSAVE2,BX
+	MOV	AL,TERMFLG		;SEE IF RETURN TO..
+	OR	AL,AL			;..TERMINAL MODE..
+	JNZ	DONETCA1		;..AFTER X'FER.
+	CALL	ILPRT
+	DB	CR,LF,'** Entering terminal mode **',CR,LF,LF,BELL,0
+	JMP	TERM
+
+DONETCA1:
+	JMP	MENU
+;
+;Shows the time to transfer a file at various baud rates
+;
+SENDTIM:
+	CALL	ILPRT	        	;PRINT
+	DB	'File open:  ',0
+	MOV	BX,RCNT			;GET RECORD COUNT.
+	CALL	DECOUT			;PRINT DECIMAL NUMBER OF RECORDS
+	CALL	ILPRT
+	DB	' (',0
+	CALL	DHXOUT			;NOW PRINT SIZE IN HEX.
+	CALL	ILPRT
+	DB	' Hex) Records',CR,LF
+	DB	'Send time:  ',0
+	MOV	AL,MSPEED		;GET THE SPEED INDICATOR
+	MOV	DH,0
+	MOV	DL,AL			;SET UP FOR TABLE ACCESS
+	MOV	BX,OFFSET BTABLE	;POINT TO BAUD FACTOR TABLE
+	ADD	BX,DX			;INDEX TO PROPER FACTOR
+	ADD	BX,DX
+	MOV	DL,BYTE PTR [BX];FACTOR IN DE
+	INC	BX
+	MOV	DH,BYTE PTR [BX]
+	MOV	BX,RCNT			;GET # OF RECORDS
+	CALL	DIVHLDE	                ;DIVIDE HL BY VALUE IN A (RECORDS/MIN)
+	PUSH	BX
+	MOV	BX,CX
+	CALL	DECOUT			;PRINT THE MINUTES PORTION
+	CALL	ILPRT
+	DB	' mins, ',0
+	MOV	BX,OFFSET SECTBL        ;POINT TO DIVISORS FOR SECONDS
+	MOV	DX,0			;   CALCULATION
+	MOV	AL,MSPEED		;GET INDEX FOR BAUD RATE
+	MOV	DL,AL
+	ADD	BX,DX			;INDEX INTO TABLE
+	MOV	AL,BYTE PTR [BX]	;GET MULTIPLIER = (SEC/REC) x 16
+	POP	BX			;GET REMAINDER
+	CALL	MULHLA			;MULTIPLY THE 'HL' x 'A'
+	CALL	SHFTHL			;DIVIDE BY 16
+	CALL	SHFTHL
+	CALL	SHFTHL
+	CALL	SHFTHL	
+	MOV	BH,0
+	CALL	DECOUT			;PRINT THE SECONDS PORTION
+	CALL	ILPRT
+	DB	' secs at ',0
+	CALL	BAUDPRT
+	CALL	ILPRT
+        DB    'To cancel use ctrl-X',CR,LF,0
+	RET
+;
+; CORRECTED BY M.J. MELLINGER FOR 9.01.05 11/25/83
+BTABLE	DW	5,13,19,25,48,96,192,384,768,0;RECORDS/MIN F/110-9600 
+SECTBL	DB	192,74,51,38,20,11,5,3,0
+;	
+;---->  DIVHLDE: DIVIDES 'HL' BY VALUE IN 'DE', 
+;	UPON EXIT: 'BC'=QUOTIENT,'L'=REMAINDER
+;
+DIVHLDE:
+	PUSH	DX		;SAVE DIVISOR
+;	MOV	AL,DL
+;	NOT	AL		;NEGATE DIVISOR
+;	MOV	DL,AL
+;	MOV	AL,DH
+;	NOT	AL
+;	MOV	DH,AL
+;	INC	DX		;DE IS NOW TWOS COMPLEMENTED
+	NEG	DX
+	MOV	CX,0		;INITIATE QUOTIENT
+DIVL1:
+	ADD	BX,DX		;SUBTRACT DIVISOR FROM DIVIDEND
+	INC	CX		;INCREASE QUOTIENT
+	JC	DIVL1		;LOOP UNTIL SIGN CHANGES
+	DEC	CX		;ADJUST QUOTIENT
+	POP	DX		;RETRIEVE DIVISOR
+	ADD	BX,DX		;ADJUST REMAINDER
+	RET
+
+;
+;---->  MULHLA:  MULTIPLY THE VALUE IN 'HL' BY THE VALUE IN 'A'
+;	        RETURN WITH ANSWER IN 'HL'
+;
+MULHLA:
+	XCHG	BX,DX		;MULTIPLICAND TO DE
+	MOV	BX,OFFSET 0	;INITIALIZE PRODUCT
+	INC	AL		;ADJUST MULTIPLIER
+MULLP:
+	DEC	AL
+	JNZ	MULLP1
+	RET
+
+MULLP1:
+	ADD	BX,DX
+	JMPS	MULLP
+;
+;  SHIFT 'HL' REGISTER PAIR ONE BIT TO THE RIGHT
+;
+SHFTHL:
+	CLC						;CLEAR THE CARRY
+	RCR	BX,1
+	RET
+;
+;****************************************************************
+;*								*
+;*   CRCSUBS (Cyclic Redundancy Code Subroutines) version 1.20	*
+;*   8080 Mnemonics						*
+;*								*
+;*     These subroutines will compute and check a true 16-bit	*
+;*   Cyclic Redundancy Code for a message of arbitrary length.	*
+;*								*
+;*     The use of this scheme will guarantee detection of all	*
+;*   single and double bit errors, all  errors  with  an  odd	*
+;*   number  of  error bits, all burst errors of length 16 or	*
+;*   less, 99.9969% of all 17-bit error bursts, and  99.9984%	*
+;*   of  all  possible  longer  error bursts.  (Ref: Computer	*
+;*   Networks, Andrew S.  Tanenbaum, Prentiss-Hall, 1981)	*
+;*								*
+;*   Designed & coded by Paul Hansknecht, June 13, 1981		*
+;*								*
+;*   Copyright (c) 1981, Carpenter Associates			*
+;*		    Box 451					*
+;*		    Bloomfield Hills, MI 48013			*
+;*		    313/855-3074				*
+;*								*
+;*   This program may be freely reproduced for non-profit use.	*
+;*								*
+;****************************************************************
+;
+;
+CLRCRC:				;RESET CRC ACCUMULATOR FOR A NEW MESSAGE.
+	MOV	CRCVAL,0
+	RET
+;
+UPDCRC:				;UPDATE CRC ACCUMULATOR USING BYTE IN (A).
+	PUSH	AX
+	PUSH	CX
+	PUSH	BX
+	MOV	CH,8
+	MOV	CL,AL
+	MOV	BX,CRCVAL
+UPDLOOP:
+	ROL	CL,1
+;	MOV	AL,CL
+;	ROL	AL,1
+;	MOV	CL,AL
+	RCL	BX,1
+	JNC	SKIPIT
+	XOR	BX,1021H
+SKIPIT:
+	DEC	CH		;AND XOR 05H FOR XOR 21H IN THE ADJACENT CODE
+	JNZ	UPDLOOP
+	MOV	CRCVAL,BX
+	POP	BX
+	POP	CX
+	POP	AX
+	RET
+;
+FINCRC:				;FINISH CRC CALCULATION FOR OUTPUT MESSAGE
+	PUSH	AX
+	XOR	AL,AL
+	CALL	UPDCRC
+	CALL	UPDCRC
+	MOV	DX,CRCVAL
+	POP	AX
+	RET
+;
+CHKCRC:				;CHECK CRC BYTES OF RECEIVED MESSAGE
+	MOV	AX,CRCVAL
+	OR	AL,AH
+	JZ	CHKCRCRT
+	MOV	AL,0FFH
+CHKCRCRT:
+	RET
+;
+CRCVAL	DW	0
+;
+;
+;		FILES.A86
+;
+;Disk file routines for MODEM9.xx.
+;
+;
+;Multi-file access subroutine.  Allows processing of multiple files
+;(i.e., *.ASM) from disk.  This routine builds the proper name in the
+;FCB each time it is called.  This command would be used in such pro-
+;grams such as modem transfer, tape save, etc. in which you want to
+;process single or multiple files.
+;
+;The FCB will be set up with the next name, ready to do normal proces-
+;sing (OPEN, READ, etc.) when routine is called.
+;
+;Carry is set if no more names can be found
+;
+MFNAME:					;INIT DMA ADDR, FCB
+	MOV	CL,STDMA
+	MOV	DX,OFFSET 80H
+	INT	224
+	MOV	byte ptr .FCBEXT,0
+	TEST	MFFLG1,0FFH
+	JNZ	MFN01			;IF FIRST TIME
+	MOV	MFFLG1,1		;TURN OFF 1ST TIME SW
+	MOV	BX,OFFSET FCB		;SAVE THE REQUESTED NAME
+	MOV	DX,OFFSET MFREQ
+	MOV	CX,OFFSET 12
+	CALL	MOVER
+	MOV	AL,BYTE PTR .FCB
+	MOV	MFCUR,AL		;SAVE DISK IN CURRENT FCB
+	MOV	BX,OFFSET MFREQ		;SRCHF REQ NAME
+	MOV	DX,OFFSET FCB
+	MOV	CX,OFFSET 12
+	CALL	MOVER
+	PUSH	CX
+	PUSH	DX
+	PUSH	BX
+	MOV	CL,SRCHF
+	MOV	DX,OFFSET FCB
+	INT	224
+	POP	BX
+	POP	DX
+	POP	CX
+	JMP	MFN02
+;
+MFN01:
+	MOV	BX,OFFSET MFCUR		;SRCHF CURR NAME
+	MOV	DX,OFFSET FCB
+	MOV	CX,OFFSET 12
+	CALL	MOVER
+	MOV	CL,SRCHF
+	MOV	DX,OFFSET FCB
+	INT	224
+	MOV	BX,OFFSET MFREQ		;SRCHN REQ NAME
+	MOV	DX,OFFSET FCB
+	MOV	CX,OFFSET 12
+	CALL	MOVER
+	MOV	CL,SRCHN
+	MOV	DX,OFFSET FCB
+	INT	224
+MFN02:
+	INC	AL			;RETURN CARRY IF NOT FOUND
+	STC
+	JNZ	MFFIX1
+	MOV	MFFLG1,AL
+	RET
+;
+MFFIX1:
+	DEC	AL			;MOVE NAME FOUND TO CURR
+	AND	AL,3
+	ADD	AL,AL
+	ADD	AL,AL
+	ADD	AL,AL
+	ADD	AL,AL
+	ADD	AL,AL
+	ADD	AL,81H
+	MOV	BL,AL
+	MOV	BH,0
+	PUSH	BX			;SAVE NAME POINTER
+	MOV	DX,OFFSET MFCUR+1
+	MOV	CX,OFFSET 11
+	CALL	MOVER
+	POP	BX			;MOVE NAME FOUND TO FCB
+	MOV	DX,OFFSET FCB+1
+	MOV	CX,OFFSET 11
+	CALL	MOVER
+	XOR	AL,AL			;SETUP FCB
+	MOV	BYTE PTR .FCBEXT,AL
+	MOV	BYTE PTR .FCBRNO,AL
+	RET
+;
+; Move subroutine
+;
+MOVER:	MOV	AL,BYTE PTR [BX]
+	XCHG	BX,DX
+	MOV	BYTE PTR [BX],AL
+	XCHG	BX,DX
+	INC	BX
+	INC	DX
+	DEC	CX
+	JNZ	MOVER
+	RET
+;
+;Lists directory and gives free space remaining on the requested drive.
+;
+DIRLST:
+	MOV	DX,OFFSET CMDBUF	;PUT COMMAND LINE IN FCB
+	MOV	BX,OFFSET 5CH
+	CALL	CPMLINE
+	MOV	BX,OFFSET SRCHFCB
+	CALL	INITFCBS
+	MOV	AL,BYTE PTR .6CH	;GET DRIVE #
+	MOV	SRCHFCB,AL
+	MOV	AL,BYTE PTR .6DH
+	CMP	AL,20H			;IF BLANK GET ALL NAMES
+	PUSH	AX
+	JNZ	DIRLST1
+	CALL	QSTMARK
+DIRLST1:
+	POP	AX
+	JZ	DIRLST2
+	CALL	MOVENAME		;ELSE MOVE NAME INTO FCB
+DIRLST2:
+	MOV	DX,OFFSET 80H
+	MOV	CL,STDMA
+	INT	224
+	MOV	NAMEGD,0
+	MOV	AL,NOOFCOL		;GET NUMBER OF COLUMNS
+	MOV	NAMECT,AL		;STORE TO CALCULATE CRLF POSITION
+	MOV	DX,OFFSET SRCHFCB
+	MOV	CL,SRCHF		;DO FIRST SEARCH
+	INT	224
+	CMP	AL,0FFH
+	JZ	NOFILE
+	PUSH	AX
+DIRLP:
+	POP	AX
+	CALL	GETADD
+	ADD	BX,15			;OFFSET FOR RECORD COUNT
+	MOV	AL,BYTE PTR [BX]
+	OR	AL,AL
+	JZ	NEXTSR			;NO LIST IF FILE IS ZERO LENGTH
+	ADD	BX,-5			;POINT TO $SYS ATTRIB BYTE
+	MOV	AL,BYTE PTR [BX]
+	AND	AL,80H
+	JNZ	NEXTSR			;NO LIST IF $SYS FILE
+	ADD	BX,-10			;POINT TO BEGINNING OF NAME
+	INC	BX			;POINT TO FIRST LETTER
+	MOV	DX,OFFSET PRNTNAME
+	MOV	CH,8
+	CALL	MOVE
+	INC	DX
+	MOV	CH,3
+	CALL	MOVE
+	CALL	ILPRT
+PRNTNAME:
+	DB '        ','.','   ',' ', 0   ;8 SPACES, PERIOD, 3 SPACES, 1 SPACE
+	MOV	NAMEGD,0FFH
+NEXTSR:
+	MOV	DX,OFFSET SRCHFCB
+	MOV	CL,SRCHN			;DO NEXT SEARCH
+	INT	224
+	CMP	AL,0FFH
+	JZ	DIRDONE
+	PUSH	AX
+	TEST	NAMEGD,0FFH
+	JZ	DIRLP
+	DEC	NAMECT
+	JNZ	NEXTSR1
+	CALL	NEWCT
+	JMPS	NEXTSR2
+NEXTSR1:
+	CALL	FENCE
+NEXTSR2:
+	MOV	NAMEGD,0
+	JMP	DIRLP
+;
+NOFILE:
+	CALL	ILPRT
+	DB	'NO FILE',0
+;
+; Determines free space remaining
+;
+DIRDONE:
+	MOV	AL,SRCHFCB
+	OR	AL,AL
+	JZ	DEFLT
+	DEC	AL
+	MOV	DL,AL
+	MOV	CL,SELDSK
+	INT	224
+DEFLT:
+	MOV	CL,GETPARM 		;CURRENT DISK PARAMETER BLOACK
+	INT	224
+	ADD	BX,2
+	MOV	AL,ES: BYTE PTR [BX]		;GET BLOCK SHIFT FACTOR
+	MOV	BSHIFTF,AL
+	INC	BX			;BUMP TO BLOCK MASK
+	MOV	AL,ES: BYTE PTR [BX]	;GET IT
+	MOV	BMASK,AL
+	ADD	BX,2
+	MOV	DX,ES: WORD PTR [BX] 	;GET MAX BLOCK NUMBER
+;	MOV	DL,ES: BYTE PTR [BX] 	;GET MAX BLOCK NUMBER
+;	INC	BX
+;	MOV	DH,ES: BYTE PTR [BX]
+;	XCHG	BX,DX
+	MOV	BMAX,DX			;PUT IT AWAY
+	MOV	CL,GETALC	 	;ADDRESS OF CP/M ALLOCATION VECTOR
+	INT	224
+	XCHG	BX,DX			;GET ITS LENGTH
+	MOV	BX,BMAX
+	INC	BX
+	MOV	CX,0			;INITIALIZE BLOCK COUNT TO ZERO
+GSPBYT:
+	PUSH	DX			;SAVE ALLOCATION ADDRESS
+	XCHG	BX,DX
+	MOV	AL,ES: BYTE PTR [BX]
+	XCHG	BX,DX
+	MOV	DL,8			;SET TO PROCESS 8 BLOCKS
+GSPLUP:
+	RCL	AL,1			;TEST BIT
+	JC	NOTFRE
+	INC	CX
+NOTFRE:
+	MOV	DH,AL			;SAVE BITS
+	DEC	BX
+	MOV	AL,BL
+	OR	AL,BH
+	JZ	ENDALC			;QUIT IF OUT OF BLOCKS
+	MOV	AL,DH			;RESTORE BITS
+	DEC	DL			;COUNT DOWN 8 BITS
+	JNZ	GSPLUP			;DO ANOTHER BIT
+	POP	DX                   ;BUMP TO NEXT COUNT OF ALLOCATION VECTOR
+	INC	DX
+	JMP	GSPBYT			;PROCESS IT
+;
+ENDALC:
+	POP	DX			;CLEAR ALLOCATION VECTOR FROM STACK
+	MOV	BX,CX			; COPY TO BX
+	MOV	AL,BSHIFTF		;GET BLOCK SHIFT FACTOR
+	SUB	AL,3			;CONVERT FROM RECORDS TO THOUSANDS
+	JZ	PRTFREE			;SKIP SHIFTS IF 1K BLOCKS
+FREKLP:
+	ADD	BX,BX			;MULTIPLY BLOCKS BY 'K PER BLOCK'
+	DEC	AL
+	JNZ	FREKLP
+PRTFREE:
+	PUSH	BX
+	CALL	ILPRT
+	DB	CR,LF,'Drive ',0
+	MOV	AL,SRCHFCB		;IF NO DRIVE, GET
+	OR	AL,AL			;LOGGED IN DRIVE
+	JNZ	PRNTHD
+	MOV	CL,CURDSK
+	INT	224
+	INC	AL
+PRNTHD:
+	ADD	AL,'A'-1
+	MOV	DRNAME,AL
+	CALL	ILPRT
+DRNAME	DB	'  has ',0
+	POP	BX			;GET NUMBER OF BYTES AVAILABLE
+	CALL	DECOUT
+	CALL	ILPRT
+	DB	'K bytes free',CR,LF,0
+	RET
+;
+; Subroutines
+;
+FENCE:
+	CALL	ILPRT
+	DB	'| ',0
+	RET
+;
+NEWCT:
+	CALL	CRLF
+	MOV	AL,NOOFCOL
+	MOV	NAMECT,AL
+	RET
+;
+QSTMARK:
+	MOV	AL,'?'			;IF BLANK IN FCB, PUT IN 11 ?'s
+	MOV	CH,11
+	MOV	BX,OFFSET SRCHFCB+1
+QSTLP:
+	MOV	BYTE PTR [BX],AL
+	INC	BX
+	DEC	CH
+	JNZ	QSTLP
+	RET
+;
+MOVENAME:
+	MOV	BX,OFFSET 6DH
+	MOV	DX,OFFSET SRCHFCB+1
+	MOV	CH,11
+	CALL	MOVE			;MOVE IN MAIN PROGRAM
+	RET
+;
+GETADD:
+	AND	AL,03H			;GET MOD4 FOR CP/M 1.4
+	ADD	AL,AL			;ADD 32
+	ADD	AL,AL
+	ADD	AL,AL
+	ADD	AL,AL
+	ADD	AL,AL
+	MOV	DL,AL
+	MOV	DH,0
+	MOV	BX,OFFSET 80H		;ADD DMA OFFSET
+	ADD	BX,DX
+	RET
+;
+;IN CP/M V.2, IF FILE IS R/O OR SYS, IT IS CHANGED TO 'BAK'.
+;
+CKCPM2:
+	MOV	CL,STDMA
+	MOV	DX,OFFSET 80H
+	INT	224
+	MOV	CL,SRCHF		;SEARCH FOR FILE
+	MOV	DX,OFFSET FCB
+	INT	224
+	CMP	AL,0FFH
+	JNZ	CKCPM2A
+	RET
+CKCPM2A:
+	ADD	AL,AL
+	ADD	AL,AL			;MULT A-REG BY..
+	ADD	AL,AL
+	ADD	AL,AL			;..32 TO FIND..
+	ADD	AL,AL			;..NAME IN DMA.
+	MOV	BX,OFFSET 80H
+	ADD	AL,BL
+	MOV	BL,AL			;HL POINTS TO DIR NAME
+	MOV	DX,OFFSET 9
+	ADD	BX,DX			;POINT TO R/O ATTRIB BYTE
+	MOV	AL,BYTE PTR [BX]
+	AND	AL,80H			;TEST MSB
+	JNZ	MKCHG			;IF SET, MAKE CHANGE
+	INC	BX			;CHECK SYSTEM ATTRIB BYTE
+	MOV	AL,BYTE PTR [BX]
+	AND	AL,80H
+	JNZ	CKCPM2B			; IS $SYS OR $R/O
+	RET
+CKCPM2B:
+	DEC	BX
+MKCHG:
+	MOV	DX, -8
+	ADD	BX,DX			;POINT HL TO FILENAME + 1
+	MOV	DX,OFFSET FCB+1		;MOVE DIR NAME TO FCB..
+	MOV	CH,11			;..WITHOUT CHANGING DRIVE.
+	CALL	MOVE
+	MOV	BX,OFFSET FCB+9		;R/O ATTRIB
+	AND	BYTE PTR [BX],07FH	; STRIP R/O ATTRIB
+	INC	BX
+	AND	BYTE PTR [BX],07FH	; STRIP SYS ATTRIB
+	MOV	DX,OFFSET FCB
+	MOV	CL,30			;SET NEW ATTRIBS IN DIR
+	INT	224
+;
+;MAY BE CALLED BY CKBAKUP BELOW. ITS RETURN DONE HERE
+;
+PLANCHG:
+	MOV	BX,OFFSET FCB		;CHANGE NAME TO TYPE "BAK"
+	MOV	DX,OFFSET 6CH
+	MOV	CH,9			;MOVE DRIVE AND NAME (NOT TYPE)
+	CALL	MOVE
+	MOV	BX,OFFSET 75H		;START OF TYPE IN FCB2
+	MOV	BYTE PTR [BX],'B'
+	INC	BX
+	MOV	BYTE PTR [BX],'A'
+	INC	BX
+	MOV	BYTE PTR [BX],'K'
+	MOV	DX,OFFSET 6CH
+	MOV	CL,ERASE		;ERASE ANY PREV BACKUPS
+	INT	224
+	MOV	BX,OFFSET 6CH		;FCB2 DR FIELD SHOULD..
+	MOV	BYTE PTR [BX],0		;..0 FOR RENAME.
+	MOV	DX,OFFSET FCB
+	MOV	CL,23	;RENAME
+	INT	224
+	RET
+;
+CKBAKUP:
+	MOV	AL,BAKUPBYTE
+	OR	AL,AL
+	JZ	CKBAKUPR
+	MOV	CL,SRCHF
+	MOV	DX,OFFSET FCB
+	INT	224
+	INC	AL
+	JZ	CKBAKUPR
+	JMP	PLANCHG			;IN "CKCPM2" - RET DONE THERE
+CKBAKUPR:
+	RET
+;
+ERASFIL:
+	MOV	BX,OFFSET FCB		;CHECK FOR WILD CARDS
+	MOV	CH,11
+ERASFIL1:
+	INC	BX
+	MOV	AL,BYTE PTR [BX]
+	CMP	AL,'?'			;IS IT A WILD CARD?
+	JZ	WILDERR			;GO IF SO
+	DEC	CH
+	JNZ	ERASFIL1
+	MOV	AL,BATCHFLG 		;DON'T ASK FOR ERASE..
+	OR	AL,AL			;..IN MULTI-FILE MODE,..
+	JZ	NOASK			;..JUST DO IT.
+	MOV	DX,OFFSET FCB
+	MOV	CL,SRCHF
+	INT	224
+	INC	AL
+	JZ	CKBAKUPR
+	CALL	ILPRT
+	DB	'File exists -- Type ''Y'' to erase: ',BELL,0
+	CALL	KEYIN
+	PUSH	AX
+	CALL	TIPE
+	POP	AX
+	CALL	UCASE
+	CMP	AL,'Y'
+	JZ	ERASEIT
+	JMP	MENU
+
+ERASEIT:
+	CALL	CRLF
+NOASK:
+	MOV	DX,OFFSET FCB
+	MOV	CL,ERASE
+	INT	224
+	RET
+;
+WILDERR:
+	POP	BX		;RESTORE STACK
+	CALL	ILPRT
+	DB	'++ No ambiguous file names allowed ++',CR,LF,BELL,0
+	JMP	MENU
+;
+BLKFILE:
+	CALL	ILPRT	;ROUTINE IF NO FILE IS NAMED FOR "SEND" OR "RECEIVE"
+	DB	CR,LF,'No file specified',CR,LF,BELL,0
+	JMP	MENU
+
+MAKEFIL:
+	MOV	DX,OFFSET FCB
+	MOV	CL,MAKE
+	INT	224
+	INC	AL
+	JZ	MAKEFIL1
+	RET
+MAKEFIL1:
+	CALL	ERXIT
+	DB	'Error - Can''t make file',CR,LF
+	DB	'Directory is likely full',CR,LF,'$'
+;
+CNREC:
+	MOV	CL,FILSIZ 		;COMPUTE FILE SIZE FUNCTION IN CP/M 2.x
+	MOV	DX,OFFSET FCB		;POINT TO FILE CONTROL BLOCK
+	INT	224
+	MOV	BX,WORD PTR .FCB+33	;GET RECORD COUNT
+	MOV	RCNT,BX			;STORE IT
+	MOV	BX, 0			;ZERO HL
+	MOV	WORD PTR .FCB+33,BX	;RESET RANDOM RECORD IN FCB
+	RET
+;
+OPENFIL:
+	XOR	AL,AL
+	MOV	BYTE PTR .FCBEXT,AL
+	MOV	DX,OFFSET FCB
+	MOV	CL,OPEN
+	INT	224
+	INC	AL
+	JNZ	OPENOK
+	CALL	ERXIT
+	DB	'Can''t open file$'
+OPENOK:
+	MOV	AL,QFLG
+	OR	AL,AL
+	JNZ	OPENOK1
+	RET
+
+OPENOK1:
+	CALL	SENDTIM		         ;A LIB MACRO SHOWS TIME TO SEND
+	MOV	BYTE PTR .FCBRNO,0 	 ; MJM - 9.01.05 FIX BATCH SEND
+	MOV	BYTE PTR .FCBEXT,0 	 ; MJM - 9.01.05 FIX BATCH SEND
+	RET
+;
+CLOSFIL:
+	MOV	DX,OFFSET FCB
+	MOV	CL,CLOSE
+	INT	224
+	INC	AL
+	JZ	CLOSFIL1
+	RET
+
+CLOSFIL1:
+	CALL	ERXIT
+	DB	'Can''t close file$'
+RDSECT:
+	DEC	SECINBF
+	JS	RDBLOCK
+	MOV	BX,SECPTR
+	MOV	DX,OFFSET 80H
+	CALL	MOVE128
+	MOV	SECPTR,BX
+	RET
+;
+RDBLOCK:
+	MOV	AL,EOFLG
+	CMP	AL,1
+	STC
+	JNZ	RDBLOCK1
+	RET
+RDBLOCK1:
+	MOV	CL,0
+	MOV	DX,OFFSET DBUF
+RDSECLP:
+	PUSH	CX
+	PUSH	DX
+	MOV	CL,STDMA
+	INT	224
+	MOV	DX,OFFSET FCB
+	MOV	CL,READ
+	INT	224
+	POP	DX
+	POP	CX
+	OR	AL,AL
+	JZ	RDSECOK
+	DEC	AL
+	JZ	REOF
+	CALL	ERXIT
+	DB	'++ File read error ++$'
+RDSECOK:
+	MOV	BX,OFFSET 80H
+	ADD	BX,DX
+	XCHG	BX,DX
+	INC	CL
+	MOV	AL,CL
+	CMP	AL,DBUFSIZ*8 		;BUFFER SIZE IN 128 BYTE SECTORS
+	JZ	RDBFULL
+	JMP	RDSECLP
+;
+REOF:	MOV	AL,1
+	MOV	EOFLG,AL
+	MOV	AL,CL
+RDBFULL:
+	MOV	SECINBF,AL
+	MOV	BX,OFFSET DBUF
+	MOV	SECPTR,BX
+	MOV	DX,OFFSET 80H
+	MOV	CL,STDMA
+	INT	224
+	JMP	RDSECT
+;
+WRSECT:
+	MOV	BX,SECPTR
+	XCHG	BX,DX
+	MOV	BX,OFFSET 80H
+	CALL	MOVE128
+	XCHG	BX,DX
+	MOV	SECPTR,BX
+	MOV	AL,SECINBF
+	INC	AL
+	MOV	SECINBF,AL
+	CMP	AL,DBUFSIZ*8 		;BUFFER SIZE IN 128 BYTE SECTORS
+	JZ	WRBLOCK
+	RET
+WRBLOCK:
+	MOV	AL,SECINBF
+	OR	AL,AL
+	JNZ	WRBLOCK1
+	RET
+WRBLOCK1:
+	MOV	CL,AL
+	MOV	DX,OFFSET DBUF
+DKWRLP:
+	PUSH	BX
+	PUSH	DX
+	PUSH	CX
+	MOV	CL,STDMA
+	INT	224
+	MOV	DX,OFFSET FCB
+	MOV	CL,WRITE
+	INT	224
+	POP	CX
+	POP	DX
+	POP	BX
+	OR	AL,AL
+	JNZ	WRERR
+	MOV	BX,OFFSET 80H
+	ADD	BX,DX
+	XCHG	BX,DX
+	DEC	CL
+	JNZ	DKWRLP
+	XOR	AL,AL
+	MOV	SECINBF,AL
+	MOV	BX,OFFSET DBUF
+	MOV	SECPTR,BX
+	MOV	DX,OFFSET 80H		;TO RESET..			@DH
+	MOV	CL,STDMA		;..DMA ADDRESS..		@DH
+	INT	224			;..BDOS ENTRY			@DH
+	RET
+;
+WRERR:	MOV	CL,CAN
+	CALL	SEND
+	CALL	ERXIT
+	DB	CR,LF,'Error writing file',CR,LF,'$'
+;
+;
+;		FINISH.A86
+;
+;Parameters and buffers for MODEM9.xx.
+;
+COMPLIST	DB	 6, 'S', 'R', 'T', 'E', 'H', 'L'
+;
+NFILFLG	DB	FALSE		;NORMALLY SET TO FALSE. ALLOWS WRITE TO..
+;				;..MEMORY IN TERMINAL MODE.
+OPTION	DB	0
+;
+OPTBL	EQU	$
+;
+QFLG		DB	'Q'
+RSEEFLG		DB	'R'
+SSEEFLG		DB	'S'
+VSEEFLG		DB	'V'
+TERMFLG		DB	'T'
+LOCCHFLG	DB	'L'
+BATCHFLG	DB	'B'	;SET TO 'B' BY MENU. DOES NOT ALLOW MULTIFILE
+				;XFER WHEN PROGRAM INITIALLY CALLED.
+OPTBE	EQU	$
+
+RESTROPT	DB	'Q','R','S','V','T','L','B'
+			;MUST BE IN SAME ORDER AS TABLE ABOVE
+;
+;THE NEXT 12 BYTES EQUAL THE NUMBER OF BYTES BETWEEN SECTNOB AND SECTNOE
+;
+RESTSN:
+	DB	0,0,0,0,0
+	DW	DBUF
+	DB	0,0,0,0,0
+;
+SECTNOB	EQU	$	;START OF TABLE MARKER
+RCVSNO	DB	0	;\
+SECTNO	DW	0	; \
+ERRCT	DB	0	;  \
+EOFLG	DB	0	;   \
+SECPTR	DW	DBUF	;    12 BYTES BETWEEN TABLE MARKERS
+SECINBF	DB	0	;   /
+MAXEXT	DB	0	;  /
+RCNT	DW	0 	; /
+DATAFLG	DB	0	;/
+SECTNOE	EQU	$	;END OF TABLE MARKER
+;
+MODCTLB	DB	07FH
+SAVEFLG	DB	FALSE
+LASTBYT1 DB	0
+LASTBYT2 DB	0
+EXACFLG	DB	0
+ECHOFLG	DB	FALSE
+LOCFLG	DB	FALSE
+CKSUMFLG DB	TRUE
+LISTFLG	DB	FALSE
+LISTMOR	DB	FALSE
+FSTFLG	DB	TRUE
+FIRSTME	DB	TRUE	;FIRST SOH RECEIVED SWITCH (ZERO AFTER 1ST SOH)
+MFFLG1	DB	0	;1ST TIME SW FOR MFACESS
+HLSAVE	DW	BOTTRAM
+HLSAVE1	DW	BOTTRAM
+HLSAVE2	DW	BOTTRAM
+STRSAVE	DW	STRINGS
+CMDBUF	DB	80H,0
+	RB	80H
+DISKNO	RB	1
+DISKSAV	RB	1
+SAVUSR	RB	1
+SAVEOUT	RB	1
+MECHDLY	RB	1
+SENDFLG	RB	1
+NBSAVE	RW	1
+BGNMS	RW	1
+FILECT	RB	2
+SNAMECT RB	1
+FTYCNT	RB	1
+	RB	100
+FCB3	RB	33
+FCB4	RB	33
+FCBBUF	RB	15
+
+;Multi-file access work area
+
+MFREQ	RB	12	;REQ NAME
+MFCUR	RB	12	;CURR NAME
+
+;Unitialized storage for DIRLST
+
+SRCHFCB	RB	33
+NAMEGD	RB	1
+NAMECT	RB	1
+BMAX	RW	1	;HIGHEST BLOCK NUMBER ON DRIVE
+BMASK	RB	1	;(RECORDS/BLOCK)-1
+BSHIFTF RB	1	;NUMBER OF SHIFTS TO MULTIPLY BY REC/BLOCK
+;
+STACK	RW	200H
+STACKTOP EQU	Offset $
+SAVESS	DW	0
+SAVESP	DW	0
+;
+;DBUF	RB	DBUFSIZ*1024		;				@DH
+;NAMEBUF RB	64*12			;				@DH
+;
+;BOTTRAMEQU	(OFFSET $) + 0FFH AND 0FF00H	;			@DH
+;	RB	CAPTURE*1024			;			@DH
+;XAST	EQU	(OFFSET $) + 0FFH AND 0FF00H	;			@DH
+;
+DBUF	EQU	OFFSET $			;			@DH
+	RB	DBUFSIZ*1024			;			@DH
+NAMEBUF	EQU	OFFSET $			;			@DH
+	RB	64*12				;			@DH
+;
+BOTTRAM	EQU	OFFSET $			;			@DH
+	RB	CAPTURE*1024			;			@DH
+XAST	EQU	OFFSET $			;			@DH
+	DB	0			;end byte for GENCMD		@DH
+;
+	  END
+
