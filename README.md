@@ -28,7 +28,8 @@ Further tools are available from companion projects:
 | vedit editor | vedit | [VEDIT Project](https://github.com/johnsonjh/VEDIT) |
 
 Ancillary goals:
-- They also expose some practices of CPM/M-80 to CPM/M-86 translation. 
+- They also expose some practices of CP/M-80 to CP/M-86 translation.
+- The following development tools are used and demonstrated: xlt-86, aztec acc 4.2/4.3, am86, rasm86, nasm, masm, turbo pascal 3.0 (as a cli) 
 - This project is also used as a soak testing and source for [CP/M-86 Cross Developement Environment] (https://github.com/tsupplis/cpm86-crossdev] ...
 
 <p align="center">
