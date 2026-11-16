@@ -100,6 +100,7 @@ Ancillary goals:
 | [cpu](cpu/README.md) | CPU tools: 80x86 (8080-to-8086 source translator), vcpm (V20 hardware 8080 emulator), z80 (software 8080 emulator) and cpuid (processor detection) | Harold V. McIntosh; Stephen Hunt; Pat Hester and Bill Earnest; Richard C. Leinecker and Kirk Lawrence | Mixed / Freeware | |
 | [figforth](figforth/README.md) | Native fig-FORTH 1.0 with file-backed block storage | Thomas Newman / Charlie Krajewski, CP/M-86 adapter | Public domain; retain FIG credit | |
 | [focal](focal/README.md) | FOCAL-81 interpretive language interpreter | Dave Conroy / Akira KIDA | Public domain | |
+| [patcher](patcher/README.md) | Build a dedicated binary patch installer with expected-byte verification | PATCHER 1.0 (8-Jan-2001) | Public domain | |
 | [ratfor](ratfor/README.md) | RATFOR v1.05 preprocessor — translates structured Fortran to standard Fortran 77; use `-u` for DR Fortran-77 compatible upper-case output | Brian Gaeke / UofA Ratfor C sources | Public domain | Used by [cpm86-crossdev](https://github.com/tsupplis/cpm86-crossdev) |
 | [tinybas](tinybas/README.md) | Tiny BASIC interpreter | Classic Tiny BASIC sources | Public domain / Abandonware | |
 | [xlisp](xlisp/) | Lisp interpreter and runtime | David Betz | Public domain / Abandonware | |

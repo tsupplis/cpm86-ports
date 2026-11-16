@@ -1,0 +1,577 @@
+;
+;		PATCHER - Generic File Patcher
+;
+;
+; IMPORTANT: The ONLY parameters that need to be altered by the
+; user are those in the boxes marked by asterix (***) at the end
+; of the file.
+;
+; Assemble using DRI CP/M-86 assembler e.g.
+;
+;	ASM86 PATCHER
+;
+;	GENCMD PATCHER 8080 CODE[ M200]
+;
+; NOTE:
+; -----
+; You can use the CP/M-86 file compare utility BINCOM 2.0 to generate
+; the 'differences' between two files. e.g.
+;
+;		BINCOM oldfile newfile
+;
+; BINCOM.LOG provides the address offsets and difference bytes for
+; cutting/pasting into this source file.
+;
+;---------------------------------------------------------------
+
+; Last updated:	8-Jan-01
+
+; ASCII control codes
+;
+bel	equ	7
+ht	equ	9
+lf	equ	10
+ff	equ	12
+cr	equ	13
+eof	equ	26
+
+bdos	equ	224
+
+	dseg
+	org	5ch
+
+tfcb	rb	36			; fcb
+tbuf	rb	128			; dma buffer
+
+endds	equ	$
+
+	cseg
+	org	offset endds
+
+main:	mov	dx,offset hello		; startup message
+	call	print
+
+main1:	mov	word ptr abytes,offset bytes
+	mov	word ptr aoffs,offset offs
+	mov	word ptr afind,offset value
+	mov	word ptr arepl,offset value+1
+
+	mov	si,offset fname		; point to first filename
+
+	xor	cx,cx
+	mov	cl,byte ptr files	; get number of files to patch
+	or	cx,cx
+	jz	main5			; none - quit
+
+main2:	lodsb
+	mov	byte ptr filopt,al
+
+	push	si
+	push	cx
+	mov	word ptr afname,si
+
+	mov	byte ptr filpat,0	; clear file flags
+	mov	byte ptr filerr,0
+
+	mov	dx,offset chk		; pass1 msg
+	cmp	byte ptr pass,1
+	jnz	main3
+	mov	dx,offset pat		; pass2 msg
+main3:	call	print
+
+	call	pfile			; print filename
+	call	patch			; check/patch file
+	call	stat			; show results
+
+	pop	cx
+	pop	si
+	dec	cx
+	jz	main5
+
+	add	word ptr abytes,2	; set pointers to data for next file
+	add	word ptr aoffs,4
+	add	word ptr afind,2
+	add	word ptr arepl,2
+
+main4:	lodsb				; point to next filename
+	or	al,al
+	jnz	main4
+	jmps	main2
+
+main5:	call	pcrlf
+
+	cmp	byte ptr fatal,0	; skip next pass if any errors
+	jnz	done
+	cmp	byte ptr patched,0	; or already patched
+	jz	done
+
+	dec	byte ptr pass		; decr pass counter
+	jz	done
+	jmp	main1
+
+; All done
+
+done:	cmp	byte ptr fatal,0	; any fatal errors?
+	jnz	done3
+
+	mov	dx,offset warned	; any warnings?
+	cmp	byte ptr warnn,0
+	jnz	done1
+
+	mov	dx,offset succes	; any patches done?
+	cmp	byte ptr patched,0
+	jz	done2
+
+done1:	call	print
+
+done2:;	mov	al,0			; return code = 0
+	jmps	done4
+
+done3:	mov	dx,offset failed	; error message
+	call	print
+;	mov	al,1			; return code = 1
+
+done4:	mov	cl,0			; quit to dos
+	mov	dl,0
+	int	bdos
+
+; Display status for last file processed
+;
+stat:	mov	al,byte ptr filerr
+	or	al,al
+	jnz	stat1			; file error encountered
+
+	mov	dx,offset apat
+	cmp	byte ptr filpat,0
+	jz	stat3			; already patched
+
+	mov	dx,offset ok
+	jmps	stat3			; else ok
+
+stat1:	mov	dx,offset err1
+	dec	al
+	jnz	stat2
+
+	cmp	al,byte ptr filopt
+	jz	stat3
+	mov	dx,offset err0		; err1 - warning
+	jmps	stat3
+
+stat2:	mov	dx,offset err2
+	dec	al
+	jz	stat3			; err 2
+
+	mov	dx,offset err3
+	dec	al
+	jz	stat3			; err 3
+
+	mov	dx,offset uerr
+stat3:	jmp	print
+
+; Check / patch one file
+;
+patch:	mov	si,word ptr abytes
+	mov	cx,word ptr [si]
+	or	cx,cx
+	jz	patch5			; no bytes to patch
+
+	push	cx
+	call	movf
+	mov	dx,offset tfcb
+	mov	cl,15			; open file for read/write
+	int	bdos
+	inc	al
+	mov	al,1
+	jz	patch7			; open error
+
+patch1:	call	seek			; position file pointer
+	mov	al,2
+	jnz	patch7			; seek error
+
+	mov	dx,offset tfcb		; read record from file
+	mov	cl,33
+	int	bdos
+	or	al,al
+	mov	al,2
+	jnz	patch7			; read error
+
+	mov	bx,word ptr rof		; compare byte read with replace byte
+	add	bx,offset tbuf
+	mov	al,[bx]
+	mov	di,word ptr arepl
+	scasb
+	jz	patch2			; already done
+
+	mov	byte ptr filpat,1	; set patched flags
+	mov	byte ptr patched,1
+
+	mov	di,word ptr afind	; compare byte read with find byte
+	scasb
+	mov	al,2
+	jnz	patch7			; byte not found
+
+;	call	seek			; reposition file pointer
+;	mov	al,2
+;	jnz	patch7			; seek error
+
+	cmp	byte ptr pass,1		; don't write on first pass
+	jnz	patch2
+
+	call	write			; write replacement byte
+	mov	al,3
+	jnz	patch7			; write error
+
+patch2:	pop	cx
+	dec	cx
+	jz	patch5
+	call	patch6
+	push	cx
+	jmps	patch1
+
+patch3:	pop	cx
+patch4:	call	sterr
+patch5:	mov	dx,offset tfcb		; close file
+	mov	cl,16
+	int	bdos
+	cmp	al,0ffh
+	jnz	closed
+	cmp	byte ptr filerr,0	; preserve an earlier error
+	jnz	closed
+	mov	al,3
+	call	sterr
+closed:	ret
+
+patch6:	add	word ptr aoffs,4	; bump pointers for next patch byte
+	add	word ptr afind,2
+	add	word ptr arepl,2
+	ret
+
+patch7:	pop	cx			; skip to data for next file
+patch8:	dec	cx
+	jz	patch4
+	call	patch6
+	jmps	patch8
+
+; Set error and warning flags
+;
+sterr:	mov	byte ptr filerr,al
+	or	al,al
+	jz	sterr2
+
+	cmp	al,1			; if file not found error
+	jnz	sterr1
+
+	cmp	al,byte ptr filopt	; AND file has optional flag
+	jnz	sterr1
+
+	mov	byte ptr warnn,1	; set warning flag
+	ret
+
+sterr1:	mov	byte ptr fatal,al	; set general error flag
+sterr2:	ret
+
+; Move file pointer
+;
+seek:	push	es
+	mov	si,word ptr aoffs	; get offset
+	les	dx,[si]
+	mov	ax,es
+	pop	es
+	mov	bl,al
+	shl	ax,1
+	rcl	dx,1
+	mov	byte ptr tfcb+33,ah
+	mov	word ptr tfcb+34,dx
+	and	bl,7fh
+	mov	bh,0
+	mov	word ptr rof,bx
+	xor	al,al
+	ret
+
+; Write one byte to file
+;
+write:	mov	si,word ptr arepl
+	lodsb
+	mov	di,offset tbuf
+	mov	bx,word ptr rof
+	add	di,bx
+	stosb
+	mov	dx,offset tfcb
+	mov	cl,34		; write random
+	int	bdos
+	or	al,al
+	ret
+
+; Print asciiz string
+;
+print:	push	si
+	mov	si,dx
+print1:	lodsb
+	or	al,al
+	jz	print2
+	mov	dl,al
+	mov	cl,2
+	int	bdos
+	jmps	print1
+
+print2:	pop	si
+	ret
+
+; Print current filename
+;
+pfile:	mov	dx,word ptr afname
+	call	print
+	mov	dx,offset sep
+	jmps	print
+
+; Print CRLF
+;
+pcrlf:	mov	dx,offset crlf
+	jmps	print
+
+; Move filename
+;
+movf:	mov	si,word ptr afname
+	mov	di,offset tfcb
+	mov	al,0
+	stosb
+	mov	ch,'.'
+	mov	cl,8
+	call	movf2
+	mov	al,[si]
+	cmp	al,ch
+	jnz	movf1
+	inc	si
+movf1:	mov	cl,3
+	call	movf2
+	xor	al,al			; clear extent, record and allocation fields
+	mov	cx,24
+	rep	stosb
+	ret
+
+movf2:	lodsb
+	or	al,al
+	jz	movf4
+	cmp	al,ch
+	jz	movf4
+	stosb
+	dec	cl
+	jnz	movf2
+movf3:	ret
+
+movf4:	mov	al,' '
+	or	cl,cl
+	jz	movf3
+	stosb
+	dec	cl
+	jmps	movf4
+
+endcs	equ	$
+
+; Data area
+
+	dseg
+	org	offset endcs
+
+filerr	db	0		; current file error flag
+filpat	db	0		; current file patch ok flag
+filopt	db	0		; current file optional flag
+fatal	db	0		; general error flag
+warnn	db	0		; general warning flag
+patched	db	0		; patched ok (0=some files already patched)
+pass	db	2		; pass counter
+rof	dw	0		; record offset
+abytes	dw	0		; ptr - num bytes to patch in file
+aoffs	dw	0		; ptr - offset to byte
+afind	dw	0		; ptr - byte to find
+arepl	dw	0		; ptr - byte to replace
+afname	dw	0		; ptr - filename
+
+sep	db	' ... ',0
+chk	db	cr,lf,'checking ',0
+pat	db	cr,lf,'patching ',0
+ok	db	'ok',0
+apat	db	'already patched',0
+succes	db	cr,lf,'Patch successfully installed'
+crlf	db	cr,lf,0
+warned	db	cr,lf,'*** ONE OR MORE WARNINGS OCCURRED ***',cr,lf,0
+failed	db	cr,lf,'*** PATCH FAILED ***',cr,lf,0
+err0	db	'warning - '
+err1	db	'missing or write-protected!',0
+err2	db	'pattern not found - wrong version or compressed!',0
+err3	db	'write error!',0
+uerr	db	'unspecified error occured!',0
+
+;
+;	THIS IS THE BEGINNING OF THE USER MODIFIED AREA -
+;	DO NOT MAKE ANY CHANGES TO THE CODE BEFORE THIS POINT
+;
+;************************************************************************
+;*									*
+;*	ENTER THE STARTUP MESSAGE TO BE DISPLAYED			*
+;*									*
+;*	The string must end with a null character - ascii zero.		*
+;*									*
+hello:
+	db	cr,lf
+	db	'[8-Jan-2001]  Patching ...',cr,lf
+	db	'----------------------------------------',cr,lf
+	db	' Unconfigured template: no files changed ',cr,lf
+	db	'----------------------------------------',cr,lf
+	db	0
+
+;*									*
+;*	ENTER THE NUMBER OF FILES THAT NEED TO BE PATCHED		*
+;*									*
+files	db	0			; # files to patch
+
+;*									*
+;*	ENTER OPTIONAL FLAG AND FILENAME FOR EACH FILE			*
+;*									*
+;*	db	0			; 0 = file must be present	*
+;*					; 1 = file is optional		*
+;*	db	'filename.ext',0	; filename - must end with a	*
+;*					; zero (ascii null).		*
+fname:
+	db	0,'FILE1.CMD',0		; file 1
+	db	0,'FILE2.CMD',0		; file 2
+	db	0,'FILE3.CMD',0		; file 3
+	db	0,'FILE4.CMD',0		; file 4
+	db	0,'FILE5.CMD',0		; file 5
+	db	0,'FILE6.CMD',0		; file 6
+
+;*									*
+;*	ENTER THE NUMBER OF BYTES TO BE PATCHED FOR EACH FILE		*
+;*									*
+bytes:
+	dw	5			; file 1
+	dw	13			; file 2
+	dw	5			; file 3
+	dw	5			; file 4
+	dw	7			; file 5
+	dw	5			; file 6
+
+;*									*
+;*	ENTER THE ADDRESSES TO BE PATCHED				*
+;*									*
+;* For each location to be patched, enter the 32-bit offset address.	*
+;* These are the addresses from the start of the file where each patch	*
+;* is to be made.  Repeat for each file.				*
+;*									*
+;* Each 32-bit address must be stored as two 16-bit values in HIGH,	*
+;* LOW word order.  Thus, an address of 14259H would be entered as:	*
+;*									*
+;*	dw	00001h,	04259h						*
+;*									*
+;*		HIGH	LOW	ADDRESS					*
+offs:
+	dw	0h,	0h		; file1
+	dw	0h,	0h
+	dw	0h,	0h
+	dw	0h,	0h
+	dw	0h,	0h
+
+	dw	0h,	0h		; file2
+	dw	0h,	0h
+	dw	0h,	0h
+	dw	0h,	0h
+	dw	0h,	0h
+	dw	0h,	0h
+	dw	0h,	0h
+	dw	0h,	0h
+	dw	0h,	0h
+	dw	0h,	0h
+	dw	0h,	0h
+	dw	0h,	0h
+	dw	0h,	0h
+
+	dw	0h,	0h		; file3
+	dw	0h,	0h
+	dw	0h,	0h
+	dw	0h,	0h
+	dw	0h,	0h
+
+	dw	0h,	0h		; file4
+	dw	0h,	0h
+	dw	0h,	0h
+	dw	0h,	0h
+	dw	0h,	0h
+
+	dw	0h,	0h		; file5
+	dw	0h,	0h
+	dw	0h,	0h
+	dw	0h,	0h
+	dw	0h,	0h
+	dw	0h,	0h
+	dw	0h,	0h
+
+	dw	0h,	0h		; file6
+	dw	0h,	0h
+	dw	0h,	0h
+	dw	0h,	0h
+	dw	0h,	0h
+
+;*									*
+;*	ENTER THE BYTES	TO BE PATCHED					*
+;*									*
+;* For each address to be patched, enter the byte to be found at this	*
+;* location.  This is the 'FIND' byte - if this value is not found,	*
+;* the patcher will abort with an error.				*
+;*									*
+;* For each 'FIND' byte, enter the new value it will be replaced by.	*
+;* This is the 'REPLACE' byte.						*
+;*									*
+;* Repeat the above for each file to be patched.			*
+;*									*
+;*		FIND	REPLACE						*
+value:
+	db	0h,	0h		; file1
+	db	0h,	0h
+	db	0h,	0h
+	db	0h,	0h
+	db	0h,	0h
+
+	db	0h,	0h		; file2
+	db	0h,	0h
+	db	0h,	0h
+	db	0h,	0h
+	db	0h,	0h
+	db	0h,	0h
+	db	0h,	0h
+	db	0h,	0h
+	db	0h,	0h
+	db	0h,	0h
+	db	0h,	0h
+	db	0h,	0h
+	db	0h,	0h
+
+	db	0h,	0h		; file3
+	db	0h,	0h
+	db	0h,	0h
+	db	0h,	0h
+	db	0h,	0h
+
+	db	0h,	0h		; file4
+	db	0h,	0h
+	db	0h,	0h
+	db	0h,	0h
+	db	0h,	0h
+
+	db	0h,	0h		; file5
+	db	0h,	0h
+	db	0h,	0h
+	db	0h,	0h
+	db	0h,	0h
+	db	0h,	0h
+	db	0h,	0h
+
+	db	0h,	0h		; file6
+	db	0h,	0h
+	db	0h,	0h
+	db	0h,	0h
+	db	0h,	0h
+
+;*									*
+;************************************************************************
+
+	end
