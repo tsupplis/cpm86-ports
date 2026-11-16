@@ -5,7 +5,7 @@ SUBDIRS2=tinybas xlisp vtl2 ratfor diskstat sokoban edlin advent
     
 SUBDIRS3=trek expr kilo arc rogue cpu ladder
 
-SUBDIRS4=focal setboot yacc ansi2kr
+SUBDIRS4=focal setboot yacc ansi2kr figforth
 
 SUBDIRS=$(SUBDIRS1) $(SUBDIRS2) $(SUBDIRS3) $(SUBDIRS4)
 
@@ -16,7 +16,7 @@ all:
 
 # Only projects with runnable automated suites or build checks belong here.
 # Interactive PCE sessions are reserved for final-test.
-TEST_SUBDIRS=$(filter edlin lbr xsq uucp dc grep sed diff ndbm tr uniq sort tinybas xlisp vtl2 ratfor sokoban focal arc kilo yacc rogue,$(SUBDIRS))
+TEST_SUBDIRS=$(filter edlin lbr xsq uucp dc grep sed diff ndbm tr uniq sort tinybas xlisp vtl2 ratfor sokoban focal arc kilo yacc rogue figforth,$(SUBDIRS))
 
 test:
 	python3 tools/run-tests.py --make "$(MAKE)" $(TEST_SUBDIRS)

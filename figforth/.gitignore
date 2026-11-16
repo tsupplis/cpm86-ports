@@ -1,0 +1,6 @@
+# Retain the exact upstream archive despite the repository's archive rule.
+!upstream/
+!upstream/figforth.zip
+FORTH.BLK
+forth.blk
+examples/demo.blk
