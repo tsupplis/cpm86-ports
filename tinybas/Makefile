@@ -1,7 +1,7 @@
 CC=aztec43_acc
 LD=aztec43_acc
 CFLAGS=-squeeze
-CPM_LDFLAGS=-target=cpm86
+CPM86_LDFLAGS=-target=cpm86
 DOS_LDFLAGS=-target=dos1
 
 all: binaries
@@ -19,10 +19,11 @@ tinybas.com: $(OBJECTS)
 	$(LD) $(DOS_LDFLAGS) -o $@ $(OBJECTS)
 
 tinybas.cmd: $(OBJECTS)
-	$(LD) $(CPM_LDFLAGS) -o $@ $(OBJECTS)
+	$(LD) $(CPM86_LDFLAGS) -o $@ $(OBJECTS)
 
 %.cmd: %.o
-	$(LD) $(CPM_LDFLAGS) -o $@ $<
+	$(LD) $(CPM86_LDFLAGS) -o $@ $<
+	$(CMDINFO) $@
 
 %.com: %.o
 	$(LD) $(DOS_LDFLAGS) -o $@ $<

@@ -2,7 +2,7 @@ PYTHON=python3
 XLT86=cpm_xlt86
 ASM86=cpm86_asm86
 GENCMD=cpm86_gencmd
-CMDINFO=cmdinfo
+CMDINFO=pcdev_cmdinfo
 MODULES=d7dir.inc d7browse.inc d7file.inc d7copy.inc d7util.inc
 
 all: disk7.cmd

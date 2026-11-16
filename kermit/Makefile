@@ -1,10 +1,12 @@
 ASM86=cpm86_asm86
 GENCMD=cpm86_gencmd
+CMDINFO=pcdev_cmdinfo
 
 all: kermibm.cmd
 
 kermibm.cmd: kermibm.h86
 	$(GENCMD) $<
+	$(CMDINFO) $@
 
 kermibm.h86: c86ker.a86 c86cmd.a86 c86fil.a86 c86xibm.a86 c86pro.a86 c86trm.a86 c86utl.a86
 	$(ASM86) c86ker

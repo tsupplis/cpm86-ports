@@ -1,8 +1,9 @@
 CC = aztec43_acc
 LD = aztec43_acc
 LIB = aztec43_lib
+CMDINFO = pcdev_cmdinfo
 CFLAGS = -I. -squeeze
-CPM_LDFLAGS = -target=cpm86
+CPM86_LDFLAGS = -target=cpm86
 DOS_LDFLAGS = -target=dos1
 
 all: ndbm.lib keydb.cmd keydb.com
@@ -18,7 +19,8 @@ ndbm.lib: ndbm.o
 # Binaries
 # --------------------------------------------------------------------
 keydb.cmd: keydb.o ndbm.lib
-	$(LD) $(CPM_LDFLAGS) -o $@ keydb.o ndbm.lib
+	$(LD) $(CPM86_LDFLAGS) -o $@ keydb.o ndbm.lib
+	$(CMDINFO) $@
 
 keydb.com: keydb.o ndbm.lib
 	$(LD) $(DOS_LDFLAGS) -o $@ keydb.o ndbm.lib
@@ -34,7 +36,7 @@ keydb.com: keydb.o ndbm.lib
 # --------------------------------------------------------------------
 tests/testdb.cmd: testdb.o ndbm.lib
 	mkdir -p tests
-	$(LD) $(CPM_LDFLAGS) -o $@ testdb.o ndbm.lib
+	$(LD) $(CPM86_LDFLAGS) -o $@ testdb.o ndbm.lib
 
 tests/testdb.com: testdb.o ndbm.lib
 	mkdir -p tests
@@ -42,7 +44,7 @@ tests/testdb.com: testdb.o ndbm.lib
 
 tests/testfail.cmd: testfail.o
 	mkdir -p tests
-	$(LD) $(CPM_LDFLAGS) -o $@ testfail.o
+	$(LD) $(CPM86_LDFLAGS) -o $@ testfail.o
 
 tests/testfail.com: testfail.o
 	mkdir -p tests

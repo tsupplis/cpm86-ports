@@ -1,12 +1,15 @@
 CC=aztec43_acc
 LD=aztec43_acc
+CMDINFO=pcdev_cmdinfo
+
 CFLAGS=-I. -squeeze
-CPM_LDFLAGS=-target=cpm86
+CPM86_LDFLAGS=-target=cpm86
 
 all: kilo.cmd
 
 kilo.cmd: kilo.o
-	$(LD) $(CPM_LDFLAGS) -o $@ $<
+	$(LD) $(CPM86_LDFLAGS) -o $@ $<
+	$(CMDINFO) $@
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -17,11 +20,11 @@ clean:
 
 tests/testfile.cmd: testfile.c kilo.c fsave.h
 	mkdir -p tests
-	$(CC) $(CFLAGS) $(CPM_LDFLAGS) -o $@ testfile.c
+	$(CC) $(CFLAGS) $(CPM86_LDFLAGS) -o $@ testfile.c
 
 tests/testsave.cmd: testsave.c fsave.h
 	mkdir -p tests
-	$(CC) $(CFLAGS) $(CPM_LDFLAGS) -o $@ testsave.c
+	$(CC) $(CFLAGS) $(CPM86_LDFLAGS) -o $@ testsave.c
 
 test: kilo.cmd tests/testfile.cmd tests/testsave.cmd
 	python3 test-file.py

@@ -2,8 +2,8 @@ LINK86=pcdev_linkcmd
 RASM86=pcdev_rasm86
 ASM86=cpm86_asm86
 GENCMD=cpm86_gencmd
-BIN2CMD=bin2cmd
-CMDINFO=cmdinfo
+BIN2CMD=pcdev_bin2cmd
+CMDINFO=pcdev_cmdinfo
 
 BINARIES=vcpm.cmd 80x86.cmd z80.cmd cpuid.cmd
 VCPM_MODULES=vcpinit.inc vcptrap.inc vcpname.inc vcpdata.inc

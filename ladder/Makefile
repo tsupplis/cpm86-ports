@@ -5,6 +5,7 @@ all: ladder.cmd
 
 ladder.cmd: ladder.pas
 	$(TPC) ladder.pas
+	$(CMDINFO) $@
 
 clean:
 	$(RM) ladder.cmd

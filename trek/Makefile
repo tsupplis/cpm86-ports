@@ -1,7 +1,8 @@
 CC=aztec43_acc
 LD=aztec43_acc
+CMDINFO=pcdev_cmdinfo
 CFLAGS=-squeeze
-CPM_LDFLAGS=-target=cpm86 -lm
+CPM86_LDFLAGS=-target=cpm86 -lm
 DOS_LDFLAGS=-target=dos1 -lm
 
 all: binaries
@@ -12,7 +13,7 @@ trek.com: trek.o
 	$(LD) -o $@ trek.o $(DOS_LDFLAGS)
 
 trek.cmd: trekcp.o
-	$(LD) -o $@ trekcp.o $(CPM_LDFLAGS) 
+	$(LD) -o $@ trekcp.o $(CPM86_LDFLAGS) 
 
 test: binaries
 	sh test.sh

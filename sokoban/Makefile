@@ -1,7 +1,7 @@
 CC=aztec43_acc
 LD=aztec43_acc
 CFLAGS=-target=cpm86 -I. -squeeze
-CPM_LDFLAGS=-target=cpm86
+CPM86_LDFLAGS=-target=cpm86
 CMDMOD=cmdmod
 PYTHON=python3
 
@@ -15,7 +15,7 @@ $(OBJS): Makefile
 
 # util.lib and its headers are local snapshots supplied from cpm86-hacking.
 sokoban.cmd: $(OBJS) util.lib res.bin Makefile
-	$(LD) $(CPM_LDFLAGS) -o soknew.cmd $(OBJS) util.lib
+	$(LD) $(CPM86_LDFLAGS) -o soknew.cmd $(OBJS) util.lib
 	$(CMDMOD) -t EXTRA -s res.bin -m "$$(printf '%x' $$(wc -c < res.bin))" soknew.cmd 2
 	mv soknew.cmd $@
 

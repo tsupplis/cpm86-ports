@@ -1,5 +1,6 @@
 CC=aztec43_acc
 LD=aztec43_acc
+CMDINFO=pcdev_cmdinfo
 CFLAGS=-target=cpm86 -I. -squeeze
 LDFLAGS=-target=cpm86
 HOST_CC=cc
@@ -19,6 +20,7 @@ ansi2krn.o: ansi2kr.c
 
 ansi2kr.cmd: ansi2kr.o
 	$(LD) $(LDFLAGS) -o $@ $<
+	$(CMDINFO) $@
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<

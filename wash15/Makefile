@@ -1,7 +1,7 @@
 XLT86=cpm_xlt86
 ASM86=cpm86_asm86
 GENCMD=cpm86_gencmd
-CMDINFO=cmdinfo
+CMDINFO=pcdev_cmdinfo
 MODULES=w15start.inc w15file.inc w15copy.inc w15util.inc
 
 all: wash15.cmd

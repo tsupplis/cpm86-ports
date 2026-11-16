@@ -1,7 +1,8 @@
 CC = aztec43_acc
 LD = aztec43_acc
+CMDINFO=pcdev_cmdinfo
 CFLAGS = -I. -squeeze
-CPM_LDFLAGS = -target=cpm86 -lm
+CPM86_LDFLAGS = -target=cpm86 -lm
 DOS_LDFLAGS = -target=dos1 -lm
 
 OBJS = focal0.o focal1.o focal2.o focal3.o
@@ -14,7 +15,8 @@ all: $(CMDS)
 $(OBJS): focal.h proto.h
 
 focal.cmd: $(OBJS)
-	$(LD) -o $@ $(OBJS) $(CPM_LDFLAGS)
+	$(LD) -o $@ $(OBJS) $(CPM86_LDFLAGS)
+	$(CMDINFO) $@
 
 focal.com: $(OBJS)
 	$(LD) -o $@ $(OBJS) $(DOS_LDFLAGS)

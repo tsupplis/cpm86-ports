@@ -1,6 +1,6 @@
 ASM86=cpm86_asm86
 GENCMD=cpm86_gencmd
-CMDINFO=cmdinfo
+CMDINFO=pcdev_cmdinfo
 MODULES=fstart.inc fexec.inc fnav.inc ffile.inc fcopy.inc fio.inc \
 	fscreen.inc fdata.inc
 

@@ -1,7 +1,8 @@
 CC=aztec43_acc
 LD=aztec43_acc
+CMDINFO=pcdev_cmdinfo
 CFLAGS=-I. -squeeze
-CPM_LDFLAGS=-target=cpm86
+CPM86_LDFLAGS=-target=cpm86
 DOS_LDFLAGS=-target=dos1
 
 all: binaries
@@ -21,6 +22,7 @@ sed.com: $(OBJS)
 
 sed.cmd: $(OBJS)
 	$(LD) $(CPM86_LDFLAGS) -o $@ $(OBJS)
+	$(CMDINFO) $@
 
 test: binaries
 	sh test.sh

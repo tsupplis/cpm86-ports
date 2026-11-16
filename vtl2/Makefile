@@ -1,6 +1,7 @@
 ASM86=cpm86_asm86
 ASM80=cpm_asm80
 GENCMD=cpm86_gencmd
+CMDINFO=pcdev_cmdinfo
 HEXCOM=hexcom
 XLT86=cpm_xlt86
 

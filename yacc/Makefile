@@ -1,6 +1,7 @@
 CC=aztec43_acc
 LD=aztec43_acc
-CMDMOD=cmdmod
+CMDINFO=pcdev_cmdinfo
+CMDMOD=pcdev_cmdmod
 PYTHON=python3
 CFLAGS=-target=cpm86 -I. -squeeze
 LDFLAGS=-target=cpm86
@@ -16,6 +17,7 @@ yacc.cmd: $(OBJS) tpl.bin Makefile
 	$(LD) $(LDFLAGS) -o yaccnew.cmd $(OBJS)
 	$(CMDMOD) -t EXTRA -s tpl.bin -m "$$(printf '%x' $$(wc -c < tpl.bin))" yaccnew.cmd 2
 	mv yaccnew.cmd $@
+	$(CMDINFO) $@
 
 tpl.bin: yaccpar.tpl packtpl.py
 	$(PYTHON) packtpl.py $< $@

@@ -3,10 +3,9 @@
 # https://github.com/tsupplis/pcdos11-hacking
 
 GENCMD=cpm86_gencmd
-BIN2CMD=bin2cmd
+BIN2CMD=pcdev_bin2cmd
 EXE2BIN=pcdev_exe2bin
-CMDINFO=cmdinfo
-CMDINFO=cmdinfo
+CMDINFO=pcdev_cmdinfo
 MASM=pcdev_masm
 LINK=pcdev_link
 

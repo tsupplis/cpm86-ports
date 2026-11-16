@@ -1,7 +1,7 @@
 CC=aztec43_acc
+LD=aztec43_acc
 CFLAGS=-target=cpm86 -I. -squeeze
 LDFLAGS=-target=cpm86 -lm
-LD=aztec43_acc
 ASM86=cpm86_asm86
 GENCMD=cpm86_gencmd
 BIN2CMD=bin2cmd
@@ -13,9 +13,11 @@ all: $(BINARIES)
 
 lu86.cmd: lu86.o
 	$(LD) $(LDFLAGS) -o $@ lu86.o
+	$(CMDINFO) $@
 
 delbr.cmd: delbr.o
 	$(LD) $(LDFLAGS) -o $@ delbr.o
+	$(CMDINFO) $@
 
 lbrtype.cmd: lbrtype.h86
 	#from code

@@ -1,7 +1,8 @@
 CC=aztec43_acc
 LD=aztec43_acc
+CMDINFO=pcdev_cmdinfo
 CFLAGS=-I. -squeeze
-CPM_LDFLAGS=-target=cpm86
+LDFLAGS=-target=cpm86
 
 all: advent.cmd advent.dat
 
@@ -12,7 +13,9 @@ OBJS=main.o wizard.o save.o subr.o vocab.o init.o io.o done.o
 
 # util.lib and its headers are local snapshots supplied from cpm86-hacking.
 advent.cmd: $(OBJS) 
-	$(LD) $(CPM_LDFLAGS) -o $@ $(OBJS)
+	$(LD) $(LDFLAGS) -o $@ $(OBJS)
+	$(CMDINFO) $@
+
 # The data file holds the game structures, so it must be built by this
 # binary (the CCP upcases the argument; main.c compares ignoring case).
 advent.dat: advent.cmd advent.msg

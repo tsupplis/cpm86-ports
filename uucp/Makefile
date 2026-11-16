@@ -1,7 +1,8 @@
 CC=aztec43_acc
 LD=aztec43_acc
+CMDINFO=pcdev_cmdinfo
 CFLAGS=-squeeze
-CPM_LDFLAGS=-target=cpm86
+CPM86_LDFLAGS=-target=cpm86
 DOS_LDFLAGS=-target=dos1
 
 all: binaries
@@ -12,10 +13,10 @@ binaries: uuencode.cmd uudecode.cmd uuencode.com uudecode.com
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 uuencode.cmd: uuencode.o
-	$(LD) $(CPM_LDFLAGS) -o $@ uuencode.o
+	$(LD) $(CPM86_LDFLAGS) -o $@ uuencode.o
 
 uudecode.cmd: uudecode.o
-	$(LD) $(CPM_LDFLAGS) -o $@ uudecode.o
+	$(LD) $(CPM86_LDFLAGS) -o $@ uudecode.o
 
 uuencode.com: uuencode.o
 	$(LD) $(DOS_LDFLAGS) -o $@ uuencode.o
