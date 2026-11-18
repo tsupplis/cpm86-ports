@@ -102,6 +102,7 @@ Ancillary goals:
 
 | Project | What | From | License | Notes |
 | --- | --- | --- | --- | --- |
+| [tinasm](tinasm/README.md) | NASM Assembler (reduced) | Oscar Toledo G. | BSD 2-Clause | |
 | [ansi2kr](ansi2kr/README.md) | ANSI C to K&R C converter for BDS C and MSX-C | masakioba / upstream ansi2kr sources | BSD 2-Clause | Used by [cpm86-crossdev](https://github.com/tsupplis/cpm86-crossdev) |
 | [cpu](cpu/README.md) | CPU tools: 80x86 (8080-to-8086 source translator), vcpm (V20 hardware 8080 emulator), z80 (software 8080 emulator) and cpuid (processor detection) | Harold V. McIntosh; Stephen Hunt; Pat Hester and Bill Earnest; Richard C. Leinecker and Kirk Lawrence | Mixed / Freeware | |
 | [figforth](figforth/README.md) | Native fig-FORTH 1.0 with file-backed block storage | Thomas Newman / Charlie Krajewski, CP/M-86 adapter | Public domain; retain FIG credit | |

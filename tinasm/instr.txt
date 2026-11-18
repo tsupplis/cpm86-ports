@@ -1,0 +1,262 @@
+# tinasm instruction table. One entry per line: NAME|operands|encoding
+# Order matters (first match wins). Compiled by mkinstr.py into instr.bin.
+ADD|%d8,%r8|x00 %d8%r8%d8
+ADD|%d16,%r16|x01 %d16%r16%d16
+ADD|%r8,%d8|x02 %d8%r8%d8
+ADD|%r16,%d16|x03 %d16%r16%d16
+ADD|AL,%i8|x04 %i8
+ADD|AX,%i16|x05 %i16
+PUSH|ES|x06
+POP|ES|x07
+OR|%d8,%r8|x08 %d8%r8%d8
+OR|%d16,%r16|x09 %d16%r16%d16
+OR|%r8,%d8|x0a %d8%r8%d8
+OR|%r16,%d16|x0b %d16%r16%d16
+OR|AL,%i8|x0c %i8
+OR|AX,%i16|x0d %i16
+PUSH|CS|x0e
+ADC|%d8,%r8|x10 %d8%r8%d8
+ADC|%d16,%r16|x11 %d16%r16%d16
+ADC|%r8,%d8|x12 %d8%r8%d8
+ADC|%r16,%d16|x13 %d16%r16%d16
+ADC|AL,%i8|x14 %i8
+ADC|AX,%i16|x15 %i16
+PUSH|SS|x16
+POP|SS|x17
+SBB|%d8,%r8|x18 %d8%r8%d8
+SBB|%d16,%r16|x19 %d16%r16%d16
+SBB|%r8,%d8|x1a %d8%r8%d8
+SBB|%r16,%d16|x1b %d16%r16%d16
+SBB|AL,%i8|x1c %i8
+SBB|AX,%i16|x1d %i16
+PUSH|DS|x1e
+POP|DS|x1f
+AND|%d8,%r8|x20 %d8%r8%d8
+AND|%d16,%r16|x21 %d16%r16%d16
+AND|%r8,%d8|x22 %d8%r8%d8
+AND|%r16,%d16|x23 %d16%r16%d16
+AND|AL,%i8|x24 %i8
+AND|AX,%i16|x25 %i16
+ES||x26
+DAA||x27
+SUB|%d8,%r8|x28 %d8%r8%d8
+SUB|%d16,%r16|x29 %d16%r16%d16
+SUB|%r8,%d8|x2a %d8%r8%d8
+SUB|%r16,%d16|x2b %d16%r16%d16
+SUB|AL,%i8|x2c %i8
+SUB|AX,%i16|x2d %i16
+CS||x2e
+DAS||x2f
+XOR|%d8,%r8|x30 %d8%r8%d8
+XOR|%d16,%r16|x31 %d16%r16%d16
+XOR|%r8,%d8|x32 %d8%r8%d8
+XOR|%r16,%d16|x33 %d16%r16%d16
+XOR|AL,%i8|x34 %i8
+XOR|AX,%i16|x35 %i16
+SS||x36
+AAA||x37
+CMP|%d8,%r8|x38 %d8%r8%d8
+CMP|%d16,%r16|x39 %d16%r16%d16
+CMP|%r8,%d8|x3a %d8%r8%d8
+CMP|%r16,%d16|x3b %d16%r16%d16
+CMP|AL,%i8|x3c %i8
+CMP|AX,%i16|x3d %i16
+DS||x3e
+AAS||x3f
+INC|%r16|b01000%r16
+DEC|%r16|b01001%r16
+PUSH|%r16|b01010%r16
+POP|%r16|b01011%r16
+JO|%a8|x70 %a8
+JNO|%a8|x71 %a8
+JB|%a8|x72 %a8
+JC|%a8|x72 %a8
+JNB|%a8|x73 %a8
+JNC|%a8|x73 %a8
+JZ|%a8|x74 %a8
+JNZ|%a8|x75 %a8
+JE|%a8|x74 %a8
+JNE|%a8|x75 %a8
+JBE|%a8|x76 %a8
+JA|%a8|x77 %a8
+JS|%a8|x78 %a8
+JNS|%a8|x79 %a8
+JPE|%a8|x7a %a8
+JPO|%a8|x7b %a8
+JL|%a8|x7C %a8
+JGE|%a8|x7D %a8
+JLE|%a8|x7E %a8
+JG|%a8|x7F %a8
+ADD|%d16,%s8|x83 %d16000%d16 %s8
+OR|%d16,%s8|x83 %d16001%d16 %s8
+ADC|%d16,%s8|x83 %d16010%d16 %s8
+SBB|%d16,%s8|x83 %d16011%d16 %s8
+AND|%d16,%s8|x83 %d16100%d16 %s8
+SUB|%d16,%s8|x83 %d16101%d16 %s8
+XOR|%d16,%s8|x83 %d16110%d16 %s8
+CMP|%d16,%s8|x83 %d16111%d16 %s8
+ADD|%d8,%i8|x80 %d8000%d8 %i8
+OR|%d8,%i8|x80 %d8001%d8 %i8
+ADC|%d8,%i8|x80 %d8010%d8 %i8
+SBB|%d8,%i8|x80 %d8011%d8 %i8
+AND|%d8,%i8|x80 %d8100%d8 %i8
+SUB|%d8,%i8|x80 %d8101%d8 %i8
+XOR|%d8,%i8|x80 %d8110%d8 %i8
+CMP|%d8,%i8|x80 %d8111%d8 %i8
+ADD|%d16,%i16|x81 %d16000%d16 %i16
+OR|%d16,%i16|x81 %d16001%d16 %i16
+ADC|%d16,%i16|x81 %d16010%d16 %i16
+SBB|%d16,%i16|x81 %d16011%d16 %i16
+AND|%d16,%i16|x81 %d16100%d16 %i16
+SUB|%d16,%i16|x81 %d16101%d16 %i16
+XOR|%d16,%i16|x81 %d16110%d16 %i16
+CMP|%d16,%i16|x81 %d16111%d16 %i16
+TEST|%d8,%r8|x84 %d8%r8%d8
+TEST|%r8,%d8|x84 %d8%r8%d8
+TEST|%d16,%r16|x85 %d16%r16%d16
+TEST|%r16,%d16|x85 %d16%r16%d16
+MOV|AL,[%i16]|xa0 %i16
+MOV|AX,[%i16]|xa1 %i16
+MOV|[%i16],AL|xa2 %i16
+MOV|[%i16],AX|xa3 %i16
+MOV|%d8,%r8|x88 %d8%r8%d8
+MOV|%d16,%r16|x89 %d16%r16%d16
+MOV|%r8,%d8|x8a %d8%r8%d8
+MOV|%r16,%d16|x8b %d16%r16%d16
+MOV|%d16,ES|x8c %d16000%d16
+MOV|%d16,CS|x8c %d16001%d16
+MOV|%d16,SS|x8c %d16010%d16
+MOV|%d16,DS|x8c %d16011%d16
+LEA|%r16,%d16|x8d %d16%r16%d16
+MOV|ES,%d16|x8e %d16000%d16
+MOV|CS,%d16|x8e %d16001%d16
+MOV|SS,%d16|x8e %d16010%d16
+MOV|DS,%d16|x8e %d16011%d16
+POP|%d16|x8f %d16000%d16
+NOP||x90
+XCHG|AX,%r16|b10010%r16
+XCHG|%r16,AX|b10010%r16
+XCHG|%d8,%r8|x86 %d8%r8%d8
+XCHG|%r8,%d8|x86 %d8%r8%d8
+XCHG|%d16,%r16|x87 %d16%r16%d16
+XCHG|%r16,%d16|x87 %d16%r16%d16
+CBW||x98
+CWD||x99
+WAIT||x9b
+PUSHF||x9c
+POPF||x9d
+SAHF||x9e
+LAHF||x9f
+MOVSB||xa4
+MOVSW||xa5
+CMPSB||xa6
+CMPSW||xa7
+TEST|AL,%i8|xa8 %i8
+TEST|AX,%i16|xa9 %i16
+STOSB||xaa
+STOSW||xab
+LODSB||xac
+LODSW||xad
+SCASB||xae
+SCASW||xaf
+MOV|%r8,%i8|b10110%r8 %i8
+MOV|%r16,%i16|b10111%r16 %i16
+RET|%i16|xc2 %i16
+RET||xc3
+LES|%r16,%d16|b11000100 %d16%r16%d16
+LDS|%r16,%d16|b11000101 %d16%r16%d16
+MOV|%db8,%i8|b11000110 %d8000%d8 %i8
+MOV|%dw16,%i16|b11000111 %d16000%d16 %i16
+RETF|%i16|xca %i16
+RETF||xcb
+INT3||xcc
+INT|%i8|xcd %i8
+INTO||xce
+IRET||xcf
+ROL|%d8,1|xd0 %d8000%d8
+ROR|%d8,1|xd0 %d8001%d8
+RCL|%d8,1|xd0 %d8010%d8
+RCR|%d8,1|xd0 %d8011%d8
+SHL|%d8,1|xd0 %d8100%d8
+SHR|%d8,1|xd0 %d8101%d8
+SAR|%d8,1|xd0 %d8111%d8
+ROL|%d16,1|xd1 %d16000%d16
+ROR|%d16,1|xd1 %d16001%d16
+RCL|%d16,1|xd1 %d16010%d16
+RCR|%d16,1|xd1 %d16011%d16
+SHL|%d16,1|xd1 %d16100%d16
+SHR|%d16,1|xd1 %d16101%d16
+SAR|%d16,1|xd1 %d16111%d16
+ROL|%d8,CL|xd2 %d8000%d8
+ROR|%d8,CL|xd2 %d8001%d8
+RCL|%d8,CL|xd2 %d8010%d8
+RCR|%d8,CL|xd2 %d8011%d8
+SHL|%d8,CL|xd2 %d8100%d8
+SHR|%d8,CL|xd2 %d8101%d8
+SAR|%d8,CL|xd2 %d8111%d8
+ROL|%d16,CL|xd3 %d16000%d16
+ROR|%d16,CL|xd3 %d16001%d16
+RCL|%d16,CL|xd3 %d16010%d16
+RCR|%d16,CL|xd3 %d16011%d16
+SHL|%d16,CL|xd3 %d16100%d16
+SHR|%d16,CL|xd3 %d16101%d16
+SAR|%d16,CL|xd3 %d16111%d16
+AAM||xd4 x0a
+AAD||xd5 x0a
+XLAT||xd7
+LOOPNZ|%a8|xe0 %a8
+LOOPNE|%a8|xe0 %a8
+LOOPZ|%a8|xe1 %a8
+LOOPE|%a8|xe1 %a8
+LOOP|%a8|xe2 %a8
+JCXZ|%a8|xe3 %a8
+IN|AL,DX|xec
+IN|AX,DX|xed
+OUT|DX,AL|xee
+OUT|DX,AX|xef
+IN|AL,%i8|xe4 %i8
+IN|AX,%i8|xe5 %i8
+OUT|%i8,AL|xe6 %i8
+OUT|%i8,AX|xe7 %i8
+CALL|FAR %d16|xff %d16011%d16
+JMP|FAR %d16|xff %d16101%d16
+CALL|%f32|x9a %f32
+JMP|%f32|xea %f32
+CALL|%d16|xff %d16010%d16
+JMP|%d16|xff %d16100%d16
+JMP|%a8|xeb %a8
+JMP|%a16|xe9 %a16
+CALL|%a16|xe8 %a16
+LOCK||xf0
+REPNZ||xf2
+REPNE||xf2
+REPZ||xf3
+REPE||xf3
+REP||xf3
+HLT||xf4
+CMC||xf5
+TEST|%db8,%i8|xf6 %d8000%d8 %i8
+NOT|%db8|xf6 %d8010%d8
+NEG|%db8|xf6 %d8011%d8
+MUL|%db8|xf6 %d8100%d8
+IMUL|%db8|xf6 %d8101%d8
+DIV|%db8|xf6 %d8110%d8
+IDIV|%db8|xf6 %d8111%d8
+TEST|%dw16,%i16|xf7 %d8000%d8 %i16
+NOT|%dw16|xf7 %d8010%d8
+NEG|%dw16|xf7 %d8011%d8
+MUL|%dw16|xf7 %d8100%d8
+IMUL|%dw16|xf7 %d8101%d8
+DIV|%dw16|xf7 %d8110%d8
+IDIV|%dw16|xf7 %d8111%d8
+CLC||xf8
+STC||xf9
+CLI||xfa
+STI||xfb
+CLD||xfc
+STD||xfd
+INC|%db8|xfe %d8000%d8
+DEC|%db8|xfe %d8001%d8
+INC|%dw16|xff %d16000%d16
+DEC|%dw16|xff %d16001%d16
+PUSH|%d16|xff %d16110%d16

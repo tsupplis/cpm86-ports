@@ -5,7 +5,7 @@ SUBDIRS2=tinybas xlisp vtl2 ratfor diskstat sokoban edlin advent
     
 SUBDIRS3=trek expr kilo arc rogue cpu ladder patcher page modem9 frag sd du
 
-SUBDIRS4=focal setboot yacc ansi2kr figforth res86
+SUBDIRS4=focal setboot yacc ansi2kr figforth res86 tinasm
 
 SUBDIRS=$(SUBDIRS1) $(SUBDIRS2) $(SUBDIRS3) $(SUBDIRS4)
 

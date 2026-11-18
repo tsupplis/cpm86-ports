@@ -1,0 +1,4 @@
+tinasm.cmd
+instr.bin
+*.out
+!*.img
