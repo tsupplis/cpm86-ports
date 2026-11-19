@@ -2,6 +2,8 @@
 
 A small collection of classic software tools adapted or ported for CP/M-86 to make this crude CP/M 2.2 usable and keep history tracks of software produced or usable on this old OS. The repository contains language interpreters, compilers, conversion utilities, and other retro-computing experiments assembled for the CP/M environment. All are rebuilt some source, and cleansed, and tested and curated progressively. Here and there the code is corrected/adjusted in a minimal way to keep the original intent. Please do not hesitate to raise issues.
 
+All the tools/programs of this repository have been corrected if necessary to be compatible not only with  C/PM-86 but also CC/PM-86 and Concurrent DOS 4.1. Some programs are accessorily also working on DOS 1.1 but it is a secondary output.
+
 In particular, those tools give a much more friendly user interaction with the old and crude CP/M-86 1.1 that is otherwise reminiscent of CP/M-80 2.2 which is its base.
 
 - file compression
@@ -10,10 +12,6 @@ In particular, those tools give a much more friendly user interaction with the o
 - emulation
 - unix like tools
 - development tools
-
-DISK7, WASH15 and FILER group SYSTEM/FAT HIDDEN files behind an `O`
-normal/all toggle, with distinct S/H indicators. They retain CP/M-86 and
-CCP/M-86 support; details and tests are in each tool's README.
 
 Further tools are available from companion projects:
 | Category | Tools | Project |
