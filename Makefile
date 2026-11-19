@@ -3,11 +3,13 @@ SUBDIRS1=filer lbr fv seemem disk7 wash15 xsq uucp grep sed diff ndbm life kermi
 
 SUBDIRS2=tinybas xlisp vtl2 ratfor diskstat sokoban edlin advent
     
-SUBDIRS3=trek expr kilo arc rogue cpu ladder patcher page modem9 frag sd du
+SUBDIRS3=trek expr kilo arc rogue cpu ladder patcher page frag
 
-SUBDIRS4=focal setboot yacc ansi2kr figforth res86 tinasm
+SUBDIRS4=focal setboot yacc ansi2kr res86 sd du
 
-SUBDIRS=$(SUBDIRS1) $(SUBDIRS2) $(SUBDIRS3) $(SUBDIRS4)
+SUBDIR55=tinasm figforth modem9
+
+SUBDIRS=$(SUBDIRS1) $(SUBDIRS2) $(SUBDIRS3) $(SUBDIRS4) $(SUBDIRS5)
 
 all:
 	for d in $(SUBDIRS); do \
@@ -25,9 +27,9 @@ test:
 # Binary zip
 # --------------------------------------------------------------------
 
-dist: ports.zip
+dist: ports.zip disks.zip
 
-ports.zip: clean all
+ports.zip:  all
 	set -e; \
 	mkdir -p tmp-dist; \
 	trap 'rm -rf tmp-dist' EXIT INT TERM; \
@@ -47,13 +49,25 @@ ports.zip: clean all
 	cp expr/tinyexpr.lib tmp-dist; \
 	cp focal/*.foc tmp-dist; \
 	(cd tmp-dist; zip -j ../ports.zip *)
+	
+disks.zip: cpmtest1.img cpmtest2.img cpmtest3.img cpmtest4.img cpmtest5.img
+		set -e; \
+		stage=$$(mktemp -d); \
+		trap 'rm -rf "$$stage"' EXIT HUP INT TERM; \
+		cp cpmtest1.img "$$stage/ports1.img"; \
+		cp cpmtest2.img "$$stage/ports2.img"; \
+		cp cpmtest3.img "$$stage/ports3.img"; \
+		cp cpmtest4.img "$$stage/ports4.img"; \
+		cp cpmtest5.img "$$stage/ports5.img"; \
+		zip -j "$$stage/disks.zip" "$$stage/ports1.img" "$$stage/ports2.img" "$$stage/ports3.img" "$$stage/ports4.img" "$$stage/ports5.img"; \
+		mv "$$stage/disks.zip" $@
 
 
 clean:
 	for d in $(SUBDIRS); do \
 		$(MAKE) -j1 -C $$d $@ || exit $$?; \
 	done
-	rm -f tmp.img cpmtest1.img ports.zip
+	rm -f tmp.img cpmtest1.img ports.zip disks.zip
 
 cpm86test: cpmtest1.img cpmtest2.img cpmtest3.img
 	./cpm86 
@@ -99,6 +113,30 @@ cpmtest3.img: all
 	for i in focal/*.foc; do cpmcp -f cpm86-320 tmp.img $$i 0:; done
 	cpmcp -f cpm86-320 tmp.img rogue/*.ovr 0:
 	cpmcp -f cpm86-320 tmp.img ladder/*.dat 0:
+	cpmls -F -f cpm86-320 tmp.img
+	python3 tools/cpm86twist.py twist tmp.img $@
+	rm -f tmp.img
+
+cpmtest4.img: all
+	cp cpmbase.img $@
+	python3 tools/cpm86twist.py untwist $@ tmp.img
+	cpmls -F -f cpm86-320 tmp.img
+	set -e; for d in $(SUBDIRS4); do \
+	    for i in $$d/*.cmd; do cpmcp -f cpm86-320 tmp.img $$i 0:; done; \
+	done; \
+	for i in focal/*.foc; do cpmcp -f cpm86-320 tmp.img $$i 0:; done
+	cpmls -F -f cpm86-320 tmp.img
+	python3 tools/cpm86twist.py twist tmp.img $@
+	rm -f tmp.img
+
+cpmtest5.img: all
+	cp cpmbase.img $@
+	python3 tools/cpm86twist.py untwist $@ tmp.img
+	cpmls -F -f cpm86-320 tmp.img
+	set -e; for d in $(SUBDIRS4); do \
+	    for i in $$d/*.cmd; do cpmcp -f cpm86-320 tmp.img $$i 0:; done; \
+	done; \
+	for i in focal/*.foc; do cpmcp -f cpm86-320 tmp.img $$i 0:; done
 	cpmls -F -f cpm86-320 tmp.img
 	python3 tools/cpm86twist.py twist tmp.img $@
 	rm -f tmp.img
