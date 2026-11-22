@@ -7,7 +7,7 @@ SUBDIRS3=trek expr kilo arc rogue cpu ladder patcher page frag
 
 SUBDIRS4=focal setboot yacc ansi2kr res86 sd du
 
-SUBDIR55=tinasm figforth modem9
+SUBDIRS5=tinasm figforth modem9 blackjak foundry
 
 SUBDIRS=$(SUBDIRS1) $(SUBDIRS2) $(SUBDIRS3) $(SUBDIRS4) $(SUBDIRS5)
 
@@ -133,10 +133,9 @@ cpmtest5.img: all
 	cp cpmbase.img $@
 	python3 tools/cpm86twist.py untwist $@ tmp.img
 	cpmls -F -f cpm86-320 tmp.img
-	set -e; for d in $(SUBDIRS4); do \
+	set -e; for d in $(SUBDIRS5); do \
 	    for i in $$d/*.cmd; do cpmcp -f cpm86-320 tmp.img $$i 0:; done; \
 	done; \
-	for i in focal/*.foc; do cpmcp -f cpm86-320 tmp.img $$i 0:; done
 	cpmls -F -f cpm86-320 tmp.img
 	python3 tools/cpm86twist.py twist tmp.img $@
 	rm -f tmp.img

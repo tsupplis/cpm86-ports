@@ -89,6 +89,8 @@ Ancillary goals:
 | Project | What | From | License |
 | --- | --- | --- | --- |
 | [advent](advent/README.md) | Colossal Cave Adventure, the classic text exploration game | RetroBSD / DiscoBSD; C re-write by Jim Gillogly (1977) of the Crowther and Woods original | BSD 3-Clause |
+| [blackjak](blackjak/README.md) | Blackjack with CP437 cards, suit colors on CP/M-86, and split, double and insurance bets | C implementation based on the house rules of a historical BASIC game | MIT |
+| [foundry](foundry/README.md) | Falling-block puzzle with seven shapes, row clears, cursor keys and CP437 color tiles | Original C game | MIT |
 | [ladder](ladder/README.md) | ASCII platform game: climb ladders, dodge falling rocks and collect treasure | Turbo Pascal rewrite of Yahoo Software's Ladder | GPL-2.0-or-later |
 | [life](life/README.md) | Conway's Game of Life for VT52 terminals, 20×60 grid | Kevin Boone, May 2021 | Public domain |
 | [rogue](rogue/README.md) | Rogue 5.4, the classic dungeon exploration adventure | RetroBSD / DiscoBSD / Tim Stoehr | BSD 3-Clause |
